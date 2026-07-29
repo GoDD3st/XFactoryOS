@@ -1,0 +1,88 @@
+@import "tailwindcss";
+@source "../frontend/src";
+
+:root {
+  --color-free: #00b050;
+  --color-reserved: #e05252;
+  --color-maintenance: #f59e0b;
+  --color-occupied: #3b82f6;
+  --color-extension: #6366f1;
+  --ocp-emerald: #008751;
+  --ocp-emerald-dark: #005f38;
+  --ocp-gold: #d4af37;
+}
+
+/* Custom Glassmorphic Utilities & Styles */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(226, 232, 240, 0.8);
+}
+
+.dark-glass-panel {
+  background: rgba(15, 23, 42, 0.9);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(51, 65, 85, 0.6);
+}
+
+.seat-pill {
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.seat-pill:hover {
+  transform: translateY(-2px) scale(1.03);
+}
+
+/* Status colors classes for quick application */
+.bg-status-free {
+  background-color: var(--color-free);
+}
+.text-status-free {
+  color: var(--color-free);
+}
+.border-status-free {
+  border-color: var(--color-free);
+}
+
+.bg-status-reserved {
+  background-color: var(--color-reserved);
+}
+.text-status-reserved {
+  color: var(--color-reserved);
+}
+.border-status-reserved {
+  border-color: var(--color-reserved);
+}
+
+.bg-status-maintenance {
+  background-color: var(--color-maintenance);
+}
+.text-status-maintenance {
+  color: var(--color-maintenance);
+}
+
+.bg-status-occupied {
+  background-color: var(--color-occupied);
+}
+.text-status-occupied {
+  color: var(--color-occupied);
+}
+
+.bg-status-extension {
+  background-color: var(--color-extension);
+}
+.text-status-extension {
+  color: var(--color-extension);
+}
+
+/* Animated Pulse for live status indicators */
+@keyframes pulse-subtle {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.08); }
+}
+
+.animate-pulse-subtle {
+  animation: pulse-subtle 2s infinite ease-in-out;
+}

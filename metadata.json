@@ -1,0 +1,6 @@
+{
+  "name": "XFactory OS - Smart Open Space Management",
+  "description": "OCP SA Safi site - Smart Open Space Digital Twin and Workstation Booking System with 10 role dashboards and Supabase sync.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
