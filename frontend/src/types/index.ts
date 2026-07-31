@@ -60,7 +60,7 @@ export interface Cluster {
   workstations: Workstation[];
 }
 
-export type ReservationStatus = 'confirmée' | 'check-in' | 'en attente' | 'annulée' | 'terminée';
+export type ReservationStatus = 'confirmée' | 'check-in' | 'en attente' | 'annulée' | 'terminée' | 'no-show' | 'check-out';
 
 export interface Reservation {
   id: string;
@@ -97,3 +97,126 @@ export interface RoleConfig {
   description: string;
   permissions: string[];
 }
+
+export interface WaitingListEntry {
+  id: string;
+  user_id: string;
+  user_name: string;
+  user_department: string;
+  cluster_preference?: string;
+  reservation_date: string;
+  time_slot: string;
+  notes?: string;
+  created_at: string;
+  status: 'waiting' | 'offered' | 'expired' | 'fulfilled';
+}
+
+export interface AuditLogEntry {
+  id: string;
+  timestamp: string;
+  action: string;
+  actor_id: string;
+  actor_name: string;
+  actor_role: UserRole;
+  target_resource: string;
+  details: string;
+  ip_address?: string;
+}
+
+export interface UserNotification {
+  id: string;
+  user_id: string;
+  title: string;
+  message: string;
+  type: 'info' | 'warning' | 'success' | 'alert';
+  read: boolean;
+  created_at: string;
+}
+
+export interface AIAssistantMessage {
+  id: string;
+  sender: 'user' | 'ai';
+  text: string;
+  timestamp: string;
+  suggestions?: string[];
+}
+
+export interface HardwareDiagnosticsInfo {
+  workstation_code: string;
+  cluster_code: string;
+  rj45_port: string;
+  link_speed: string;
+  port_status: 'online' | 'degraded' | 'offline';
+  dock_power_delivery: string;
+  display_count: number;
+  last_ping: string;
+}
+
+export interface EvacuationOccupant {
+  id: string;
+  name: string;
+  role: string;
+  department: string;
+  workstation_code: string;
+  cluster_name: string;
+  check_in_time: string;
+  type: 'employee' | 'contractor' | 'visitor';
+  accounted: boolean;
+}
+
+export interface VisitorBadge {
+  badge_id: string;
+  visitor_name: string;
+  visitor_company: string;
+  host_name: string;
+  host_department: string;
+  visit_date: string;
+  qr_code: string;
+  access_zone: string;
+}
+
+export interface WorkstationSearchQuery {
+  keyword?: string;
+  clusterId?: string;
+  status?: SeatStatus;
+  hasDoubleScreen?: boolean;
+  nearWindow?: boolean;
+  isPMR?: boolean;
+  isQuietZone?: boolean;
+  date?: string;
+}
+
+export interface ReservationSearchQuery {
+  keyword?: string;
+  userId?: string;
+  clusterId?: string;
+  status?: ReservationStatus;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+export interface SystemSettings {
+  maxReservationDaysWithoutApproval: number;
+  noShowDelayMinutes: number;
+  workingHoursStart: string;
+  workingHoursEnd: string;
+  workingDays: number[];
+  extensionSeatsVisibleByDefault: boolean;
+  managementClustersEnabled: boolean;
+  theme: 'dark' | 'light';
+  siteName: string;
+}
+
+export interface ApprovalRequest {
+  id: string;
+  reservation_id: string;
+  requester_id: string;
+  requester_name: string;
+  approver_role: 'executive_assistant' | 'director';
+  status: 'pending' | 'approved' | 'rejected';
+  reason: string;
+  decision_note?: string;
+  created_at: string;
+  decided_at?: string;
+}
+

@@ -15,6 +15,19 @@ import { SuperAdminView } from '../../modules/dashboard/views/SuperAdminView';
 import { ITAdminView } from '../../modules/dashboard/views/ITAdminView';
 import { SecurityView } from '../../modules/dashboard/views/SecurityView';
 
+// New SRS Section 28 views
+import { ExecutiveDashboard } from '../../modules/dashboard/views/ExecutiveDashboard';
+import { MyReservationsView } from '../../modules/dashboard/views/MyReservationsView';
+import { CalendarView } from '../../modules/dashboard/views/CalendarView';
+import { WaitingListView } from '../../modules/dashboard/views/WaitingListView';
+import { WorkstationsAdminView } from '../../modules/dashboard/views/WorkstationsAdminView';
+import { ClustersAdminView } from '../../modules/dashboard/views/ClustersAdminView';
+import { UsersAdminView } from '../../modules/dashboard/views/UsersAdminView';
+import { RolesAdminView } from '../../modules/dashboard/views/RolesAdminView';
+import { SettingsView } from '../../modules/dashboard/views/SettingsView';
+import { AuditLogsView } from '../../modules/dashboard/views/AuditLogsView';
+import { AIAssistantDrawer } from '../../modules/dashboard/components/AIAssistantDrawer';
+
 import {
   Layers,
   ChevronDown,
@@ -24,14 +37,114 @@ import {
   Shield,
   Building,
   CheckCircle2,
-  ExternalLink
+  ExternalLink,
+  Bot,
+  Calendar,
+  Clock,
+  BarChart3,
+  Settings,
+  ShieldCheck,
+  FileText,
+  Search,
+  Users,
+  Lock,
+  Wrench,
+  ListOrdered,
+  History
 } from 'lucide-react';
+
+// RBAC Tab definitions per role (SRS Section 13 Matrix)
+type TabKey = 'home' | 'digital-twin' | 'reservations' | 'calendar' | 'waiting-list' | 'dashboard-exec' | 'workstations' | 'clusters' | 'users' | 'roles' | 'settings' | 'audit' | 'approvals';
+
+interface TabDef {
+  key: TabKey;
+  label: string;
+  icon: React.ReactNode;
+}
+
+const ROLE_TABS: Record<UserRole, TabDef[]> = {
+  collaborator: [
+    { key: 'home', label: 'Digital Twin', icon: <Layers className="w-3.5 h-3.5" /> },
+    { key: 'reservations', label: 'Mes Réservations', icon: <Calendar className="w-3.5 h-3.5" /> },
+    { key: 'calendar', label: 'Calendrier', icon: <Clock className="w-3.5 h-3.5" /> },
+    { key: 'waiting-list', label: 'Liste d\'Attente', icon: <ListOrdered className="w-3.5 h-3.5" /> },
+  ],
+  receptionist: [
+    { key: 'home', label: 'Réception', icon: <Layers className="w-3.5 h-3.5" /> },
+    { key: 'reservations', label: 'Réservations', icon: <Calendar className="w-3.5 h-3.5" /> },
+    { key: 'calendar', label: 'Calendrier', icon: <Clock className="w-3.5 h-3.5" /> },
+    { key: 'waiting-list', label: 'Liste d\'Attente', icon: <ListOrdered className="w-3.5 h-3.5" /> },
+  ],
+  building_manager: [
+    { key: 'home', label: 'Bâtiment', icon: <Building className="w-3.5 h-3.5" /> },
+    { key: 'dashboard-exec', label: 'Dashboard', icon: <BarChart3 className="w-3.5 h-3.5" /> },
+    { key: 'workstations', label: 'Postes', icon: <Wrench className="w-3.5 h-3.5" /> },
+    { key: 'clusters', label: 'Clusters', icon: <Layers className="w-3.5 h-3.5" /> },
+    { key: 'audit', label: 'Audit', icon: <FileText className="w-3.5 h-3.5" /> },
+  ],
+  gci_manager: [
+    { key: 'home', label: 'GCI', icon: <Shield className="w-3.5 h-3.5" /> },
+    { key: 'dashboard-exec', label: 'Dashboard', icon: <BarChart3 className="w-3.5 h-3.5" /> },
+    { key: 'clusters', label: 'Clusters', icon: <Layers className="w-3.5 h-3.5" /> },
+    { key: 'workstations', label: 'Postes', icon: <Wrench className="w-3.5 h-3.5" /> },
+    { key: 'audit', label: 'Audit', icon: <FileText className="w-3.5 h-3.5" /> },
+  ],
+  executive_assistant: [
+    { key: 'home', label: 'Approbations', icon: <CheckCircle2 className="w-3.5 h-3.5" /> },
+    { key: 'dashboard-exec', label: 'Dashboard', icon: <BarChart3 className="w-3.5 h-3.5" /> },
+    { key: 'reservations', label: 'Réservations', icon: <Calendar className="w-3.5 h-3.5" /> },
+    { key: 'approvals', label: 'Longue Durée', icon: <Clock className="w-3.5 h-3.5" /> },
+  ],
+  director: [
+    { key: 'home', label: 'Direction', icon: <Sparkles className="w-3.5 h-3.5" /> },
+    { key: 'dashboard-exec', label: 'Dashboard', icon: <BarChart3 className="w-3.5 h-3.5" /> },
+    { key: 'approvals', label: 'Approbations', icon: <CheckCircle2 className="w-3.5 h-3.5" /> },
+    { key: 'audit', label: 'Audit', icon: <FileText className="w-3.5 h-3.5" /> },
+  ],
+  admin: [
+    { key: 'home', label: 'Admin', icon: <Settings className="w-3.5 h-3.5" /> },
+    { key: 'dashboard-exec', label: 'Dashboard', icon: <BarChart3 className="w-3.5 h-3.5" /> },
+    { key: 'workstations', label: 'Postes', icon: <Wrench className="w-3.5 h-3.5" /> },
+    { key: 'clusters', label: 'Clusters', icon: <Layers className="w-3.5 h-3.5" /> },
+    { key: 'users', label: 'Utilisateurs', icon: <Users className="w-3.5 h-3.5" /> },
+    { key: 'settings', label: 'Paramètres', icon: <Settings className="w-3.5 h-3.5" /> },
+    { key: 'audit', label: 'Audit', icon: <FileText className="w-3.5 h-3.5" /> },
+  ],
+  super_admin: [
+    { key: 'home', label: 'Console', icon: <ShieldCheck className="w-3.5 h-3.5" /> },
+    { key: 'dashboard-exec', label: 'Dashboard', icon: <BarChart3 className="w-3.5 h-3.5" /> },
+    { key: 'workstations', label: 'Postes', icon: <Wrench className="w-3.5 h-3.5" /> },
+    { key: 'clusters', label: 'Clusters', icon: <Layers className="w-3.5 h-3.5" /> },
+    { key: 'users', label: 'Utilisateurs', icon: <Users className="w-3.5 h-3.5" /> },
+    { key: 'roles', label: 'RBAC', icon: <Lock className="w-3.5 h-3.5" /> },
+    { key: 'settings', label: 'Paramètres', icon: <Settings className="w-3.5 h-3.5" /> },
+    { key: 'audit', label: 'Audit', icon: <FileText className="w-3.5 h-3.5" /> },
+  ],
+  it_admin: [
+    { key: 'home', label: 'IT Admin', icon: <Wrench className="w-3.5 h-3.5" /> },
+    { key: 'dashboard-exec', label: 'Dashboard', icon: <BarChart3 className="w-3.5 h-3.5" /> },
+    { key: 'workstations', label: 'Postes', icon: <Wrench className="w-3.5 h-3.5" /> },
+    { key: 'users', label: 'Utilisateurs', icon: <Users className="w-3.5 h-3.5" /> },
+    { key: 'audit', label: 'Audit', icon: <FileText className="w-3.5 h-3.5" /> },
+  ],
+  security_guard: [
+    { key: 'home', label: 'Sécurité', icon: <Shield className="w-3.5 h-3.5" /> },
+    { key: 'audit', label: 'Audit', icon: <FileText className="w-3.5 h-3.5" /> },
+  ],
+};
 
 export const RoleShell: React.FC = () => {
   const { currentRole, currentUser, roleConfig, switchRole, canView8Postes } = useAuth();
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [isAIOpen, setIsAIOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<TabKey>('home');
 
-  const renderActiveView = () => {
+  // Reset tab when role changes
+  React.useEffect(() => {
+    setActiveTab('home');
+  }, [currentRole]);
+
+  const renderHomeView = () => {
     switch (currentRole) {
       case 'collaborator':
         return <EndUserDashboard />;
@@ -57,6 +170,39 @@ export const RoleShell: React.FC = () => {
         return <EndUserDashboard />;
     }
   };
+
+  const renderActiveView = () => {
+    switch (activeTab) {
+      case 'home':
+        return renderHomeView();
+      case 'dashboard-exec':
+        return <ExecutiveDashboard />;
+      case 'reservations':
+        return <MyReservationsView />;
+      case 'calendar':
+        return <CalendarView />;
+      case 'waiting-list':
+        return <WaitingListView />;
+      case 'workstations':
+        return <WorkstationsAdminView />;
+      case 'clusters':
+        return <ClustersAdminView />;
+      case 'users':
+        return <UsersAdminView />;
+      case 'roles':
+        return <RolesAdminView />;
+      case 'settings':
+        return <SettingsView />;
+      case 'audit':
+        return <AuditLogsView />;
+      case 'approvals':
+        return <ApprovalsView />;
+      default:
+        return renderHomeView();
+    }
+  };
+
+  const tabs = ROLE_TABS[currentRole] || ROLE_TABS.collaborator;
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans antialiased">
@@ -142,6 +288,15 @@ export const RoleShell: React.FC = () => {
               </div>
             </div>
 
+            {/* AI Assistant Button */}
+            <button
+              onClick={() => setIsAIOpen(true)}
+              className="p-2 rounded-xl bg-[#008751] hover:bg-emerald-600 text-white transition-colors shadow-sm"
+              title="XFactory AI Assistant"
+            >
+              <Bot className="w-4 h-4 text-amber-300" />
+            </button>
+
             {/* Notifications Button */}
             <div className="relative">
               <button
@@ -190,6 +345,26 @@ export const RoleShell: React.FC = () => {
         </div>
       </header>
 
+      {/* Tab Navigation Bar (SRS Section 28 - RBAC-filtered per role) */}
+      <nav className="bg-white border-b border-slate-200 px-4 sm:px-6 shrink-0">
+        <div className="max-w-7xl mx-auto w-full flex items-center space-x-1 overflow-x-auto py-1">
+          {tabs.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-all whitespace-nowrap cursor-pointer ${
+                activeTab === tab.key
+                  ? 'bg-[#008751]/10 text-[#008751] font-bold border border-[#008751]/20'
+                  : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
+              }`}
+            >
+              {tab.icon}
+              <span>{tab.label}</span>
+            </button>
+          ))}
+        </div>
+      </nav>
+
       {/* Main Role View Content Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {renderActiveView()}
@@ -202,7 +377,7 @@ export const RoleShell: React.FC = () => {
             <span className="w-2 h-2 rounded-full bg-amber-400" />
             <span className="font-bold uppercase tracking-wider text-amber-100">GROUPE OCP SA - Safi Site</span>
           </div>
-          <div className="flex items-center gap-2 hidden sm:flex border-l border-emerald-700 pl-4">
+          <div className="hidden sm:flex items-center gap-2 border-l border-emerald-700 pl-4">
             <span className="w-2 h-2 rounded-full bg-emerald-300" />
             <span className="font-medium uppercase tracking-wider text-emerald-100">PostgreSQL DB: Connected</span>
           </div>
@@ -212,6 +387,9 @@ export const RoleShell: React.FC = () => {
           <span className="bg-[#004227] text-amber-300 px-2 py-0.5 rounded font-bold uppercase tracking-tighter border border-amber-400/30">v4.0.1 OCP Enterprise</span>
         </div>
       </footer>
+
+      {/* AI Assistant Drawer (SRS 28.14) */}
+      <AIAssistantDrawer isOpen={isAIOpen} onClose={() => setIsAIOpen(false)} userRole={currentRole} />
     </div>
   );
 };
