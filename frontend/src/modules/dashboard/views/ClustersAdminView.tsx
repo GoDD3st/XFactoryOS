@@ -1,16 +1,20 @@
-import React, { useState } from 'react';
-import { INITIAL_CLUSTERS } from '@/services/workspaces/workspaceService';
+import React, { useState, useEffect } from 'react';
+import { INITIAL_CLUSTERS, WorkspaceService } from '@/services/workspaces/workspaceService';
+import { useAuth } from '../../auth/context/AuthContext';
 import { Lock, Unlock, Shield, Building, Sparkles } from 'lucide-react';
 
 export const ClustersAdminView: React.FC = () => {
+  const { currentUser } = useAuth();
   const [clusters, setClusters] = useState(INITIAL_CLUSTERS);
   const [unlockedState, setUnlockedState] = useState<Record<string, boolean>>({});
 
-  const toggleClusterLock = (clusterId: string) => {
+  const toggleClusterLock = async (clusterId: string) => {
+    const nextState = !unlockedState[clusterId];
     setUnlockedState((prev) => ({
       ...prev,
-      [clusterId]: !prev[clusterId],
+      [clusterId]: nextState,
     }));
+    await WorkspaceService.toggleManagementClusterLock(clusterId, nextState, currentUser?.id, currentUser?.full_name);
   };
 
   return (

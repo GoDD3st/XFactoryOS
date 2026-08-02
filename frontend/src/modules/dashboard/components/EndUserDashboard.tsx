@@ -21,9 +21,10 @@ import { DigitalTwin } from '../../../shared/components/DigitalTwin';
 import { ReservationsTable } from '../../../shared/components/ReservationsTable';
 import { DateTimePicker24h } from '../../../shared/components/DateTimePicker24h';
 import { ExtensionRequestModal } from '../../../shared/components/ExtensionRequestModal';
-import { Workstation, Cluster, Reservation, ApprovalRequest } from '../../../types';
+import { Workstation, Cluster, Reservation, ApprovalRequest, SystemSettings } from '../../../types';
 import { createReservation, getLocalReservations } from '@/services/reservations/reservationService';
 import { ApprovalService } from '@/services/approval/approvalService';
+import { SettingsService } from '@/services/settings/settingsService';
 import { useAuth } from '../../../modules/auth/context/AuthContext';
 
 
@@ -43,17 +44,25 @@ function getNextValidDate(): string {
   return date.toISOString().split('T')[0];
 }
 
-function getMaxDate(): string {
+// NOTE: getMaxDate() used to hardcode "+2 days". It's now driven by the live
+// SystemSettings.bookingWindowDays, set from the Super Admin settings screen.
+function getMaxDate(bookingWindowDays: number): string {
   const date = new Date();
-  date.setDate(date.getDate() + 2);
+  date.setDate(date.getDate() + bookingWindowDays);
 
   return date.toISOString().split('T')[0];
 }
 
-const maxDate = getMaxDate();
-
 export const EndUserDashboard: React.FC = () => {
-  const { currentUser } = useAuth();
+  const { currentUser, currentRole } = useAuth();
+  const [settings, setSettings] = useState<SystemSettings>(SettingsService.getSettings());
+  const maxDate = getMaxDate(settings.bookingWindowDays);
+
+  useEffect(() => {
+    const handleSettingsChange = () => setSettings(SettingsService.getSettings());
+    window.addEventListener('xfactory_settings_changed', handleSettingsChange);
+    return () => window.removeEventListener('xfactory_settings_changed', handleSettingsChange);
+  }, []);
 
   // Booking Form State
   const [resDate, setResDate] = useState<string>(getNextValidDate());
@@ -160,24 +169,37 @@ export const EndUserDashboard: React.FC = () => {
     if (!selectedSeat) return;
 
     setIsSubmitting(true);
+    setValidationError(undefined);
 
     const resStatus = requiresExtension ? 'en attente' : 'confirmée';
 
-    const newRes = await createReservation({
-      user_id: currentUser.id,
-      user_name: currentUser.full_name,
-      user_department: currentUser.department,
-      workstation_id: selectedSeat.workstation.id,
-      workstation_code: selectedSeat.workstation.code,
-      cluster_id: selectedSeat.cluster.id,
-      cluster_name: selectedSeat.cluster.name,
-      reservation_date: resDate,
-      start_time: startTime,
-      end_time: endTime,
-      purpose: motifPayload || purpose,
-      notes: objectivePayload ? `[OBJECTIF EXTENSION >2J]: ${objectivePayload} | ${notes}` : notes,
-      status: resStatus
-    });
+    let newRes: Reservation;
+    try {
+      newRes = await createReservation(
+        {
+          user_id: currentUser.id,
+          user_name: currentUser.full_name,
+          user_department: currentUser.department,
+          workstation_id: selectedSeat.workstation.id,
+          workstation_code: selectedSeat.workstation.code,
+          cluster_id: selectedSeat.cluster.id,
+          cluster_name: selectedSeat.cluster.name,
+          reservation_date: resDate,
+          start_time: startTime,
+          end_time: endTime,
+          purpose: motifPayload || purpose,
+          notes: objectivePayload ? `[OBJECTIF EXTENSION >2J]: ${objectivePayload} | ${notes}` : notes,
+          status: resStatus
+        },
+        currentRole
+      );
+    } catch (err: any) {
+      // Surfaces conflict / booking-window / daily-weekly quota rejections from
+      // ReservationService instead of failing silently.
+      setValidationError(err?.message || 'Erreur lors de la création de la réservation.');
+      setIsSubmitting(false);
+      return;
+    }
 
     // If extension required (> 2 business days), submit approval request
     if (requiresExtension && newRes) {
@@ -305,6 +327,8 @@ export const EndUserDashboard: React.FC = () => {
           endDate={endDate}
           startTime={startTime}
           endTime={endTime}
+          settings={settings}
+          userRole={currentRole}
           onChange={handleDateTimePickerChange}
         />
 
@@ -363,6 +387,12 @@ export const EndUserDashboard: React.FC = () => {
                 <p className="text-xs text-slate-300 mt-0.5">
                   Du <strong>{resDate}</strong> au <strong>{endDate || resDate}</strong> ({startTime} – {endTime}) | {businessDaysCount} jour{businessDaysCount > 1 ? 's' : ''} ouvré{businessDaysCount > 1 ? 's' : ''}
                 </p>
+                {validationError && (
+                  <p className="text-xs font-bold text-red-300 mt-1.5 flex items-center gap-1.5">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    {validationError}
+                  </p>
+                )}
               </div>
             </div>
 

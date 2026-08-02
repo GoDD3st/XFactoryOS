@@ -86,6 +86,42 @@ export class ReservationRepository {
   }
 
   /**
+   * Fetch active reservations for a single user (used for daily/weekly quota enforcement).
+   * "Active" excludes cancelled/rejected/no-show so quotas aren't consumed by dead bookings.
+   */
+  static async getUserReservations(userId: string): Promise<Reservation[]> {
+    try {
+      const { data, error } = await supabase
+        .from('reservations')
+        .select('*')
+        .eq('user_id', userId)
+        .not('status', 'in', '(CANCELLED,NO_SHOW,REJECTED)')
+        .order('start_at', { ascending: false });
+
+      if (error || !data) return [];
+
+      return data.map((r: any) => ({
+        id: r.id,
+        user_id: r.user_id,
+        user_name: r.user_name || 'Collaborateur Safi',
+        user_department: r.user_department || 'Digital Factory',
+        workstation_id: r.workstation_id,
+        workstation_code: r.workstation_code || 'WS-SF',
+        cluster_id: r.cluster_id || 'cl-a',
+        cluster_name: r.cluster_name || 'Cluster A',
+        reservation_date: r.start_at ? new Date(r.start_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+        start_time: r.start_at ? new Date(r.start_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '08:30',
+        end_time: r.end_at ? new Date(r.end_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '17:30',
+        status: this.mapDbStatusToDomain(r.status),
+        created_at: r.created_at,
+      }));
+    } catch (err) {
+      console.warn('getUserReservations fallback:', err);
+      return [];
+    }
+  }
+
+  /**
    * Fetch all reservations from Supabase
    */
   static async getAllReservations(): Promise<Reservation[]> {

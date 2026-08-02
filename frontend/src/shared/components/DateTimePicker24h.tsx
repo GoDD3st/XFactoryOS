@@ -15,12 +15,15 @@ import {
   getHolidayName,
   validateReservationConstraints
 } from '../utils/dateValidation';
+import { SystemSettings, UserRole } from '@/frontend/src/types';
 
 interface DateTimePicker24hProps {
   startDate: string;
   endDate: string;
   startTime: string;
   endTime: string;
+  settings: SystemSettings;
+  userRole?: UserRole;
   onChange: (data: {
     startDate: string;
     endDate: string;
@@ -37,6 +40,8 @@ export const DateTimePicker24h: React.FC<DateTimePicker24hProps> = ({
   endDate,
   startTime,
   endTime,
+  settings,
+  userRole,
   onChange,
 }) => {
   const [showPresets, setShowPresets] = useState<boolean>(false);
@@ -45,7 +50,9 @@ export const DateTimePicker24h: React.FC<DateTimePicker24hProps> = ({
     startDate,
     endDate || startDate,
     startTime,
-    endTime
+    endTime,
+    settings,
+    userRole
   );
 
   const handleStartDateChange = (newStart: string) => {
@@ -53,7 +60,7 @@ export const DateTimePicker24h: React.FC<DateTimePicker24hProps> = ({
     if (!newEnd || newEnd < newStart) {
       newEnd = newStart;
     }
-    const val = validateReservationConstraints(newStart, newEnd, startTime, endTime);
+    const val = validateReservationConstraints(newStart, newEnd, startTime, endTime, settings, userRole);
     onChange({
       startDate: newStart,
       endDate: newEnd,
@@ -66,7 +73,7 @@ export const DateTimePicker24h: React.FC<DateTimePicker24hProps> = ({
   };
 
   const handleEndDateChange = (newEnd: string) => {
-    const val = validateReservationConstraints(startDate, newEnd, startTime, endTime);
+    const val = validateReservationConstraints(startDate, newEnd, startTime, endTime, settings, userRole);
     onChange({
       startDate,
       endDate: newEnd,
@@ -87,7 +94,7 @@ export const DateTimePicker24h: React.FC<DateTimePicker24hProps> = ({
         newEndTime = WORKING_HOURS_24H_SLOTS[idx + 2];
       }
     }
-    const val = validateReservationConstraints(startDate, endDate || startDate, newStartTime, newEndTime);
+    const val = validateReservationConstraints(startDate, endDate || startDate, newStartTime, newEndTime, settings, userRole);
     onChange({
       startDate,
       endDate: endDate || startDate,
@@ -100,7 +107,7 @@ export const DateTimePicker24h: React.FC<DateTimePicker24hProps> = ({
   };
 
   const handleEndTimeChange = (newEndTime: string) => {
-    const val = validateReservationConstraints(startDate, endDate || startDate, startTime, newEndTime);
+    const val = validateReservationConstraints(startDate, endDate || startDate, startTime, newEndTime, settings, userRole);
     onChange({
       startDate,
       endDate: endDate || startDate,
@@ -141,7 +148,7 @@ export const DateTimePicker24h: React.FC<DateTimePicker24hProps> = ({
       eDate = d.toISOString().split('T')[0];
     }
 
-    const val = validateReservationConstraints(sDate, eDate, sTime, eTime);
+    const val = validateReservationConstraints(sDate, eDate, sTime, eTime, settings, userRole);
     onChange({
       startDate: sDate,
       endDate: eDate,

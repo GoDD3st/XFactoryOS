@@ -200,6 +200,7 @@ export interface SystemSettings {
   id?: string;
   bookingWindowDays: number; // e.g. 2 days delay window
   minReservationMinutes: number; // e.g. 30 min
+  maxReservationMinutes: number; // e.g. 480 min (8h) — max single slot duration
   maxReservationDaysWithoutApproval: number; // e.g. 2 business days
   maxReservationsPerUserPerDay: number; // e.g. 2
   maxReservationsPerUserPerWeek: number; // e.g. 5

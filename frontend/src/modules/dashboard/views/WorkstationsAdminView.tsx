@@ -33,17 +33,61 @@ export const WorkstationsAdminView: React.FC = () => {
 
   const allWorkstations: Workstation[] = (Object.values(wsMap) as Workstation[][]).flat();
 
+  const [isScanning, setIsScanning] = useState(false);
+  const [scanResult, setScanResult] = useState<string | null>(null);
+
+  const handleRunNoShowScan = async () => {
+    setIsScanning(true);
+    setScanResult(null);
+    try {
+      const { NoShowService } = await import('@/services/noshow/noShowService');
+      const count = await NoShowService.detectNoShows();
+      if (count > 0) {
+        setScanResult(`Scan terminé : ${count} réservation(s) sans check-in annulée(s) et poste(s) libéré(s).`);
+      } else {
+        setScanResult('Scan terminé : Aucun no-show détecté sur les créneaux actuels.');
+      }
+      loadWorkstations();
+    } catch (err: any) {
+      setScanResult(`Erreur lors du scan : ${err.message}`);
+    } finally {
+      setIsScanning(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between p-5 rounded-2xl bg-white border border-slate-200 shadow-sm">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 rounded-2xl bg-white border border-slate-200 shadow-sm">
         <div>
           <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">Gestion &amp; Modification des Postes</h2>
           <p className="text-xs text-slate-500 mt-0.5">Administration des 56 postes Open Space, maintenance et statut extension</p>
         </div>
-        <span className="px-3 py-1 bg-slate-900 text-white font-bold text-xs rounded-full">
-          {allWorkstations.length} Postes Enregistrés
-        </span>
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={handleRunNoShowScan}
+            disabled={isScanning}
+            className="flex items-center space-x-1.5 px-3.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl shadow-sm transition-all disabled:opacity-50 cursor-pointer"
+          >
+            <AlertTriangle className="w-3.5 h-3.5" />
+            <span>{isScanning ? 'Scan en cours...' : 'Scanner No-Show (Exécuter)'}</span>
+          </button>
+          <span className="px-3 py-1 bg-slate-900 text-white font-bold text-xs rounded-full">
+            {allWorkstations.length} Postes Enregistrés
+          </span>
+        </div>
       </div>
+
+      {scanResult && (
+        <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-semibold flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <CheckCircle2 className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>{scanResult}</span>
+          </div>
+          <button onClick={() => setScanResult(null)} className="text-amber-700 hover:text-amber-900 text-xs font-bold ml-3 cursor-pointer">
+            Fermer
+          </button>
+        </div>
+      )}
 
       <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm overflow-x-auto">
         <table className="w-full text-left text-xs border-collapse">

@@ -1,6 +1,8 @@
 import { ReservationRepository } from '@/database/repositories/reservationRepository';
 import { SettingsRepository } from '@/database/repositories/settingsRepository';
 import { AuditRepository } from '@/database/repositories/auditRepository';
+import { WorkstationRepository } from '@/database/repositories/workstationRepository';
+import { WaitingListService } from '../waitinglist/waitingListService';
 import { NotificationService } from '../notifications/notificationService';
 import { Reservation } from '@/frontend/src/types';
 
@@ -24,6 +26,26 @@ export class NoShowService {
         if (diffMinutes >= noShowDelay) {
           detectedCount++;
           await ReservationRepository.updateReservationStatus(res.id, 'no-show');
+
+          // Release workstation status to disponible
+          if (res.workstation_id) {
+            await WorkstationRepository.updateWorkstationStatus(res.workstation_id, 'disponible', true);
+          }
+
+          // Trigger FIFO waiting list auto-fulfillment for the released cluster
+          const waitingMatch = await WaitingListService.processWaitingListFIFO(
+            res.cluster_id || res.cluster_name,
+            res.reservation_date
+          );
+
+          if (waitingMatch) {
+            NotificationService.sendNotification(
+              waitingMatch.user_id,
+              'Poste Libéré — Offre Liste d\'Attente',
+              `Un poste dans le cluster ${res.cluster_name || res.cluster_id} s'est libéré suite à un no-show pour le ${res.reservation_date}. Offre envoyée (priorité FIFO).`,
+              'info'
+            );
+          }
 
           NotificationService.sendNotification(
             res.user_id,

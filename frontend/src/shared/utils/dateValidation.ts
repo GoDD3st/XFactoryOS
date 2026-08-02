@@ -2,6 +2,8 @@
  * Date & 24h Time Validation Utility for OCP SA Safi XFactory OS
  */
 
+import { SystemSettings, UserRole } from '@/frontend/src/types';
+
 // Moroccan & OCP Official Public Holidays (YYYY-MM-DD)
 export const OCP_SAFI_PUBLIC_HOLIDAYS_2026 = [
   '2026-01-01', // Jour de l'An
@@ -143,52 +145,93 @@ export interface ReservationValidationResult {
 }
 
 /**
- * Validate reservation constraints:
- * - Working hours 08:00 - 18:00
- * - Minimum duration: 30 minutes
- * - No weekends or holidays
- * - Flag if business days > 2
+ * Validate reservation constraints against a live SystemSettings config:
+ * - Booking window (settings.bookingWindowDays): date must fall within [today, today + N]
+ * - Working hours (settings.workingHoursStart / workingHoursEnd)
+ * - Minimum duration (settings.minReservationMinutes)
+ * - Weekends / holidays, unless settings.allowWeekendBooking / allowHolidayBooking is true
+ * - Flags approval requirement if business days > settings.maxReservationDaysWithoutApproval
+ *
+ * Role bypass: if `userRole` is present in `settings.bypassRoles`, the booking-window
+ * and weekend/holiday restrictions are skipped entirely (working hours and minimum
+ * duration still apply — those are physical/operational constraints, not access rules).
  */
 export function validateReservationConstraints(
   startDateStr: string,
   endDateStr: string,
   startTimeStr: string,
-  endTimeStr: string
+  endTimeStr: string,
+  settings: SystemSettings,
+  userRole?: UserRole
 ): ReservationValidationResult {
-  // 1. Weekend / Holiday check
-  if (isNonWorkingDay(startDateStr)) {
-    const isWk = isWeekend(startDateStr);
-    const holName = getHolidayName(startDateStr);
-    return {
-      valid: false,
-      requiresExtensionApproval: false,
-      businessDays: 0,
-      durationMinutes: 0,
-      errorMessage: isWk
-        ? 'Les réservations sont strictement interdites les week-ends (Samedi / Dimanche).'
-        : `La date sélectionnée est un jour férié OCP Safi (${holName}). Réservation impossible.`
-    };
+  const isBypassRole = !!userRole && settings.bypassRoles.includes(userRole);
+
+  // 0. Booking window check — date must be within [today, today + bookingWindowDays]
+  if (!isBypassRole) {
+    const todayStr = new Date().toISOString().split('T')[0];
+    const today = new Date(todayStr + 'T00:00:00');
+    const maxDate = new Date(today);
+    maxDate.setDate(maxDate.getDate() + settings.bookingWindowDays);
+    const requestedStart = new Date(startDateStr + 'T00:00:00');
+
+    if (requestedStart < today || requestedStart > maxDate) {
+      return {
+        valid: false,
+        requiresExtensionApproval: false,
+        businessDays: 0,
+        durationMinutes: 0,
+        errorMessage: `Les réservations sont uniquement autorisées entre aujourd'hui et ${settings.bookingWindowDays} jour(s) à l'avance (fenêtre configurée).`
+      };
+    }
   }
 
-  if (endDateStr && isNonWorkingDay(endDateStr)) {
-    const isWk = isWeekend(endDateStr);
-    const holName = getHolidayName(endDateStr);
-    return {
-      valid: false,
-      requiresExtensionApproval: false,
-      businessDays: 0,
-      durationMinutes: 0,
-      errorMessage: isWk
-        ? 'La date de fin tombe sur un week-end (Samedi / Dimanche).'
-        : `La date de fin tombe sur un jour férié OCP Safi (${holName}).`
-    };
+  // 1. Weekend / Holiday check (skippable via settings, or bypassed by role)
+  if (!isBypassRole) {
+    if (!settings.allowWeekendBooking && isWeekend(startDateStr)) {
+      return {
+        valid: false,
+        requiresExtensionApproval: false,
+        businessDays: 0,
+        durationMinutes: 0,
+        errorMessage: 'Les réservations sont strictement interdites les week-ends (Samedi / Dimanche).'
+      };
+    }
+    if (!settings.allowHolidayBooking && isPublicHoliday(startDateStr)) {
+      return {
+        valid: false,
+        requiresExtensionApproval: false,
+        businessDays: 0,
+        durationMinutes: 0,
+        errorMessage: `La date sélectionnée est un jour férié OCP Safi (${getHolidayName(startDateStr)}). Réservation impossible.`
+      };
+    }
+    if (endDateStr) {
+      if (!settings.allowWeekendBooking && isWeekend(endDateStr)) {
+        return {
+          valid: false,
+          requiresExtensionApproval: false,
+          businessDays: 0,
+          durationMinutes: 0,
+          errorMessage: 'La date de fin tombe sur un week-end (Samedi / Dimanche).'
+        };
+      }
+      if (!settings.allowHolidayBooking && isPublicHoliday(endDateStr)) {
+        return {
+          valid: false,
+          requiresExtensionApproval: false,
+          businessDays: 0,
+          durationMinutes: 0,
+          errorMessage: `La date de fin tombe sur un jour férié OCP Safi (${getHolidayName(endDateStr)}).`
+        };
+      }
+    }
   }
 
-  // 2. Working hours bounds check (08:00 to 18:00)
+  // 2. Working hours bounds check (dynamic, from settings)
   const startMins = timeToMinutes(startTimeStr);
   const endMins = timeToMinutes(endTimeStr);
-  const minMins = timeToMinutes('08:00');
-  const maxMins = timeToMinutes('18:00');
+  const minMins = timeToMinutes(settings.workingHoursStart);
+  const maxMins = timeToMinutes(settings.workingHoursEnd);
 
   if (startMins < minMins || startMins >= maxMins) {
     return {
@@ -196,7 +239,7 @@ export function validateReservationConstraints(
       requiresExtensionApproval: false,
       businessDays: 0,
       durationMinutes: 0,
-      errorMessage: 'L\'heure de début doit être comprise entre 08:00 et 18:00.'
+      errorMessage: `L'heure de début doit être comprise entre ${settings.workingHoursStart} et ${settings.workingHoursEnd}.`
     };
   }
 
@@ -206,7 +249,7 @@ export function validateReservationConstraints(
       requiresExtensionApproval: false,
       businessDays: 0,
       durationMinutes: 0,
-      errorMessage: 'L\'heure de fin doit être comprise entre 08:00 et 18:00.'
+      errorMessage: `L'heure de fin doit être comprise entre ${settings.workingHoursStart} et ${settings.workingHoursEnd}.`
     };
   }
 
@@ -221,7 +264,7 @@ export function validateReservationConstraints(
     };
   }
 
-  // 4. Minimum 30 minutes duration check
+  // 4. Minimum duration check (dynamic, from settings.minReservationMinutes)
   let durationMinutes = 0;
   if (startDateStr === endDateStr) {
     durationMinutes = endMins - startMins;
@@ -229,19 +272,19 @@ export function validateReservationConstraints(
     durationMinutes = (maxMins - startMins) + (endMins - minMins);
   }
 
-  if (startDateStr === endDateStr && durationMinutes < 30) {
+  if (startDateStr === endDateStr && durationMinutes < settings.minReservationMinutes) {
     return {
       valid: false,
       requiresExtensionApproval: false,
       businessDays: 0,
       durationMinutes,
-      errorMessage: 'La durée minimale d\'une réservation est de 30 minutes.'
+      errorMessage: `La durée minimale d'une réservation est de ${settings.minReservationMinutes} minutes.`
     };
   }
 
-  // 5. Business days count
+  // 5. Business days count vs. the configured approval threshold
   const businessDays = calculateBusinessDays(startDateStr, endDateStr || startDateStr, startTimeStr, endTimeStr);
-  const requiresExtensionApproval = businessDays > 2;
+  const requiresExtensionApproval = businessDays > settings.maxReservationDaysWithoutApproval;
 
   return {
     valid: true,

@@ -16,21 +16,29 @@ const APPROVER_ROLES = [
 ] as const;
 
 // GET /api/approvals/pending — Approver roles only
-approvalRouter.get('/pending', requireRole(...APPROVER_ROLES), (req, res) => {
-  const pending = ApprovalService.getPendingApprovals();
-  res.json(pending);
+approvalRouter.get('/pending', requireRole(...APPROVER_ROLES), async (req, res) => {
+  try {
+    const pending = await ApprovalService.getPendingApprovals();
+    res.json(pending);
+  } catch (error: any) {
+    res.status(500).json({ status: 'error', message: error.message });
+  }
 });
 
 // POST /api/approvals — Request extension (Authenticated user, requester_id from req.user)
-approvalRouter.post('/', validateBody(CreateApprovalRequestSchema), (req, res) => {
-  const payload = {
-    ...req.body,
-    requester_id: req.user!.id,
-    requester_name: req.user!.full_name,
-    user_department: req.user!.department,
-  };
-  const request = ApprovalService.createApprovalRequest(payload);
-  res.status(201).json(request);
+approvalRouter.post('/', validateBody(CreateApprovalRequestSchema), async (req, res) => {
+  try {
+    const payload = {
+      ...req.body,
+      requester_id: req.user!.id,
+      requester_name: req.user!.full_name,
+      user_department: req.user!.department,
+    };
+    const request = await ApprovalService.createApprovalRequest(payload);
+    res.status(201).json(request);
+  } catch (error: any) {
+    res.status(500).json({ status: 'error', message: error.message });
+  }
 });
 
 // PUT /api/approvals/:id/decide — Approvers only (deciderId forced from req.user.id)
@@ -38,17 +46,25 @@ approvalRouter.put(
   '/:id/decide',
   requireRole(...APPROVER_ROLES),
   validateBody(ApprovalDecisionSchema),
-  (req, res) => {
-    const { decision, decisionNote } = req.body;
-    // 🛡️ Decider ID is taken from req.user (JWT), removing impersonation
-    const deciderId = req.user!.id;
-    const success = ApprovalService.decideApproval(req.params.id, decision, decisionNote, deciderId);
-    res.json({ success });
+  async (req, res) => {
+    try {
+      const { decision, decisionNote } = req.body;
+      // 🛡️ Decider ID is taken from req.user (JWT), removing impersonation
+      const deciderId = req.user!.id;
+      const success = await ApprovalService.decideApproval(req.params.id, decision, decisionNote, deciderId);
+      res.json({ success });
+    } catch (error: any) {
+      res.status(500).json({ status: 'error', message: error.message });
+    }
   }
 );
 
 // GET /api/approvals/history — Approvers only
-approvalRouter.get('/history', requireRole(...APPROVER_ROLES), (req, res) => {
-  const history = ApprovalService.getApprovalHistory();
-  res.json(history);
+approvalRouter.get('/history', requireRole(...APPROVER_ROLES), async (req, res) => {
+  try {
+    const history = await ApprovalService.getApprovalHistory();
+    res.json(history);
+  } catch (error: any) {
+    res.status(500).json({ status: 'error', message: error.message });
+  }
 });

@@ -32,7 +32,7 @@ reservationsRouter.post('/', reservationLimiter, validateBody(CreateReservationS
       user_department: req.user!.department,
     };
 
-    const reservation = await ReservationService.createReservation(payload);
+    const reservation = await ReservationService.createReservation(payload, req.user!.role);
     res.status(201).json({
       status: 'success',
       data: reservation,

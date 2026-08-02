@@ -118,9 +118,41 @@ export class WorkspaceService {
     }
     return workstations;
   }
+
+  static async toggleManagementClusterLock(clusterId: string, unlocked: boolean, actorId?: string, actorName?: string): Promise<Record<string, Workstation[]>> {
+    const workstations = this.getSavedWorkstations();
+    const clusterSeats = workstations[clusterId] || workstations[clusterId.toLowerCase()];
+
+    if (clusterSeats) {
+      for (const seat of clusterSeats) {
+        const newStatus: SeatStatus = unlocked ? 'disponible' : 'management_reserved';
+        seat.status = newStatus;
+        seat.reservable = unlocked;
+        await WorkstationRepository.updateWorkstationStatus(seat.id, newStatus, unlocked);
+      }
+
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('xfactory_workstations_v2', JSON.stringify(workstations));
+        window.dispatchEvent(new CustomEvent('xfactory_workstations_changed'));
+        window.dispatchEvent(new CustomEvent('xfactory_clusters_changed'));
+      }
+
+      const { AuditRepository } = await import('@/database/repositories/auditRepository');
+      await AuditRepository.logEvent(
+        unlocked ? 'CLUSTER_UNLOCKED_MANAGEMENT' : 'CLUSTER_LOCKED_MANAGEMENT',
+        actorId || 'admin-current',
+        actorName || 'Admin Direction Safi',
+        'super_admin',
+        clusterId,
+        `Cluster Management ${clusterId.toUpperCase()} ${unlocked ? 'débloqué pour les utilisateurs' : 'verrouillé réservé Direction'}.`
+      );
+    }
+    return workstations;
+  }
 }
 
 export const fetchClustersWithOverlays = WorkspaceService.fetchClustersWithOverlays.bind(WorkspaceService);
 export const getSavedWorkstations = WorkspaceService.getSavedWorkstations.bind(WorkspaceService);
 export const setSeatMaintenanceStatus = WorkspaceService.setSeatMaintenanceStatus.bind(WorkspaceService);
 export const toggleExtensionSeatVisibility = WorkspaceService.toggleExtensionSeatVisibility.bind(WorkspaceService);
+export const toggleManagementClusterLock = WorkspaceService.toggleManagementClusterLock.bind(WorkspaceService);

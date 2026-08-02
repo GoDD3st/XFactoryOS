@@ -32,4 +32,8 @@ export class SettingsService {
   static resetSettings(): SystemSettings {
     return this.updateSettings(SettingsRepository.DEFAULT_SETTINGS);
   }
+
+  static async getHistory() {
+    return SettingsRepository.getSettingsHistory();
+  }
 }

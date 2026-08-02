@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { WaitingListEntry } from '@/frontend/src/types';
 import { WaitingListService } from '@/services/waitinglist/waitingListService';
+import { useAuth } from '../../auth/context/AuthContext';
 import { Clock, Layers, Plus, Trash2, CheckCircle, Users } from 'lucide-react';
 
 export const WaitingListView: React.FC = () => {
+  const { currentUser } = useAuth();
   const [list, setList] = useState<WaitingListEntry[]>([]);
   const [showAdd, setShowAdd] = useState(false);
   const [clusterPref, setClusterPref] = useState('CL-A');
@@ -23,15 +25,16 @@ export const WaitingListView: React.FC = () => {
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     await WaitingListService.addToWaitingList({
-      user_id: 'usr-current',
-      user_name: 'Collaborateur Safi',
-      user_department: 'Digital Factory',
+      user_id: currentUser?.id || 'usr-current',
+      user_name: currentUser?.full_name || 'Collaborateur Safi',
+      user_department: currentUser?.department || 'Digital Factory',
       cluster_preference: clusterPref,
       reservation_date: new Date().toISOString().split('T')[0],
       time_slot: timeSlot,
       notes,
     });
     setShowAdd(false);
+    setNotes('');
     loadList();
   };
 

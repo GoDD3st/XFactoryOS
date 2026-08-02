@@ -5,6 +5,7 @@ export class SettingsRepository {
   static DEFAULT_SETTINGS: SystemSettings = {
     bookingWindowDays: 2,
     minReservationMinutes: 30,
+    maxReservationMinutes: 480,
     maxReservationDaysWithoutApproval: 2,
     maxReservationsPerUserPerDay: 2,
     maxReservationsPerUserPerWeek: 5,
@@ -34,6 +35,7 @@ export class SettingsRepository {
       return {
         bookingWindowDays: data.booking_window_days ?? raw.bookingWindowDays ?? 2,
         minReservationMinutes: data.min_reservation_minutes ?? raw.minReservationMinutes ?? 30,
+        maxReservationMinutes: data.max_reservation_minutes ?? raw.maxReservationMinutes ?? 480,
         maxReservationDaysWithoutApproval: data.max_duration_hours_no_approval 
           ? Math.round(data.max_duration_hours_no_approval / 24) 
           : (raw.maxReservationDaysWithoutApproval ?? 2),
@@ -74,6 +76,7 @@ export class SettingsRepository {
       const dbPayload = {
         booking_window_days: updated.bookingWindowDays,
         min_reservation_minutes: updated.minReservationMinutes,
+        max_reservation_minutes: updated.maxReservationMinutes,
         max_duration_hours_no_approval: updated.maxReservationDaysWithoutApproval * 24,
         max_reservations_per_day: updated.maxReservationsPerUserPerDay,
         max_reservations_per_week: updated.maxReservationsPerUserPerWeek,
@@ -102,6 +105,40 @@ export class SettingsRepository {
     } catch (err) {
       console.warn('Update settings fallback:', err);
       return { ...this.DEFAULT_SETTINGS, ...settings };
+    }
+  }
+
+  /**
+   * Retrieve the configuration version history (who changed what, and when),
+   * sourced from audit_logs entries logged by OtpSettingsService on every confirmed change.
+   */
+  static async getSettingsHistory(limit: number = 25): Promise<Array<{
+    id: string;
+    action: string;
+    admin_name: string;
+    details: string;
+    created_at: string;
+  }>> {
+    try {
+      const { data, error } = await supabase
+        .from('audit_logs')
+        .select('*')
+        .in('action', ['SETTINGS_UPDATED', 'SETTINGS_UPDATE_REQUESTED'])
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+      if (error || !data) return [];
+
+      return data.map((l: any) => ({
+        id: l.id,
+        action: l.action,
+        admin_name: l.before?.actor_name || 'Super Admin',
+        details: l.after?.details || '',
+        created_at: l.created_at,
+      }));
+    } catch (err) {
+      console.warn('getSettingsHistory fallback:', err);
+      return [];
     }
   }
 }

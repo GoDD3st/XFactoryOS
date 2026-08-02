@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Workstation, Cluster } from '@/frontend/src/types';
 import { createReservation } from '@/services/reservations/reservationService';
+import { useAuth } from '@/frontend/src/modules/auth/context/AuthContext';
 import { X, Calendar, Clock, Monitor, Wifi, Power, CheckCircle, AlertCircle, Sparkles } from 'lucide-react';
 
 interface ReservationPanelProps {
@@ -18,12 +19,14 @@ export const ReservationPanel: React.FC<ReservationPanelProps> = ({
   onClose,
   onSuccess
 }) => {
+  const { currentUser, currentRole } = useAuth();
   const [reservationDate, setReservationDate] = useState(new Date().toISOString().split('T')[0]);
   const [startTime, setStartTime] = useState('08:30');
   const [endTime, setEndTime] = useState('17:30');
   const [purpose, setPurpose] = useState('Session de travail collaborative Safi');
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [isError, setIsError] = useState(false);
 
   if (!isOpen || !workstation || !cluster) return null;
 
@@ -31,31 +34,36 @@ export const ReservationPanel: React.FC<ReservationPanelProps> = ({
     e.preventDefault();
     setSubmitting(true);
     setMessage(null);
+    setIsError(false);
 
     try {
-      await createReservation({
-        user_id: 'usr-current',
-        user_name: 'Collaborateur Safi',
-        user_department: 'Digital Factory',
-        workstation_id: workstation.id,
-        workstation_code: workstation.code,
-        cluster_id: cluster.id,
-        cluster_name: cluster.name,
-        reservation_date: reservationDate,
-        start_time: startTime,
-        end_time: endTime,
-        purpose,
-        notes: workstation.metadata.notes || 'Réservation standard FIFO',
-      });
+      await createReservation(
+        {
+          user_id: currentUser.id,
+          user_name: currentUser.full_name,
+          user_department: currentUser.department,
+          workstation_id: workstation.id,
+          workstation_code: workstation.code,
+          cluster_id: cluster.id,
+          cluster_name: cluster.name,
+          reservation_date: reservationDate,
+          start_time: startTime,
+          end_time: endTime,
+          purpose,
+          notes: workstation.metadata.notes || 'Réservation standard FIFO',
+        },
+        currentRole
+      );
 
       setMessage('Réservation enregistrée avec succès !');
       setTimeout(() => {
         onSuccess();
         onClose();
       }, 800);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error creating reservation:', err);
-      setMessage('Erreur lors de la réservation.');
+      setIsError(true);
+      setMessage(err?.message || 'Erreur lors de la réservation.');
     } finally {
       setSubmitting(false);
     }

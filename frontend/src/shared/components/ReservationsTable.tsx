@@ -14,7 +14,7 @@ import {
   RefreshCw,
   AlertCircle
 } from 'lucide-react';
-import { Reservation, ReservationStatus, Workstation, Cluster } from '../../types';
+import { Reservation, ReservationStatus, Workstation, Cluster, SystemSettings } from '../../types';
 import {
   fetchReservations,
   createReservation,
@@ -22,6 +22,7 @@ import {
   deleteReservation
 } from '@/services/reservations/reservationService';
 import { fetchClustersWithOverlays } from '@/services/workspaces/workspaceService';
+import { SettingsService } from '@/services/settings/settingsService';
 import { useAuth } from '../../modules/auth/context/AuthContext';
 import { DateTimePicker24h } from './DateTimePicker24h';
 
@@ -34,7 +35,16 @@ export const ReservationsTable: React.FC<ReservationsTableProps> = ({
   initialFilter = 'all',
   userOnly = false
 }) => {
-  const { currentUser } = useAuth();
+  const { currentUser, currentRole } = useAuth();
+  const [settings, setSettings] = useState<SystemSettings>(SettingsService.getSettings());
+  const [formError, setFormError] = useState<string | undefined>();
+
+  useEffect(() => {
+    const handleSettingsChange = () => setSettings(SettingsService.getSettings());
+    window.addEventListener('xfactory_settings_changed', handleSettingsChange);
+    return () => window.removeEventListener('xfactory_settings_changed', handleSettingsChange);
+  }, []);
+
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
@@ -103,27 +113,37 @@ export const ReservationsTable: React.FC<ReservationsTableProps> = ({
     if (!selectedSeatCode) return;
 
     setIsSubmitting(true);
+    setFormError(undefined);
 
     // Extract cluster from seat code
     const parts = selectedSeatCode.split('-');
     const clusterCode = parts.length >= 2 ? `${parts[0]}-${parts[1]}` : 'CL-A';
     const clusterObj = clusters.find((c) => c.code === clusterCode) || clusters[0];
 
-    await createReservation({
-      user_id: currentUser.id,
-      user_name: formUserName,
-      user_department: formDepartment,
-      workstation_id: `ws-${selectedSeatCode}`,
-      workstation_code: selectedSeatCode,
-      cluster_id: clusterObj ? clusterObj.id : 'cl-A',
-      cluster_name: clusterObj ? clusterObj.name : 'Innovation & Design',
-      reservation_date: formDate,
-      start_time: formStartTime,
-      end_time: formEndTime,
-      notes: formNotes,
-      purpose: formPurpose,
-      status: 'confirmée'
-    });
+    try {
+      await createReservation(
+        {
+          user_id: currentUser.id,
+          user_name: formUserName,
+          user_department: formDepartment,
+          workstation_id: `ws-${selectedSeatCode}`,
+          workstation_code: selectedSeatCode,
+          cluster_id: clusterObj ? clusterObj.id : 'cl-A',
+          cluster_name: clusterObj ? clusterObj.name : 'Innovation & Design',
+          reservation_date: formDate,
+          start_time: formStartTime,
+          end_time: formEndTime,
+          notes: formNotes,
+          purpose: formPurpose,
+          status: 'confirmée'
+        },
+        currentRole
+      );
+    } catch (err: any) {
+      setFormError(err?.message || 'Erreur lors de la création de la réservation.');
+      setIsSubmitting(false);
+      return;
+    }
 
     setIsSubmitting(false);
     setIsModalOpen(false);
@@ -406,12 +426,21 @@ export const ReservationsTable: React.FC<ReservationsTableProps> = ({
                 endDate={formDate}
                 startTime={formStartTime}
                 endTime={formEndTime}
+                settings={settings}
+                userRole={currentRole}
                 onChange={(d) => {
                   setFormDate(d.startDate);
                   setFormStartTime(d.startTime);
                   setFormEndTime(d.endTime);
                 }}
               />
+
+              {formError && (
+                <div className="p-3 rounded-xl bg-red-50 text-red-800 border border-red-200 text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                  <span>{formError}</span>
+                </div>
+              )}
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Choix du Poste (56 postes disponibles)</label>

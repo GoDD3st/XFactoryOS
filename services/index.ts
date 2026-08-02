@@ -14,4 +14,5 @@ export * from './checkinout/checkInOutService';
 export * from './approval/approvalService';
 export * from './search/searchService';
 export * from './settings/settingsService';
+export * from './settings/otpSettingsService';
 export * from './history/historyService';
