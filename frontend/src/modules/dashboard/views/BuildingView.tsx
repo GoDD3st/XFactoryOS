@@ -9,14 +9,26 @@ import {
   CheckCircle,
   AlertTriangle,
   Flame,
-  Wind
+  Wind,
+  Edit3
 } from 'lucide-react';
 import { DigitalTwin } from '../../../shared/components/DigitalTwin';
 import { ReservationsTable } from '../../../shared/components/ReservationsTable';
+import { WorkstationEditModal } from '../../../shared/components/WorkstationEditModal';
+import { Workstation, Cluster } from '../../../types';
+import { WorkspaceService } from '@/services/workspaces/workspaceService';
 
 export const BuildingView: React.FC = () => {
   const [tempSafi, setTempSafi] = useState<number>(22.5);
-  const [hvacAuto, setHvacAuto] = useState<boolean>(true);
+  const [editingWorkstation, setEditingWorkstation] = useState<Workstation | null>(null);
+
+  const handleSeatClick = (ws: Workstation, cl: Cluster) => {
+    setEditingWorkstation(ws);
+  };
+
+  const handleRefresh = () => {
+    window.dispatchEvent(new CustomEvent('xfactory_workstations_changed'));
+  };
 
   return (
     <div className="space-y-6">
@@ -29,9 +41,9 @@ export const BuildingView: React.FC = () => {
             </span>
             <span className="text-xs text-slate-400">Gestion Technique Bâtiment XFactory Safi</span>
           </div>
-          <h1 className="text-xl font-bold mt-1">Supervision Technique & Maintenance Bâtiment</h1>
+          <h1 className="text-xl font-bold mt-1">Supervision Technique &amp; Maintenance Bâtiment</h1>
           <p className="text-xs text-slate-400 mt-0.5">
-            Pilotage énergétique, climatisation centralisée, basculement en mode maintenance et taux d’occupation.
+            Pilotage énergétique, climatisation centralisée, basculement en mode maintenance et modification des postes.
           </p>
         </div>
 
@@ -83,7 +95,7 @@ export const BuildingView: React.FC = () => {
             <Wrench className="w-4 h-4 text-rose-500" />
           </div>
           <div className="text-2xl font-black text-rose-600">2 postes</div>
-          <p className="text-[11px] text-slate-500">Code status #f59e0b Amber</p>
+          <p className="text-[11px] text-slate-500">Cliquez sur un poste pour le modifier</p>
         </div>
       </div>
 
@@ -92,13 +104,24 @@ export const BuildingView: React.FC = () => {
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
             <Wrench className="w-4 h-4 text-amber-600" />
-            <span>Digital Twin - Basculement Maintenance (Survoler un poste en mode Admin pour modifier)</span>
+            <span>Digital Twin - Cliquez sur n'importe quel poste pour lancer l'action Modifier</span>
           </h2>
         </div>
-        <DigitalTwin />
+        <DigitalTwin onSelectSeat={handleSeatClick} />
       </div>
 
       <ReservationsTable />
+
+      {/* Workstation Edit Modal for Building Manager */}
+      {editingWorkstation && (
+        <WorkstationEditModal
+          workstation={editingWorkstation}
+          clusterId={editingWorkstation.cluster_id}
+          isOpen={!!editingWorkstation}
+          onClose={() => setEditingWorkstation(null)}
+          onSaved={handleRefresh}
+        />
+      )}
     </div>
   );
 };

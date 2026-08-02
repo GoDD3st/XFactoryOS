@@ -1,247 +1,126 @@
-import { Cluster, Workstation, SeatStatus, Reservation } from '@/frontend/src/types';
-import { getLocalReservations } from '@/services/reservations/reservationService';
-import { LOCAL_STORAGE_WORKSTATIONS_KEY } from '@/services/supabase/supabaseClient';
+import { Cluster, Workstation, SeatStatus } from '@/frontend/src/types';
+import { WorkstationRepository } from '@/database/repositories/workstationRepository';
 
-export const INITIAL_CLUSTERS: Omit<Cluster, 'workstations'>[] = [
-  {
-    id: 'cl-A',
-    code: 'CL-A',
-    name: 'Innovation & Design',
-    description: 'Espace créatif, double écran 4K, proximité tableau blanc & visioconférence.',
-    is_management_only: false,
-    enabled: true,
-    desk_count: 8,
-    location_zone: 'Aile Nord - Zone A1',
-    icon_name: 'Sparkles'
-  },
-  {
-    id: 'cl-B',
-    code: 'CL-B',
-    name: 'Digital Factory',
-    description: 'Pôle Ingénierie logicielle & Data Analytics, stations réseau haute vitesse.',
-    is_management_only: false,
-    enabled: true,
-    desk_count: 8,
-    location_zone: 'Aile Nord - Zone A2',
-    icon_name: 'Cpu'
-  },
-  {
-    id: 'cl-C',
-    code: 'CL-C',
-    name: 'Facility Management',
-    description: 'Gestion Bâtiment & Infrastructure Safi, accès rapide PMR & supervision IoT.',
-    is_management_only: false,
-    enabled: true,
-    desk_count: 8,
-    location_zone: 'Zone Centrale - Bâtiment C',
-    icon_name: 'Building'
-  },
-  {
-    id: 'cl-D',
-    code: 'CL-D',
-    name: 'Security & Access',
-    description: 'Centre de contrôle sécurité site OCP Safi, badges & accréditations.',
-    is_management_only: false,
-    enabled: true,
-    desk_count: 8,
-    location_zone: 'Entrée Principale - Zone D',
-    icon_name: 'ShieldCheck'
-  },
-  {
-    id: 'cl-E',
-    code: 'CL-E',
-    name: 'GCI Governance',
-    description: 'Gouvernance Chimie & Intégration Industrielle, bureaux insonorisés.',
-    is_management_only: false,
-    enabled: true,
-    desk_count: 8,
-    location_zone: 'Aile Est - Zone E',
-    icon_name: 'Briefcase'
-  },
-  {
-    id: 'cl-F',
-    code: 'CL-F',
-    name: 'Management Restricted 1',
-    description: 'Cluster réservé Comité Direction & Managers OCP SA (Confidentialité haute).',
-    is_management_only: true,
-    enabled: true,
-    desk_count: 8,
-    location_zone: 'Étage Direction - VIP F',
-    icon_name: 'Lock'
-  },
-  {
-    id: 'cl-G',
-    code: 'CL-G',
-    name: 'Management Restricted 2',
-    description: 'Espace Réunion Stratégique & Invités VIP OCP Safi.',
-    is_management_only: true,
-    enabled: true,
-    desk_count: 8,
-    location_zone: 'Étage Direction - VIP G',
-    icon_name: 'Award'
-  }
+export const INITIAL_CLUSTERS: Cluster[] = [
+  { id: 'cl-a', code: 'CL-A', name: 'Cluster A — Innovation & R&D', description: 'Zone dédiée aux projets d\'innovation et R&D Safi', desk_count: 4, is_management_only: false, enabled: true, location_zone: 'Zone Ouest Level 1', workstations: [] },
+  { id: 'cl-b', code: 'CL-B', name: 'Cluster B — Digital Factory & Tech', description: 'Zone équipes développement et architecture SI', desk_count: 4, is_management_only: false, enabled: true, location_zone: 'Zone Centre Level 1', workstations: [] },
+  { id: 'cl-c', code: 'CL-C', name: 'Cluster C — Facility Management & Operations', description: 'Opérations site et services généraux', desk_count: 4, is_management_only: false, enabled: true, location_zone: 'Zone Est Level 1', workstations: [] },
+  { id: 'cl-d', code: 'CL-D', name: 'Cluster D — Security & Infrastructure', description: 'Supervision sécurité et infrastructure', desk_count: 4, is_management_only: false, enabled: true, location_zone: 'Zone Nord Level 1', workstations: [] },
+  { id: 'cl-e', code: 'CL-E', name: 'Cluster E — GCI Governance', description: 'Gouvernance et conformité industrielle', desk_count: 4, is_management_only: false, enabled: true, location_zone: 'Zone Sud Level 1', workstations: [] },
+  { id: 'cl-f', code: 'CL-F', name: 'Cluster F — Executive Direction', description: 'Cluster réservé Direction Générale', desk_count: 4, is_management_only: true, enabled: true, location_zone: 'Zone VIP Level 1', workstations: [] },
+  { id: 'cl-g', code: 'CL-G', name: 'Cluster G — VIP Boardroom Annex', description: 'Annexe VIP réunion exécutive', desk_count: 4, is_management_only: true, enabled: true, location_zone: 'Zone VIP Level 1', workstations: [] },
 ];
 
-function generateWorkstationsForCluster(clusterCode: string, clusterId: string): Workstation[] {
-  const workstations: Workstation[] = [];
-  for (let seatNum = 1; seatNum <= 8; seatNum++) {
-    const isExtension = seatNum >= 5;
-    const seatCode = `${clusterCode}-0${seatNum}`;
-    
-    const metadata = {
-      has_double_screen: seatNum % 2 === 1,
-      near_window: seatNum === 1 || seatNum === 2 || seatNum === 8,
-      is_pmr: seatNum === 1 || seatNum === 4,
-      is_quiet_zone: clusterCode === 'CL-E' || clusterCode === 'CL-F' || seatNum >= 7,
-      power_outlet: true,
-      docking_station: 'USB-C Dual 4K Dock',
-      monitor_size: seatNum % 2 === 1 ? '2x 27" Dell UltraSharp' : '1x 34" Curved WQHD',
-      network_port: `ETH-SAF-${clusterCode}-${seatNum}`,
-      notes: isExtension ? 'Poste Extension Admin OCP' : 'Poste Standard Ouvert'
-    };
-
-    workstations.push({
-      id: `ws-${clusterCode.replace('CL-', '')}-0${seatNum}`,
-      cluster_id: clusterId,
-      code: seatCode,
-      seat_number: seatNum,
-      status: isExtension ? 'extension' : 'disponible',
-      reservable: true,
-      is_extension: isExtension,
-      visibleToUsers: false,
-      metadata
+export class WorkspaceService {
+  /**
+   * Get all workstation data from database repository with local caching
+   */
+  static getSavedWorkstations(): Record<string, Workstation[]> {
+    WorkstationRepository.getWorkstations().then((data) => {
+      if (typeof window !== 'undefined' && Object.keys(data).length > 0) {
+        localStorage.setItem('xfactory_workstations_v2', JSON.stringify(data));
+      }
     });
-  }
-  return workstations;
-}
 
-export function generateAllWorkstations(): Record<string, Workstation[]> {
-  const map: Record<string, Workstation[]> = {};
-  INITIAL_CLUSTERS.forEach((cl) => {
-    map[cl.id] = generateWorkstationsForCluster(cl.code, cl.id);
-  });
-  return map;
-}
-
-export function getSavedWorkstations(): Record<string, Workstation[]> {
-  try {
     if (typeof window !== 'undefined') {
-      const raw = localStorage.getItem(LOCAL_STORAGE_WORKSTATIONS_KEY);
-      if (raw) {
-        return JSON.parse(raw);
-      }
+      const cached = localStorage.getItem('xfactory_workstations_v2');
+      if (cached) return JSON.parse(cached);
     }
-  } catch (err) {
-    console.error('Error loading workstations:', err);
+    return this.generateDefaultWorkstations();
   }
-  const generated = generateAllWorkstations();
-  if (typeof window !== 'undefined') {
-    localStorage.setItem(LOCAL_STORAGE_WORKSTATIONS_KEY, JSON.stringify(generated));
-  }
-  return generated;
-}
 
-export function saveWorkstations(wsMap: Record<string, Workstation[]>): void {
-  try {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(LOCAL_STORAGE_WORKSTATIONS_KEY, JSON.stringify(wsMap));
-      window.dispatchEvent(new CustomEvent('xfactory_workstations_changed', { detail: wsMap }));
-    }
-  } catch (err) {
-    console.error('Error saving workstations:', err);
-  }
-}
+  static async fetchClustersWithOverlays(): Promise<Cluster[]> {
+    const wsMap = await WorkstationRepository.getWorkstations();
+    const clusters = await WorkstationRepository.getClusters();
 
-export async function fetchClustersWithOverlays(
-  todayDate: string = new Date().toISOString().split('T')[0]
-): Promise<Cluster[]> {
-  const wsMap = getSavedWorkstations();
-  const reservations = getLocalReservations();
+    const targetClusters = clusters.length > 0 ? clusters : INITIAL_CLUSTERS;
+    const defaultWsMap = this.generateDefaultWorkstations();
 
-  const activeResMap = new Map<string, Reservation>();
-  reservations.forEach((res) => {
-    if (
-      res.reservation_date === todayDate &&
-      (res.status === 'confirmée' || res.status === 'check-in' || res.status === 'en attente')
-    ) {
-      activeResMap.set(res.workstation_code, res);
-      if (res.workstation_id) activeResMap.set(res.workstation_id, res);
-    }
-  });
+    return targetClusters.map((c) => {
+      const codeKey = c.code ? c.code.toLowerCase() : c.id;
+      const formattedCodeKey = codeKey.startsWith('cl-') ? codeKey : `cl-${codeKey}`;
 
-  const clusters: Cluster[] = INITIAL_CLUSTERS.map((cl) => {
-    const workstationsForCl = wsMap[cl.id] || generateWorkstationsForCluster(cl.code, cl.id);
-
-    const mappedWorkstations: Workstation[] = workstationsForCl.map((ws) => {
-      const res = activeResMap.get(ws.code) || activeResMap.get(ws.id);
-      
-      let computedStatus: SeatStatus = ws.status;
-
-      if (ws.status === 'maintenance') {
-        computedStatus = 'maintenance';
-      } else if (res) {
-        if (res.status === 'check-in') {
-          computedStatus = 'occupé';
-        } else if (res.status === 'confirmée' || res.status === 'en attente') {
-          computedStatus = 'réservé';
-        }
-      } else if (ws.is_extension && !ws.visibleToUsers) {
-        computedStatus = 'extension';
-      } else {
-        computedStatus = 'disponible';
-      }
+      const seats =
+        (wsMap[c.id] && wsMap[c.id].length > 0 ? wsMap[c.id] : null) ||
+        (wsMap[formattedCodeKey] && wsMap[formattedCodeKey].length > 0 ? wsMap[formattedCodeKey] : null) ||
+        (wsMap[codeKey] && wsMap[codeKey].length > 0 ? wsMap[codeKey] : null) ||
+        defaultWsMap[c.id] ||
+        defaultWsMap[formattedCodeKey] ||
+        defaultWsMap[c.code?.toLowerCase()] ||
+        [];
 
       return {
-        ...ws,
-        status: computedStatus,
+        ...c,
+        workstations: seats,
       };
     });
+  }
 
-    return {
-      ...cl,
-      workstations: mappedWorkstations,
-    };
-  });
+  static generateDefaultWorkstations(): Record<string, Workstation[]> {
+    const map: Record<string, Workstation[]> = {};
+    INITIAL_CLUSTERS.forEach((cluster) => {
+      map[cluster.id] = Array.from({ length: 4 }, (_, i) => {
+        const seatNum = i + 1;
+        return {
+          id: `${cluster.id}-seat-${seatNum}`,
+          cluster_id: cluster.id,
+          code: `${cluster.code}-W${seatNum}`,
+          seat_number: seatNum,
+          status: cluster.is_management_only ? 'management_reserved' : 'disponible',
+          reservable: !cluster.is_management_only,
+          is_extension: false,
+          visibleToUsers: true,
+          metadata: {
+            monitor_size: '27" 4K Dual Dock',
+            docking_station: 'USB-C Thunderbolt 4',
+            has_double_screen: seatNum % 2 === 0,
+            near_window: seatNum === 1,
+            is_pmr: seatNum === 1,
+            is_quiet_zone: cluster.id === 'cl-e',
+            notes: 'Équipement OCP Safi',
+          },
+        };
+      });
+    });
+    return map;
+  }
 
-  return clusters;
-}
-
-export async function toggleExtensionSeatVisibility(
-  clusterId: string,
-  seatId: string,
-  visibleToUsers: boolean
-): Promise<void> {
-  const wsMap = getSavedWorkstations();
-  if (wsMap[clusterId]) {
-    const wsList = wsMap[clusterId];
-    const targetIndex = wsList.findIndex((w) => w.id === seatId || w.code === seatId);
-    if (targetIndex !== -1) {
-      wsList[targetIndex].visibleToUsers = visibleToUsers;
-      saveWorkstations(wsMap);
+  static async setSeatMaintenanceStatus(clusterId: string, seatId: string, isMaintenance: boolean): Promise<Record<string, Workstation[]>> {
+    const workstations = this.getSavedWorkstations();
+    const clusterSeats = workstations[clusterId];
+    if (clusterSeats) {
+      const seat = clusterSeats.find((s) => s.id === seatId);
+      if (seat) {
+        const newStatus: SeatStatus = isMaintenance ? 'maintenance' : 'disponible';
+        seat.status = newStatus;
+        await WorkstationRepository.updateWorkstationStatus(seat.id, newStatus, !isMaintenance);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('xfactory_workstations_v2', JSON.stringify(workstations));
+          window.dispatchEvent(new CustomEvent('xfactory_workstations_changed'));
+        }
+      }
     }
+    return workstations;
+  }
+
+  static toggleExtensionSeatVisibility(clusterId: string, seatId: string, visible: boolean): Record<string, Workstation[]> {
+    const workstations = this.getSavedWorkstations();
+    const clusterSeats = workstations[clusterId];
+    if (clusterSeats) {
+      const seat = clusterSeats.find((s) => s.id === seatId);
+      if (seat) {
+        seat.visibleToUsers = visible;
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('xfactory_workstations_v2', JSON.stringify(workstations));
+          window.dispatchEvent(new CustomEvent('xfactory_workstations_changed'));
+        }
+      }
+    }
+    return workstations;
   }
 }
 
-export async function setSeatMaintenanceStatus(
-  clusterId: string,
-  seatId: string,
-  isMaintenance: boolean
-): Promise<void> {
-  const wsMap = getSavedWorkstations();
-  if (wsMap[clusterId]) {
-    const wsList = wsMap[clusterId];
-    const targetIndex = wsList.findIndex((w) => w.id === seatId || w.code === seatId);
-    if (targetIndex !== -1) {
-      wsList[targetIndex].status = isMaintenance ? 'maintenance' : 'disponible';
-      saveWorkstations(wsMap);
-    }
-  }
-}
-
-export class WorkspaceService {
-  static getSavedWorkstations = getSavedWorkstations;
-  static saveWorkstations = saveWorkstations;
-  static fetchClustersWithOverlays = fetchClustersWithOverlays;
-  static toggleExtensionSeatVisibility = toggleExtensionSeatVisibility;
-  static setSeatMaintenanceStatus = setSeatMaintenanceStatus;
-}
+export const fetchClustersWithOverlays = WorkspaceService.fetchClustersWithOverlays.bind(WorkspaceService);
+export const getSavedWorkstations = WorkspaceService.getSavedWorkstations.bind(WorkspaceService);
+export const setSeatMaintenanceStatus = WorkspaceService.setSeatMaintenanceStatus.bind(WorkspaceService);
+export const toggleExtensionSeatVisibility = WorkspaceService.toggleExtensionSeatVisibility.bind(WorkspaceService);

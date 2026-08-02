@@ -21,7 +21,7 @@ export interface UserProfile {
   status: 'active' | 'inactive' | 'suspended';
 }
 
-export type SeatStatus = 'disponible' | 'réservé' | 'maintenance' | 'occupé' | 'extension';
+export type SeatStatus = 'disponible' | 'réservé' | 'maintenance' | 'occupé' | 'extension' | 'management_reserved';
 
 export interface WorkstationMetadata {
   has_double_screen?: boolean;
@@ -212,11 +212,20 @@ export interface ApprovalRequest {
   reservation_id: string;
   requester_id: string;
   requester_name: string;
-  approver_role: 'executive_assistant' | 'director';
-  status: 'pending' | 'approved' | 'rejected';
+  user_department?: string;
+  approver_role: 'building_manager' | 'executive_assistant' | 'director' | 'admin' | 'super_admin';
+  status: 'pending' | 'approved' | 'rejected' | 'needs_info';
   reason: string;
+  objective?: string;
   decision_note?: string;
   created_at: string;
   decided_at?: string;
+  reservation_date?: string;
+  end_date?: string;
+  start_time?: string;
+  end_time?: string;
+  duration_days?: number;
+  workstation_code?: string;
+  cluster_name?: string;
 }
 

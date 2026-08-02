@@ -1,4 +1,4 @@
-import { AIAssistantMessage } from '@/frontend/src/types';
+import { AIAssistantMessage, Workstation } from '@/frontend/src/types';
 import { getSavedWorkstations } from '@/services/workspaces/workspaceService';
 import { getLocalReservations } from '@/services/reservations/reservationService';
 
@@ -13,7 +13,7 @@ export async function askXFactoryAI(
   let occupiedCount = 0;
   let maintenanceCount = 0;
 
-  Object.values(wsMap).forEach((list) => {
+  (Object.values(wsMap) as Workstation[][]).forEach((list) => {
     totalDesks += list.length;
     list.forEach((ws) => {
       if (ws.status === 'occupé' || ws.status === 'réservé') occupiedCount++;

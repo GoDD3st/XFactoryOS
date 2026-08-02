@@ -1,5 +1,6 @@
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import { authRouter } from './routes/auth.routes';
 import { reservationsRouter } from './routes/reservations.routes';
@@ -17,9 +18,11 @@ import { approvalRouter } from './routes/approval.routes';
 import { searchRouter } from './routes/search.routes';
 import { settingsRouter } from './routes/settings.routes';
 import { historyRouter } from './routes/history.routes';
-async function startServer() {
+import { seedDatabaseIfEmpty } from '../database/seeder';
+import { NoShowService } from '../services/noshow/noShowService';
+
+export function createExpressApp() {
   const app = express();
-  const PORT = 3000;
 
   app.use(express.json());
 
@@ -50,14 +53,49 @@ async function startServer() {
   app.use('/api/search', searchRouter);
   app.use('/api/settings', settingsRouter);
   app.use('/api/history', historyRouter);
+
+  return app;
+}
+
+async function startServer() {
+  const app = createExpressApp();
+  const PORT = process.env.PORT || 3000;
+
+  // Auto-seed Supabase Database if empty
+  await seedDatabaseIfEmpty();
+
+  // Background No-Show Auto Detection Ticker (BPMN D4 / SRS BR-12)
+  setInterval(async () => {
+    try {
+      const detected = await NoShowService.detectNoShows();
+      if (detected > 0) {
+        console.log(`[No-Show Ticker] Auto-released ${detected} un-checked-in reservation(s).`);
+      }
+    } catch (err) {
+      // Background ticker non-blocking catch
+    }
+  }, 60000);
+
   // Vite middleware or Static files handler
-  if (process.env.NODE_ENV !== 'production') {
+  if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
     const vite = await createViteServer({
       server: { middlewareMode: true },
-      appType: 'spa',
+      appType: 'custom',
     });
     app.use(vite.middlewares);
-  } else {
+    app.use('*', async (req, res, next) => {
+      if (req.originalUrl.startsWith('/api')) return next();
+      try {
+        const url = req.originalUrl;
+        const template = fs.readFileSync(path.resolve(process.cwd(), 'index.html'), 'utf-8');
+        const html = await vite.transformIndexHtml(url, template);
+        res.status(200).set({ 'Content-Type': 'text/html' }).end(html);
+      } catch (e: any) {
+        vite.ssrFixStacktrace(e);
+        next(e);
+      }
+    });
+  } else if (!process.env.VERCEL) {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
@@ -65,9 +103,13 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[OCP XFactory Backend] Server running on http://0.0.0.0:${PORT}`);
-  });
+  if (!process.env.VERCEL) {
+    app.listen(Number(PORT), '0.0.0.0', () => {
+      console.log(`[OCP XFactory Backend] Server running on http://0.0.0.0:${PORT}`);
+    });
+  }
 }
 
-startServer();
+if (process.env.NODE_ENV !== 'test' && !process.env.VERCEL) {
+  startServer();
+}

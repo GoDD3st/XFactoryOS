@@ -1,106 +1,57 @@
 import { WaitingListEntry } from '@/frontend/src/types';
-
-const STORAGE_KEY = 'xfactory_waiting_list';
-
-const INITIAL_WAITING_LIST: WaitingListEntry[] = [
-  {
-    id: 'wl-001',
-    user_id: 'usr-05',
-    user_name: 'Mehdi Naciri',
-    user_department: 'Digital Factory',
-    cluster_preference: 'CL-A',
-    reservation_date: new Date().toISOString().split('T')[0],
-    time_slot: '09:00 - 17:00',
-    notes: 'Session travail sur jumeau numérique',
-    created_at: new Date(Date.now() - 3600000 * 2).toISOString(),
-    status: 'waiting',
-  },
-  {
-    id: 'wl-002',
-    user_id: 'usr-06',
-    user_name: 'Khadija Chraibi',
-    user_department: 'GCI Governance',
-    cluster_preference: 'CL-E',
-    reservation_date: new Date().toISOString().split('T')[0],
-    time_slot: '14:00 - 18:00',
-    notes: 'Revue de gouvernance chimie Safi',
-    created_at: new Date(Date.now() - 3600000).toISOString(),
-    status: 'waiting',
-  },
-];
-
-export function getWaitingList(): WaitingListEntry[] {
-  try {
-    if (typeof window !== 'undefined') {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        return JSON.parse(raw);
-      }
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_WAITING_LIST));
-    }
-  } catch (err) {
-    console.error('Error loading waiting list:', err);
-  }
-  return INITIAL_WAITING_LIST;
-}
-
-export function saveWaitingList(list: WaitingListEntry[]): void {
-  try {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
-      window.dispatchEvent(new CustomEvent('xfactory_waiting_list_changed', { detail: list }));
-    }
-  } catch (err) {
-    console.error('Error saving waiting list:', err);
-  }
-}
-
-export async function addToWaitingList(
-  payload: Omit<WaitingListEntry, 'id' | 'created_at' | 'status'>
-): Promise<WaitingListEntry> {
-  const newEntry: WaitingListEntry = {
-    ...payload,
-    id: `wl-${Date.now()}`,
-    created_at: new Date().toISOString(),
-    status: 'waiting',
-  };
-
-  const list = getWaitingList();
-  const updated = [...list, newEntry];
-  saveWaitingList(updated);
-  return newEntry;
-}
-
-export async function cancelWaitingListEntry(id: string): Promise<boolean> {
-  const list = getWaitingList();
-  const updated = list.filter((item) => item.id !== id);
-  saveWaitingList(updated);
-  return true;
-}
-
-export async function processWaitingListFIFO(
-  clusterCode: string,
-  date: string
-): Promise<WaitingListEntry | null> {
-  const list = getWaitingList();
-  const matchIndex = list.findIndex(
-    (item) =>
-      item.status === 'waiting' &&
-      item.reservation_date === date &&
-      (!item.cluster_preference || item.cluster_preference === clusterCode)
-  );
-
-  if (matchIndex !== -1) {
-    list[matchIndex].status = 'offered';
-    saveWaitingList(list);
-    return list[matchIndex];
-  }
-  return null;
-}
+import { WaitingListRepository } from '@/database/repositories/waitingListRepository';
 
 export class WaitingListService {
-  static getWaitingList = getWaitingList;
-  static addToWaitingList = addToWaitingList;
-  static cancelWaitingListEntry = cancelWaitingListEntry;
-  static processWaitingListFIFO = processWaitingListFIFO;
+  static getWaitingList(): WaitingListEntry[] {
+    WaitingListRepository.getWaitingList().then((data) => {
+      if (typeof window !== 'undefined' && data.length > 0) {
+        localStorage.setItem('xfactory_waiting_list_v2', JSON.stringify(data));
+      }
+    });
+
+    if (typeof window !== 'undefined') {
+      const cached = localStorage.getItem('xfactory_waiting_list_v2');
+      if (cached) return JSON.parse(cached);
+    }
+    return [];
+  }
+
+  static async addToWaitingList(payload: Omit<WaitingListEntry, 'id' | 'created_at' | 'status'>): Promise<WaitingListEntry> {
+    const newEntry = await WaitingListRepository.addEntry(payload);
+
+    if (typeof window !== 'undefined') {
+      const current = this.getWaitingList();
+      localStorage.setItem('xfactory_waiting_list_v2', JSON.stringify([newEntry, ...current]));
+      window.dispatchEvent(new CustomEvent('xfactory_waiting_list_changed'));
+    }
+
+    return newEntry;
+  }
+
+  static async cancelWaitingListEntry(id: string): Promise<boolean> {
+    const success = await WaitingListRepository.cancelEntry(id);
+    if (typeof window !== 'undefined') {
+      const current = this.getWaitingList().filter((e) => e.id !== id);
+      localStorage.setItem('xfactory_waiting_list_v2', JSON.stringify(current));
+      window.dispatchEvent(new CustomEvent('xfactory_waiting_list_changed'));
+    }
+    return success;
+  }
+
+  static async processWaitingListFIFO(clusterCode: string, date: string): Promise<WaitingListEntry | null> {
+    const list = await WaitingListRepository.getWaitingList();
+    const match = list.find((e) => e.cluster_preference === clusterCode && e.status === 'waiting');
+
+    if (match) {
+      match.status = 'offered';
+      await WaitingListRepository.cancelEntry(match.id);
+      return match;
+    }
+    return null;
+  }
 }
+
+export const getWaitingList = WaitingListService.getWaitingList.bind(WaitingListService);
+export const addToWaitingList = WaitingListService.addToWaitingList.bind(WaitingListService);
+export const cancelWaitingListEntry = WaitingListService.cancelWaitingListEntry.bind(WaitingListService);
+export const processWaitingListFIFO = WaitingListService.processWaitingListFIFO.bind(WaitingListService);

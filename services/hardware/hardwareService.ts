@@ -1,11 +1,11 @@
-import { HardwareDiagnosticsInfo } from '@/frontend/src/types';
+import { HardwareDiagnosticsInfo, Workstation } from '@/frontend/src/types';
 import { getSavedWorkstations } from '@/services/workspaces/workspaceService';
 
 export function getHardwareDiagnostics(): HardwareDiagnosticsInfo[] {
   const wsMap = getSavedWorkstations();
   const diagnostics: HardwareDiagnosticsInfo[] = [];
 
-  Object.values(wsMap).forEach((list) => {
+  (Object.values(wsMap) as Workstation[][]).forEach((list) => {
     list.forEach((ws) => {
       let portStatus: 'online' | 'degraded' | 'offline' = 'online';
       if (ws.status === 'maintenance') portStatus = 'degraded';

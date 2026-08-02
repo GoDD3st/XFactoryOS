@@ -6,7 +6,7 @@ export const workspacesRouter = Router();
 workspacesRouter.get('/clusters', async (req, res) => {
   try {
     const todayDate = (req.query.date as string) || new Date().toISOString().split('T')[0];
-    const clusters = await WorkspaceService.fetchClustersWithOverlays(todayDate);
+    const clusters = await WorkspaceService.fetchClustersWithOverlays();
     res.json({
       status: 'success',
       data: clusters,

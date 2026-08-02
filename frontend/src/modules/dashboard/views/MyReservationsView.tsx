@@ -71,7 +71,7 @@ export const MyReservationsView: React.FC = () => {
               </div>
               <span
                 className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${
-                  res.status === 'check-in' || res.status === 'occupé'
+                  res.status === 'check-in'
                     ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
                     : res.status === 'confirmée'
                     ? 'bg-amber-100 text-amber-800 border border-amber-300'
@@ -110,7 +110,7 @@ export const MyReservationsView: React.FC = () => {
                 </button>
               )}
 
-              {(res.status === 'check-in' || res.status === 'occupé') && (
+              {res.status === 'check-in' && (
                 <button
                   onClick={() => handleCheckOut(res.id)}
                   className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1"

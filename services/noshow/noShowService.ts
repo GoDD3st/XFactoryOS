@@ -1,33 +1,38 @@
-import { getLocalReservations, saveLocalReservations } from '../reservations/reservationService';
-import { sendNotification } from '../notifications/notificationService';
-import { logAuditEvent } from '../audit/auditService';
+import { ReservationRepository } from '@/database/repositories/reservationRepository';
+import { SettingsRepository } from '@/database/repositories/settingsRepository';
+import { AuditRepository } from '@/database/repositories/auditRepository';
+import { NotificationService } from '../notifications/notificationService';
 import { Reservation } from '@/frontend/src/types';
 
 export class NoShowService {
-  public static NO_SHOW_DELAY_MINUTES = 30;
+  /**
+   * Automatically detect no-shows based on configured no_show_window_minutes
+   */
+  public static async detectNoShows(): Promise<number> {
+    const settings = await SettingsRepository.getSettings();
+    const noShowDelay = settings.noShowDelayMinutes || 30;
 
-  public static detectNoShows(): number {
-    const reservations = getLocalReservations();
+    const reservations = await ReservationRepository.getAllReservations();
     const now = new Date();
     let detectedCount = 0;
 
-    const updatedReservations = reservations.map(res => {
+    for (const res of reservations) {
       if (res.status === 'confirmée') {
         const resStart = new Date(`${res.reservation_date}T${res.start_time}`);
         const diffMinutes = (now.getTime() - resStart.getTime()) / (1000 * 60);
 
-        if (diffMinutes >= this.NO_SHOW_DELAY_MINUTES) {
-          res.status = 'no-show';
+        if (diffMinutes >= noShowDelay) {
           detectedCount++;
+          await ReservationRepository.updateReservationStatus(res.id, 'no-show');
 
-          sendNotification(
+          NotificationService.sendNotification(
             res.user_id,
             'No-Show Détecté — Clean Desk Policy',
-            `Votre réservation sur ${res.workstation_code} a été annulée suite à un no-show après ${this.NO_SHOW_DELAY_MINUTES} minutes sans check-in.`,
+            `Votre réservation sur ${res.workstation_code} a été annulée suite à un no-show après ${noShowDelay} minutes sans check-in.`,
             'warning'
           );
 
-          logAuditEvent(
+          await AuditRepository.logEvent(
             'NO_SHOW_DETECTED',
             'system',
             'Système XFactory',
@@ -38,20 +43,17 @@ export class NoShowService {
 
           if (typeof window !== 'undefined') {
             window.dispatchEvent(new CustomEvent('xfactory_noshow_detected', { detail: res }));
+            window.dispatchEvent(new CustomEvent('xfactory_reservations_changed'));
           }
         }
       }
-      return res;
-    });
-
-    if (detectedCount > 0) {
-      saveLocalReservations(updatedReservations);
     }
+
     return detectedCount;
   }
 
   public static getNoShowStats() {
-    const reservations = getLocalReservations();
+    const reservations = ReservationRepository.getAllReservations();
     const now = new Date();
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const dayOfWeek = now.getDay();
@@ -61,15 +63,22 @@ export class NoShowService {
     let thisWeek = 0;
     const perCluster: Record<string, number> = {};
 
-    reservations.forEach(res => {
-      if (res.status === 'no-show') {
-        const resDate = new Date(res.reservation_date);
-        if (resDate >= startOfDay) today++;
-        if (resDate >= startOfWeek) thisWeek++;
-        
-        perCluster[res.cluster_id] = (perCluster[res.cluster_id] || 0) + 1;
+    // Synchronous stats calculation from cache if async pending
+    if (typeof window !== 'undefined') {
+      const cached = localStorage.getItem('xfactory_reservations_v2');
+      if (cached) {
+        const list: Reservation[] = JSON.parse(cached);
+        list.forEach((res) => {
+          if (res.status === 'no-show') {
+            const resDate = new Date(res.reservation_date);
+            if (resDate >= startOfDay) today++;
+            if (resDate >= startOfWeek) thisWeek++;
+
+            perCluster[res.cluster_id] = (perCluster[res.cluster_id] || 0) + 1;
+          }
+        });
       }
-    });
+    }
 
     return { today, thisWeek, perCluster };
   }

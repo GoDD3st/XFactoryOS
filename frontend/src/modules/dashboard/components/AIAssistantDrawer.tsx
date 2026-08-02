@@ -9,7 +9,7 @@ interface AIAssistantDrawerProps {
   userRole: string;
 }
 
-export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ isOpen, onClose, userRole }) => {
+export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ isOpen, onClose, userRole }: AIAssistantDrawerProps) => {
   const [inputQuery, setInputQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [messages, setMessages] = useState<AIAssistantMessage[]>([

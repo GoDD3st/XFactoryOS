@@ -1,60 +1,63 @@
-import React, { useState } from 'react';
-import {
-  CheckCircle2,
-  XCircle,
-  Clock,
-  Award,
-  Sparkles,
-  Check,
-  X,
-  User
-} from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Award, Check, X, Clock, HelpCircle, MessageSquare, AlertCircle, FileText } from 'lucide-react';
 import { DigitalTwin } from '../../../shared/components/DigitalTwin';
 import { ReservationsTable } from '../../../shared/components/ReservationsTable';
-
-interface VIPRequest {
-  id: string;
-  requester: string;
-  department: string;
-  cluster: string;
-  seatCode: string;
-  date: string;
-  time: string;
-  reason: string;
-}
+import { ApprovalService } from '@/services/approval/approvalService';
+import { ApprovalRequest } from '../../../types';
+import { useAuth } from '../../../modules/auth/context/AuthContext';
 
 export const ApprovalsView: React.FC = () => {
-  const [pendingRequests, setPendingRequests] = useState<VIPRequest[]>([
-    {
-      id: 'REQ-801',
-      requester: 'M. Rachid Bennani (Directeur Industriel)',
-      department: 'Direction Chimie Safi',
-      cluster: 'CL-F Management Restricted 1',
-      seatCode: 'CL-F-01',
-      date: new Date().toISOString().split('T')[0],
-      time: '09:00 - 18:00',
-      reason: 'Comité Exécutif OCP SA & Délégation Partenaires'
-    },
-    {
-      id: 'REQ-802',
-      requester: 'Mme. Leila Tazi (Auditeur Externe)',
-      department: 'Audit Général OCP',
-      cluster: 'CL-G Management Restricted 2',
-      seatCode: 'CL-G-03',
-      date: new Date().toISOString().split('T')[0],
-      time: '10:30 - 16:00',
-      reason: 'Mission Audit Stratégique Site Safi'
-    }
-  ]);
+  const { currentUser, currentRole } = useAuth();
+  const [pendingRequests, setPendingRequests] = useState<ApprovalRequest[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [activeDecisionId, setActiveDecisionId] = useState<string | null>(null);
+  const [decisionType, setDecisionType] = useState<'approved' | 'rejected' | 'needs_info' | null>(null);
+  const [decisionNote, setDecisionNote] = useState<string>('');
 
-  const handleApprove = (id: string) => {
-    setPendingRequests(pendingRequests.filter((r) => r.id !== id));
-    alert(`Demande VIP #${id} validée avec succès ! Inscription dans la table officielle des réservations OCP.`);
+  const loadRequests = async () => {
+    setLoading(true);
+    try {
+      const list = await ApprovalService.getPendingApprovals();
+      setPendingRequests(list);
+    } catch (err) {
+      console.error('Error loading pending approvals:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleReject = (id: string) => {
-    setPendingRequests(pendingRequests.filter((r) => r.id !== id));
-    alert(`Demande VIP #${id} refusée.`);
+  useEffect(() => {
+    loadRequests();
+    window.addEventListener('xfactory_approvals_changed', loadRequests);
+    return () => window.removeEventListener('xfactory_approvals_changed', loadRequests);
+  }, []);
+
+  const openDecisionModal = (id: string, type: 'approved' | 'rejected' | 'needs_info') => {
+    setActiveDecisionId(id);
+    setDecisionType(type);
+    setDecisionNote(
+      type === 'approved'
+        ? 'Extension accordée par la Direction OCP Safi.'
+        : type === 'needs_info'
+        ? 'Merci de fournir une description plus détaillée des livrables et objectifs de votre mission.'
+        : 'Demande d\'extension refusée pour dépassement de quota.'
+    );
+  };
+
+  const handleConfirmDecision = async () => {
+    if (!activeDecisionId || !decisionType) return;
+
+    await ApprovalService.decideApproval(
+      activeDecisionId,
+      decisionType,
+      decisionNote || 'Décision enregistrée par la Direction',
+      currentUser.id
+    );
+
+    setActiveDecisionId(null);
+    setDecisionType(null);
+    setDecisionNote('');
+    loadRequests();
   };
 
   return (
@@ -63,14 +66,14 @@ export const ApprovalsView: React.FC = () => {
       <div className="bg-slate-900 text-white rounded-2xl p-6 border border-slate-800 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center space-x-2">
-            <span className="px-2.5 py-0.5 rounded bg-purple-500/20 text-purple-300 font-bold text-xs">
-              Rôle : Assistant Direction
+            <span className="px-2.5 py-0.5 rounded bg-purple-500/20 text-purple-300 font-bold text-xs capitalize">
+              Rôle : {currentRole.replace('_', ' ')}
             </span>
-            <span className="text-xs text-slate-400">Secrétariat Général OCP Safi</span>
+            <span className="text-xs text-slate-400">Arbitrage Réservations Multi-Jours (&gt; 2j Ouvrés)</span>
           </div>
-          <h1 className="text-xl font-bold mt-1">Validation des Demandes VIP & Clusters F/G</h1>
+          <h1 className="text-xl font-bold mt-1">Validation des Extensions &amp; Demandes Longue Durée</h1>
           <p className="text-xs text-slate-400 mt-0.5">
-            File d'attente d'approbation pour l'accès aux postes haute confidentialité et réservations VIP.
+            Décisions partagées entre Building Manager, Assistant Directeur, Directeur, Admin et SuperAdmin (BPMN D2).
           </p>
         </div>
 
@@ -85,47 +88,82 @@ export const ApprovalsView: React.FC = () => {
         <h3 className="text-sm font-bold text-slate-900 flex items-center justify-between">
           <span className="flex items-center gap-2">
             <Award className="w-4 h-4 text-purple-600" />
-            <span>Demandes VIP & Direction en Attente de Validation</span>
+            <span>Demandes d'Extension (&gt; 2 Jours Ouvrés) en Attente d'Arbitrage</span>
           </span>
         </h3>
 
-        {pendingRequests.length === 0 ? (
+        {loading ? (
+          <div className="p-6 text-center text-xs text-slate-400">Chargement depuis la base de données...</div>
+        ) : pendingRequests.length === 0 ? (
           <div className="p-8 border border-dashed border-slate-200 rounded-xl text-center text-xs text-slate-500">
-            Toutes les demandes VIP ont été traitées.
+            Aucune demande d'extension en attente d'arbitrage.
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-4">
             {pendingRequests.map((req) => (
               <div
                 key={req.id}
-                className="p-4 rounded-xl border border-purple-200 bg-purple-50/50 flex flex-col md:flex-row md:items-center justify-between gap-4"
+                className="p-5 rounded-2xl border border-purple-200 bg-purple-50/40 space-y-3"
               >
-                <div className="space-y-1">
-                  <div className="flex items-center space-x-2">
-                    <span className="font-extrabold text-xs text-slate-900">{req.requester}</span>
-                    <span className="text-[10px] px-2 py-0.5 rounded bg-purple-200 text-purple-800 font-bold">{req.id}</span>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-purple-100 pb-3">
+                  <div>
+                    <div className="flex items-center space-x-2">
+                      <span className="font-black text-sm text-slate-900">{req.requester_name}</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-purple-200 text-purple-800 font-bold">
+                        {req.user_department || 'OCP Safi'}
+                      </span>
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-slate-900 text-white font-bold">
+                        {req.duration_days || 3} Jours Ouvrés
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-600 font-medium mt-0.5">
+                      Poste: <strong>{req.workstation_code || 'WS'}</strong> ({req.cluster_name || 'Cluster Safi'}) | Du {req.reservation_date} au {req.end_date}
+                    </p>
                   </div>
-                  <p className="text-xs text-slate-600 font-medium">
-                    Poste : <strong className="text-purple-900">{req.seatCode}</strong> ({req.cluster}) | Date: {req.date} ({req.time})
-                  </p>
-                  <p className="text-xs text-slate-500 italic">Motif : "{req.reason}"</p>
+
+                  <span className="text-[11px] font-bold text-slate-400">
+                    ID: {req.id.substring(0, 10)}
+                  </span>
                 </div>
 
-                <div className="flex items-center space-x-2 justify-end">
+                {/* Detailed Objective Section */}
+                <div className="bg-white p-3.5 rounded-xl border border-purple-100 space-y-1 text-xs">
+                  <div className="font-bold text-slate-700 flex items-center gap-1.5">
+                    <FileText className="w-3.5 h-3.5 text-purple-600" />
+                    <span>Objectif &amp; Description Détaillée de la Demande :</span>
+                  </div>
+                  <p className="text-slate-800 leading-relaxed font-semibold pl-5">
+                    "{req.objective || req.reason}"
+                  </p>
+                </div>
+
+                {/* 3 Approver Actions */}
+                <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
+                  {/* Demander nouvelle description (Re-loop) */}
                   <button
-                    onClick={() => handleReject(req.id)}
-                    className="bg-slate-100 hover:bg-rose-100 text-rose-700 border border-slate-200 px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1"
+                    onClick={() => openDecisionModal(req.id, 'needs_info')}
+                    className="bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer"
                   >
-                    <X className="w-3.5 h-3.5" />
-                    <span>Refuser</span>
+                    <HelpCircle className="w-3.5 h-3.5 text-amber-700" />
+                    <span>Demander nouvelle description</span>
                   </button>
 
+                  {/* Refuser */}
                   <button
-                    onClick={() => handleApprove(req.id)}
-                    className="bg-[#008751] hover:bg-[#005f38] text-white px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow-md flex items-center space-x-1"
+                    onClick={() => openDecisionModal(req.id, 'rejected')}
+                    className="bg-rose-100 hover:bg-rose-200 text-rose-900 border border-rose-300 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5 text-rose-700" />
+                    <span>Refuser avec motif</span>
+                  </button>
+
+                  {/* Approuver */}
+                  <button
+                    onClick={() => openDecisionModal(req.id, 'approved')}
+                    className="bg-[#008751] hover:bg-[#005f38] text-white px-4 py-1.5 rounded-xl text-xs font-extrabold transition-all shadow-md flex items-center space-x-1.5 cursor-pointer"
                   >
                     <Check className="w-3.5 h-3.5" />
-                    <span>Approuver & Réserver</span>
+                    <span>Approuver l'extension</span>
                   </button>
                 </div>
               </div>
@@ -133,6 +171,62 @@ export const ApprovalsView: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Decision Confirmation Modal */}
+      {activeDecisionId && decisionType && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center space-x-2 font-bold text-slate-900 border-b border-slate-100 pb-3">
+              <MessageSquare className="w-5 h-5 text-purple-600" />
+              <span>
+                {decisionType === 'approved'
+                  ? 'Confirmer l\'Approbation'
+                  : decisionType === 'needs_info'
+                  ? 'Demander une Nouvelle Description (Re-Loop)'
+                  : 'Confirmer le Refus de l\'Extension'}
+              </span>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-700 block">
+                {decisionType === 'needs_info'
+                  ? 'Précisez la remarque ou les informations attendues du demandeur :'
+                  : 'Motif ou remarque de décision :'}
+              </label>
+              <textarea
+                rows={3}
+                value={decisionNote}
+                onChange={(e) => setDecisionNote(e.target.value)}
+                className="w-full p-3 text-xs rounded-xl border border-slate-300 bg-slate-50 focus:ring-2 focus:ring-purple-600 outline-none"
+              />
+            </div>
+
+            <div className="flex items-center justify-end space-x-2 pt-2 border-t border-slate-100">
+              <button
+                onClick={() => {
+                  setActiveDecisionId(null);
+                  setDecisionType(null);
+                }}
+                className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={handleConfirmDecision}
+                className={`px-5 py-2 text-xs font-bold text-white rounded-xl shadow-md ${
+                  decisionType === 'approved'
+                    ? 'bg-emerald-600 hover:bg-emerald-700'
+                    : decisionType === 'needs_info'
+                    ? 'bg-amber-600 hover:bg-amber-700'
+                    : 'bg-rose-600 hover:bg-rose-700'
+                }`}
+              >
+                Valider la Décision
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <DigitalTwin />
       <ReservationsTable />

@@ -23,6 +23,7 @@ import {
 } from '@/services/reservations/reservationService';
 import { fetchClustersWithOverlays } from '@/services/workspaces/workspaceService';
 import { useAuth } from '../../modules/auth/context/AuthContext';
+import { DateTimePicker24h } from './DateTimePicker24h';
 
 interface ReservationsTableProps {
   initialFilter?: 'all' | 'upcoming' | 'checkin' | 'cancelled';
@@ -400,40 +401,17 @@ export const ReservationsTable: React.FC<ReservationsTableProps> = ({
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Date</label>
-                  <input
-                    type="date"
-                    required
-                    value={formDate}
-                    onChange={(e) => setFormDate(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-medium text-slate-800"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Heure début</label>
-                  <input
-                    type="time"
-                    required
-                    value={formStartTime}
-                    onChange={(e) => setFormStartTime(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-medium text-slate-800"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Heure fin</label>
-                  <input
-                    type="time"
-                    required
-                    value={formEndTime}
-                    onChange={(e) => setFormEndTime(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-medium text-slate-800"
-                  />
-                </div>
-              </div>
+              <DateTimePicker24h
+                startDate={formDate}
+                endDate={formDate}
+                startTime={formStartTime}
+                endTime={formEndTime}
+                onChange={(d) => {
+                  setFormDate(d.startDate);
+                  setFormStartTime(d.startTime);
+                  setFormEndTime(d.endTime);
+                }}
+              />
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Choix du Poste (56 postes disponibles)</label>
