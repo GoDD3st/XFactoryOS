@@ -76,6 +76,7 @@ export interface Reservation {
   end_time: string; // HH:mm
   status: ReservationStatus;
   check_in_at?: string | null;
+  check_out_at?: string | null;
   created_at?: string;
   notes?: string;
   purpose?: string;
@@ -196,15 +197,26 @@ export interface ReservationSearchQuery {
 }
 
 export interface SystemSettings {
-  maxReservationDaysWithoutApproval: number;
+  id?: string;
+  bookingWindowDays: number; // e.g. 2 days delay window
+  minReservationMinutes: number; // e.g. 30 min
+  maxReservationDaysWithoutApproval: number; // e.g. 2 business days
+  maxReservationsPerUserPerDay: number; // e.g. 2
+  maxReservationsPerUserPerWeek: number; // e.g. 5
+  workingHoursStart: string; // e.g. '08:00'
+  workingHoursEnd: string; // e.g. '18:00'
+  workingDays: number[]; // e.g. [1,2,3,4,5]
+  bypassRoles: UserRole[]; // e.g. ['admin', 'super_admin', 'director', 'executive_assistant']
+  allowWeekendBooking: boolean;
+  allowHolidayBooking: boolean;
   noShowDelayMinutes: number;
-  workingHoursStart: string;
-  workingHoursEnd: string;
-  workingDays: number[];
   extensionSeatsVisibleByDefault: boolean;
   managementClustersEnabled: boolean;
   theme: 'dark' | 'light';
   siteName: string;
+  configVersion?: number;
+  updated_at?: string;
+  updated_by?: string;
 }
 
 export interface ApprovalRequest {

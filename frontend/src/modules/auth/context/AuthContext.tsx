@@ -16,6 +16,25 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// 🛡️ Global Fetch Interceptor to inject X-Demo-Role header into all API calls in demo mode
+if (typeof window !== 'undefined') {
+  const originalFetch = window.fetch;
+  window.fetch = async function (input: RequestInfo | URL, init?: RequestInit) {
+    const role = AuthService.getInitialRole() || 'collaborator';
+    const initObj = init || {};
+    const headers = new Headers(initObj.headers || {});
+
+    if (!headers.has('X-Demo-Role')) {
+      headers.set('X-Demo-Role', role);
+    }
+
+    return originalFetch(input, {
+      ...initObj,
+      headers,
+    });
+  };
+}
+
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [currentRole, setCurrentRole] = useState<UserRole>(() => {
     return AuthService.getInitialRole();

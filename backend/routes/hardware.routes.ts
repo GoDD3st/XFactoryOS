@@ -1,23 +1,28 @@
 import { Router } from 'express';
 import { HardwareService } from '@/services/hardware/hardwareService';
+import { requireRole } from '../middleware/rbacMiddleware';
+import { validateBody } from '../middleware/validateBody';
+import { HardwareResetSchema } from '../validators';
 
 export const hardwareRouter = Router();
 
-hardwareRouter.get('/diagnostics', async (req, res) => {
+// GET /api/hardware/diagnostics — IT Admin & Admin roles only
+hardwareRouter.get('/diagnostics', requireRole('it_admin', 'admin', 'super_admin'), async (req, res) => {
   try {
     const data = HardwareService.getHardwareDiagnostics();
     res.json({ success: true, data });
   } catch (err) {
-    res.status(500).json({ success: false, error: 'Failed to fetch hardware diagnostics' });
+    res.status(500).json({ success: false, error: 'Échec de la récupération des diagnostics matériels' });
   }
 });
 
-hardwareRouter.post('/reset-port', async (req, res) => {
+// POST /api/hardware/reset-port — IT Admin & Admin roles only (Zod validated)
+hardwareRouter.post('/reset-port', requireRole('it_admin', 'admin', 'super_admin'), validateBody(HardwareResetSchema), async (req, res) => {
   try {
     const { workstation_code } = req.body;
     HardwareService.resetHardwarePort(workstation_code);
-    res.json({ success: true, message: `Port ETH-SAF-${workstation_code} reset successfully` });
+    res.json({ success: true, message: `Port ETH-SAF-${workstation_code} réinitialisé avec succès` });
   } catch (err) {
-    res.status(500).json({ success: false, error: 'Failed to reset port' });
+    res.status(500).json({ success: false, error: 'Échec de la réinitialisation du port' });
   }
 });

@@ -3,6 +3,44 @@ import { Reservation, ReservationStatus } from '@/frontend/src/types';
 
 export class ReservationRepository {
   /**
+   * Fetch single reservation by ID (used for ownership verification & authorization)
+   */
+  static async getReservationById(id: string): Promise<Reservation | null> {
+    try {
+      const { data, error } = await supabase
+        .from('reservations')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (error || !data) return null;
+
+      return {
+        id: data.id,
+        user_id: data.user_id,
+        user_name: data.user_name || 'Collaborateur Safi',
+        user_department: data.user_department || 'Digital Factory',
+        workstation_id: data.workstation_id,
+        workstation_code: data.workstation_code || 'WS-SF',
+        cluster_id: data.cluster_id || 'cl-a',
+        cluster_name: data.cluster_name || 'Cluster A',
+        reservation_date: data.start_at ? new Date(data.start_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+        start_time: data.start_at ? new Date(data.start_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '08:30',
+        end_time: data.end_at ? new Date(data.end_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '17:30',
+        status: this.mapDbStatusToDomain(data.status),
+        created_at: data.created_at,
+        check_in_at: data.check_in_at,
+        check_out_at: data.check_out_at,
+        notes: data.cancel_reason || data.notes || '',
+        purpose: data.purpose || 'Session travail',
+      };
+    } catch (err) {
+      console.warn('getReservationById fallback:', err);
+      return null;
+    }
+  }
+
+  /**
    * Check for double-booking conflicts on the same workstation for an overlapping time window
    */
   static async checkConflict(
@@ -151,7 +189,7 @@ export class ReservationRepository {
     }
   }
 
-  private static mapDbStatusToDomain(dbStatus: string): ReservationStatus {
+  static mapDbStatusToDomain(dbStatus: string): ReservationStatus {
     if (dbStatus === 'CHECKED_IN') return 'check-in';
     if (dbStatus === 'NO_SHOW') return 'no-show';
     if (dbStatus === 'PENDING_APPROVAL') return 'en attente';
@@ -160,7 +198,7 @@ export class ReservationRepository {
     return 'confirmée';
   }
 
-  private static mapDomainStatusToDb(domainStatus: string): string {
+  static mapDomainStatusToDb(domainStatus: string): string {
     if (domainStatus === 'check-in') return 'CHECKED_IN';
     if (domainStatus === 'no-show') return 'NO_SHOW';
     if (domainStatus === 'en attente') return 'PENDING_APPROVAL';

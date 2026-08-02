@@ -20,23 +20,30 @@ import { settingsRouter } from './routes/settings.routes';
 import { historyRouter } from './routes/history.routes';
 import { seedDatabaseIfEmpty } from '../database/seeder';
 import { NoShowService } from '../services/noshow/noShowService';
+import { authenticateJWT } from './middleware/authMiddleware';
+import { apiGeneralLimiter } from './middleware/rateLimiter';
+
 
 export function createExpressApp() {
   const app = express();
 
   app.use(express.json());
 
-  // Health check endpoint
+  // Health check endpoint (Public)
   app.get('/api/health', (req, res) => {
     res.json({
       status: 'ok',
-      service: 'OCP SA XFactory OS Backend API',
+      service: 'OCP SA XFactory OS Backend API (Zero-Trust Enforced)',
       site: 'Safi Site Digital Twin',
       timestamp: new Date().toISOString(),
     });
   });
 
-  // Microservices Express Routers
+  // 🛡️ ZERO-TRUST GLOBAL MIDDLEWARE: Rate limiting + JWT Verification for ALL /api/* routes
+  app.use('/api', apiGeneralLimiter);
+  app.use('/api', authenticateJWT);
+
+  // Microservices Express Routers (All protected by JWT + RBAC guards)
   app.use('/api/auth', authRouter);
   app.use('/api/reservations', reservationsRouter);
   app.use('/api/workspaces', workspacesRouter);
@@ -105,7 +112,7 @@ async function startServer() {
 
   if (!process.env.VERCEL) {
     app.listen(Number(PORT), '0.0.0.0', () => {
-      console.log(`[OCP XFactory Backend] Server running on http://0.0.0.0:${PORT}`);
+      console.log(`[OCP XFactory Backend] Zero-Trust Server running on http://0.0.0.0:${PORT}`);
     });
   }
 }

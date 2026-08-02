@@ -1,13 +1,15 @@
 import { Router } from 'express';
 import { SecurityService } from '@/services/security/securityService';
+import { requireRole } from '../middleware/rbacMiddleware';
 
 export const securityRouter = Router();
 
-securityRouter.get('/evacuation-roster', async (req, res) => {
+// GET /api/security/evacuation-roster — Security Guard & Admin roles only
+securityRouter.get('/evacuation-roster', requireRole('security_guard', 'admin', 'super_admin'), async (req, res) => {
   try {
     const data = SecurityService.getEvacuationRoster();
     res.json({ success: true, data });
   } catch (err) {
-    res.status(500).json({ success: false, error: 'Failed to fetch evacuation roster' });
+    res.status(500).json({ success: false, error: 'Échec de la récupération du registre d\'évacuation' });
   }
 });
