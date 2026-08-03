@@ -5,12 +5,12 @@
 
 import React from 'react';
 import { AuthProvider } from '../frontend/src/modules/auth/context/AuthContext';
-import { RoleShell } from '../frontend/src/shared/components/RoleShell';
+import { AuthGate } from '../frontend/src/modules/auth/components/AuthGate';
 
 export default function App() {
   return (
     <AuthProvider>
-      <RoleShell />
+      <AuthGate />
     </AuthProvider>
   );
 }

@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { SystemSettings } from '@/frontend/src/types';
 import { SettingsService } from '@/services/settings/settingsService';
-import { Settings, Save, RotateCcw, CheckCircle, Clock, CalendarDays, BarChart3, Building2, ShieldCheck, Tag } from 'lucide-react';
+import { OtpSettingsService } from '@/services/settings/otpSettingsService';
+import { useAuth } from '../../auth/context/AuthContext';
+import { Settings, Save, RotateCcw, CheckCircle, Clock, CalendarDays, BarChart3, Building2, ShieldCheck, Tag, KeyRound, History, X, AlertCircle } from 'lucide-react';
 
 /* ──────────────────────────────────────────────────────────────────
    Reusable: section card wrapper
@@ -113,15 +115,206 @@ const ToggleField: React.FC<{
   </div>
 );
 
+/* ──────────────────────────────────────────────────────────────────
+   OTP Verification Modal — Super Admin must confirm a 6-digit code
+   before any settings change is persisted (10-minute window).
+   ────────────────────────────────────────────────────────────────── */
+const OtpVerificationModal: React.FC<{
+  challengeId: string;
+  demoOtpCode?: string;
+  expiresAt: string;
+  onConfirm: (code: string) => Promise<void>;
+  onCancel: () => void;
+}> = ({ challengeId, demoOtpCode, expiresAt, onConfirm, onCancel }) => {
+  const [code, setCode] = useState('');
+  const [error, setError] = useState<string | undefined>();
+  const [submitting, setSubmitting] = useState(false);
+  const [secondsLeft, setSecondsLeft] = useState(() =>
+    Math.max(0, Math.round((new Date(expiresAt).getTime() - Date.now()) / 1000))
+  );
+
+  useEffect(() => {
+    const t = setInterval(() => {
+      setSecondsLeft(Math.max(0, Math.round((new Date(expiresAt).getTime() - Date.now()) / 1000)));
+    }, 1000);
+    return () => clearInterval(t);
+  }, [expiresAt]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(undefined);
+    setSubmitting(true);
+    try {
+      await onConfirm(code.trim());
+    } catch (err: any) {
+      setError(err?.message || 'Code de vérification invalide.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const minutes = String(Math.floor(secondsLeft / 60)).padStart(2, '0');
+  const seconds = String(secondsLeft % 60).padStart(2, '0');
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+      <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-6 space-y-4 relative">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"
+        >
+          <X className="w-4 h-4" />
+        </button>
+
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600">
+            <KeyRound className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-sm font-black text-slate-800 uppercase tracking-tight">Code de vérification</h3>
+            <p className="text-[10px] text-slate-400">Confirmez la modification des paramètres système</p>
+          </div>
+        </div>
+
+        {demoOtpCode && (
+          <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-800">
+            <strong>Mode démo :</strong> code envoyé — <span className="font-mono font-black text-sm">{demoOtpCode}</span>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <input
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]{6}"
+            maxLength={6}
+            autoFocus
+            placeholder="000000"
+            value={code}
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+            className="w-full text-center tracking-[0.5em] text-xl font-black p-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 transition-all"
+          />
+
+          <p className="text-[10px] text-center text-slate-400">
+            {secondsLeft > 0 ? `Expire dans ${minutes}:${seconds}` : 'Code expiré — veuillez recommencer.'}
+          </p>
+
+          {error && (
+            <div className="p-2.5 rounded-xl bg-red-50 text-red-700 border border-red-200 text-[11px] flex items-center gap-2">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          <div className="flex gap-2 pt-1">
+            <button
+              type="button"
+              onClick={onCancel}
+              className="flex-1 px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-all"
+            >
+              Annuler
+            </button>
+            <button
+              type="submit"
+              disabled={submitting || code.length !== 6 || secondsLeft <= 0}
+              className="flex-1 px-4 py-2.5 rounded-xl bg-[#008751] hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-xs transition-all"
+            >
+              {submitting ? 'Vérification…' : 'Confirmer'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+/* ──────────────────────────────────────────────────────────────────
+   Configuration Version History
+   ────────────────────────────────────────────────────────────────── */
+const SettingsHistoryTable: React.FC<{ refreshKey: number }> = ({ refreshKey }) => {
+  const [history, setHistory] = useState<Array<{ id: string; action: string; admin_name: string; details: string; created_at: string }>>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    SettingsService.getHistory().then((data) => {
+      if (!cancelled) {
+        setHistory(data);
+        setLoading(false);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshKey]);
+
+  return (
+    <SectionCard
+      icon={<History className="w-4 h-4" />}
+      title="Historique des Modifications"
+      subtitle="Chaque changement confirmé par OTP est journalisé avec un diff des valeurs"
+    >
+      <div className="md:col-span-2">
+        {loading ? (
+          <p className="text-xs text-slate-400">Chargement de l'historique…</p>
+        ) : history.length === 0 ? (
+          <p className="text-xs text-slate-400">Aucune modification enregistrée pour le moment.</p>
+        ) : (
+          <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+            {history.map((h) => (
+              <div key={h.id} className="p-3 rounded-xl bg-slate-50 border border-slate-100 text-xs">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="font-bold text-slate-700">{h.admin_name}</span>
+                  <span className="text-[10px] text-slate-400">{new Date(h.created_at).toLocaleString('fr-FR')}</span>
+                </div>
+                <p className="text-[11px] text-slate-500 break-words">{h.details}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </SectionCard>
+  );
+};
+
 export const SettingsView: React.FC = () => {
+  const { currentUser } = useAuth();
   const [settings, setSettings] = useState<SystemSettings>(SettingsService.getSettings());
   const [savedMsg, setSavedMsg] = useState(false);
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
 
-  const handleSave = (e: React.FormEvent) => {
+  const [otpChallenge, setOtpChallenge] = useState<{ challengeId: string; expiresAt: string; otpCode?: string } | null>(null);
+  const [requestError, setRequestError] = useState<string | undefined>();
+  const [requesting, setRequesting] = useState(false);
+
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    SettingsService.updateSettings(settings);
+    setRequestError(undefined);
+    setRequesting(true);
+    try {
+      const result = await OtpSettingsService.requestSettingsUpdate(
+        currentUser.id,
+        currentUser.full_name,
+        settings
+      );
+      setOtpChallenge(result);
+    } catch (err: any) {
+      setRequestError(err?.message || 'Erreur lors de la demande de modification.');
+    } finally {
+      setRequesting(false);
+    }
+  };
+
+  const handleConfirmOtp = async (code: string) => {
+    if (!otpChallenge) return;
+    const updated = await OtpSettingsService.confirmSettingsUpdate(otpChallenge.challengeId, code, currentUser.id);
+    setSettings(updated);
+    setOtpChallenge(null);
     setSavedMsg(true);
-    setTimeout(() => setSavedMsg(false), 2000);
+    setHistoryRefreshKey((k) => k + 1);
+    setTimeout(() => setSavedMsg(false), 2500);
   };
 
   const handleReset = () => {
@@ -153,7 +346,14 @@ export const SettingsView: React.FC = () => {
       {savedMsg && (
         <div className="p-3 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs flex items-center gap-2">
           <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
-          <span>Paramètres sauvegardés avec succès !</span>
+          <span>Paramètres modifiés et vérifiés par code OTP avec succès !</span>
+        </div>
+      )}
+
+      {requestError && (
+        <div className="p-3 rounded-xl bg-red-50 text-red-800 border border-red-200 text-xs flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+          <span>{requestError}</span>
         </div>
       )}
 
@@ -307,13 +507,27 @@ export const SettingsView: React.FC = () => {
         <div className="flex justify-end">
           <button
             type="submit"
-            className="flex items-center gap-2 px-5 py-2.5 bg-[#008751] hover:bg-emerald-600 text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer"
+            disabled={requesting}
+            className="flex items-center gap-2 px-5 py-2.5 bg-[#008751] hover:bg-emerald-600 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer"
           >
-            <Save className="w-4 h-4 text-amber-300" />
-            <span>Enregistrer la Configuration</span>
+            <KeyRound className="w-4 h-4 text-amber-300" />
+            <span>{requesting ? 'Envoi du code…' : 'Enregistrer (vérification OTP requise)'}</span>
           </button>
         </div>
       </form>
+
+      <SettingsHistoryTable refreshKey={historyRefreshKey} />
+
+      {otpChallenge && (
+        <OtpVerificationModal
+          challengeId={otpChallenge.challengeId}
+          demoOtpCode={otpChallenge.otpCode}
+          expiresAt={otpChallenge.expiresAt}
+          onConfirm={handleConfirmOtp}
+          onCancel={() => setOtpChallenge(null)}
+        />
+      )}
     </div>
+
   );
 };

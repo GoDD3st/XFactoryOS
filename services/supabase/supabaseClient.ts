@@ -1,15 +1,14 @@
-import { createClient } from '@supabase/supabase-js';
-
-const SUPABASE_URL = 'https://ygoqiipvarlqtvpuhrbo.supabase.co';
-// Public anon key for database interactions
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlnb3FpaXB2YXJscXR2cHVocmJvIiwicm9sZSI6ImFub24iLCJpYXQiOjE2ODgwMDAwMDAsImV4cCI6MjAwMDAwMDAwMH0.placeholderKeyForSupabaseAuthAndClient';
-
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-  },
-});
+/**
+ * NOTE: This file used to create its own `createClient(...)` instance with a
+ * hardcoded (non-functional placeholder) anon key, separate from the one in
+ * `database/client.ts`. Having two Supabase clients with `persistSession: true`
+ * in the same browser tab causes "Multiple GoTrueClient instances detected"
+ * warnings and can desync auth state between them. Now there is a single
+ * client, sourced from environment variables (VITE_SUPABASE_URL /
+ * VITE_SUPABASE_ANON_KEY), re-exported here for backward compatibility with
+ * existing imports.
+ */
+export { supabase } from '@/database/client';
 
 export const LOCAL_STORAGE_RESERVATIONS_KEY = 'xfactory_reservations_v2';
 export const LOCAL_STORAGE_WORKSTATIONS_KEY = 'xfactory_workstations_v2';

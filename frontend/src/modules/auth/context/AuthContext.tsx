@@ -1,7 +1,9 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { UserRole, UserProfile, RoleConfig } from '../../../types';
-import { LOCAL_STORAGE_ROLE_KEY } from '@/services/supabase/supabaseClient';
+import { LOCAL_STORAGE_ROLE_KEY, supabase } from '@/services/supabase/supabaseClient';
 import { ROLE_CONFIGS, DEFAULT_USERS_BY_ROLE, AuthService } from '@/services/auth/authService';
+import { isDemoMode } from '../utils/demoMode';
+import { fetchRealUserProfile, signOut as realSignOut } from '../services/realAuthService';
 
 export { ROLE_CONFIGS, DEFAULT_USERS_BY_ROLE };
 
@@ -12,6 +14,13 @@ interface AuthContextType {
   switchRole: (role: UserRole) => void;
   isAdminOrSuperAdmin: boolean;
   canView8Postes: boolean;
+  /** true when running with the QA Role Switcher (VITE_DEMO_MODE=true), false when gated by real Supabase Auth */
+  isDemoMode: boolean;
+  /** false while the initial Supabase session check is still in flight (real mode only) */
+  authLoading: boolean;
+  /** true once a real user is signed in (always true in demo mode) */
+  isAuthenticated: boolean;
+  signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -20,6 +29,8 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 if (typeof window !== 'undefined') {
   const originalFetch = window.fetch;
   window.fetch = async function (input: RequestInfo | URL, init?: RequestInit) {
+    if (!isDemoMode()) return originalFetch(input, init);
+
     const role = AuthService.getInitialRole() || 'collaborator';
     const initObj = init || {};
     const headers = new Headers(initObj.headers || {});
@@ -35,26 +46,76 @@ if (typeof window !== 'undefined') {
   };
 }
 
-export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [currentRole, setCurrentRole] = useState<UserRole>(() => {
-    return AuthService.getInitialRole();
-  });
+const GUEST_PROFILE: UserProfile = {
+  id: '',
+  email: '',
+  full_name: '',
+  department: '',
+  role: 'collaborator',
+  status: 'inactive',
+};
 
-  const [currentUser, setCurrentUser] = useState<UserProfile>(
-    AuthService.getUserForRole(currentRole)
-  );
+export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const demo = isDemoMode();
+
+  // ── Demo mode state (unchanged behavior: role switching via localStorage) ──
+  const [demoRole, setDemoRole] = useState<UserRole>(() => AuthService.getInitialRole());
+  const [demoUser, setDemoUser] = useState<UserProfile>(() => AuthService.getUserForRole(demoRole));
+
+  // ── Real mode state (Supabase Auth session) ──
+  const [realUser, setRealUser] = useState<UserProfile | null>(null);
+  const [authLoading, setAuthLoading] = useState<boolean>(!demo);
+
+  useEffect(() => {
+    if (demo) return; // demo mode never touches Supabase Auth
+
+    let cancelled = false;
+
+    supabase.auth.getSession().then(async ({ data }) => {
+      const sessionUser = data.session?.user;
+      if (sessionUser) {
+        const { profile } = await fetchRealUserProfile(sessionUser);
+        if (!cancelled) setRealUser(profile);
+      }
+      if (!cancelled) setAuthLoading(false);
+    });
+
+    const { data: sub } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (session?.user) {
+        const { profile } = await fetchRealUserProfile(session.user);
+        if (!cancelled) setRealUser(profile);
+      } else {
+        if (!cancelled) setRealUser(null);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      sub.subscription.unsubscribe();
+    };
+  }, [demo]);
 
   const switchRole = (newRole: UserRole) => {
+    if (!demo) {
+      console.warn('[AuthContext] switchRole() is disabled outside demo mode (VITE_DEMO_MODE=true).');
+      return;
+    }
     if (ROLE_CONFIGS[newRole]) {
-      setCurrentRole(newRole);
-      setCurrentUser(AuthService.getUserForRole(newRole));
+      setDemoRole(newRole);
+      setDemoUser(AuthService.getUserForRole(newRole));
       AuthService.saveRolePreference(newRole);
     }
   };
 
-  useEffect(() => {
-    setCurrentUser(AuthService.getUserForRole(currentRole));
-  }, [currentRole]);
+  const signOut = async () => {
+    if (demo) return; // nothing to sign out of in demo mode
+    await realSignOut();
+    setRealUser(null);
+  };
+
+  const currentUser = demo ? demoUser : realUser || GUEST_PROFILE;
+  const currentRole = demo ? demoRole : (realUser?.role || 'collaborator');
+  const isAuthenticated = demo ? true : !!realUser;
 
   const isAdminOrSuperAdmin = currentRole === 'admin' || currentRole === 'super_admin';
   const canView8Postes = isAdminOrSuperAdmin;
@@ -67,7 +128,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         roleConfig: ROLE_CONFIGS[currentRole],
         switchRole,
         isAdminOrSuperAdmin,
-        canView8Postes
+        canView8Postes,
+        isDemoMode: demo,
+        authLoading: demo ? false : authLoading,
+        isAuthenticated,
+        signOut,
       }}
     >
       {children}

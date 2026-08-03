@@ -134,7 +134,7 @@ const ROLE_TABS: Record<UserRole, TabDef[]> = {
 };
 
 export const RoleShell: React.FC = () => {
-  const { currentRole, currentUser, roleConfig, switchRole, canView8Postes } = useAuth();
+  const { currentRole, currentUser, roleConfig, switchRole, canView8Postes, isDemoMode, signOut } = useAuth();
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isAIOpen, setIsAIOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>('home');
@@ -233,9 +233,10 @@ export const RoleShell: React.FC = () => {
             </div>
           </div>
 
-          {/* Center / Right: QA Testing 10-Role Switcher */}
+          {/* Center / Right: QA Testing 10-Role Switcher (demo mode only) */}
           <div className="flex items-center space-x-3">
-            <div className="relative group">
+            {isDemoMode ? (
+              <div className="relative group">
               <div className="flex items-center bg-slate-100 hover:bg-slate-200/80 rounded-full px-3.5 py-1.5 gap-2 border border-slate-200 transition-all cursor-pointer text-slate-700">
                 <Shield className="w-4 h-4 text-emerald-600" />
                 <div className="flex items-center space-x-1.5 text-xs font-semibold text-slate-700">
@@ -286,7 +287,24 @@ export const RoleShell: React.FC = () => {
                   })}
                 </div>
               </div>
-            </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <div className="flex items-center bg-slate-100 rounded-full px-3.5 py-1.5 gap-2 border border-slate-200 text-slate-700">
+                  <Shield className="w-4 h-4 text-emerald-600" />
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${roleConfig.badgeColor}`}>
+                    {roleConfig.label}
+                  </span>
+                </div>
+                <button
+                  onClick={() => signOut()}
+                  className="text-[10px] font-bold text-slate-400 hover:text-red-600 uppercase tracking-wide px-2 py-1.5 rounded-lg hover:bg-red-50 transition-all"
+                  title="Se déconnecter"
+                >
+                  Déconnexion
+                </button>
+              </div>
+            )}
 
             {/* AI Assistant Button */}
             <button
