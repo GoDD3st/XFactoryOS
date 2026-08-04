@@ -28,27 +28,14 @@ import { SettingsService } from '@/services/settings/settingsService';
 import { useAuth } from '../../../modules/auth/context/AuthContext';
 
 
-function getNextValidDate(): string {
-  const date = new Date();
-
-  // if Saturday (6) → +2 days
-  if (date.getDay() === 6) {
-    date.setDate(date.getDate() + 2);
-  }
-
-  // if Sunday (0) → +1 day
-  if (date.getDay() === 0) {
-    date.setDate(date.getDate() + 1);
-  }
-
-  return date.toISOString().split('T')[0];
-}
-
-// NOTE: getMaxDate() used to hardcode "+2 days". It's now driven by the live
-// SystemSettings.bookingWindowDays, set from the Super Admin settings screen.
-function getMaxDate(bookingWindowDays: number): string {
+// Returns the first valid booking date = today + bookingWindowDays, skipping weekends
+function getFirstValidBookingDate(bookingWindowDays: number): string {
   const date = new Date();
   date.setDate(date.getDate() + bookingWindowDays);
+
+  // Skip weekends
+  if (date.getDay() === 6) date.setDate(date.getDate() + 2); // Saturday → Monday
+  if (date.getDay() === 0) date.setDate(date.getDate() + 1); // Sunday → Monday
 
   return date.toISOString().split('T')[0];
 }
@@ -56,7 +43,7 @@ function getMaxDate(bookingWindowDays: number): string {
 export const EndUserDashboard: React.FC = () => {
   const { currentUser, currentRole } = useAuth();
   const [settings, setSettings] = useState<SystemSettings>(SettingsService.getSettings());
-  const maxDate = getMaxDate(settings.bookingWindowDays);
+  const firstValidDate = getFirstValidBookingDate(settings.bookingWindowDays);
 
   useEffect(() => {
     const handleSettingsChange = () => setSettings(SettingsService.getSettings());
@@ -65,8 +52,8 @@ export const EndUserDashboard: React.FC = () => {
   }, []);
 
   // Booking Form State
-  const [resDate, setResDate] = useState<string>(getNextValidDate());
-  const [endDate, setEndDate] = useState<string>(getNextValidDate());
+  const [resDate, setResDate] = useState<string>(firstValidDate);
+  const [endDate, setEndDate] = useState<string>(firstValidDate);
   const [startTime, setStartTime] = useState<string>('08:00');
   const [endTime, setEndTime] = useState<string>('18:00');
   const [purpose, setPurpose] = useState<string>('');

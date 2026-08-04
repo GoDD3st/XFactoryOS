@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { SystemSettings } from '@/frontend/src/types';
 import { SettingsService } from '@/services/settings/settingsService';
-import { OtpSettingsService } from '@/services/settings/otpSettingsService';
 import { useAuth } from '../../auth/context/AuthContext';
 import { Settings, Save, RotateCcw, CheckCircle, Clock, CalendarDays, BarChart3, Building2, ShieldCheck, Tag, KeyRound, History, X, AlertCircle } from 'lucide-react';
 
@@ -294,12 +293,16 @@ export const SettingsView: React.FC = () => {
     setRequestError(undefined);
     setRequesting(true);
     try {
-      const result = await OtpSettingsService.requestSettingsUpdate(
+      const result = await SettingsService.requestUpdate(
         currentUser.id,
         currentUser.full_name,
         settings
       );
-      setOtpChallenge(result);
+      setOtpChallenge({
+        challengeId: result.challengeId,
+        expiresAt: String(result.expiresAt),
+        otpCode: result.otpCode,
+      });
     } catch (err: any) {
       setRequestError(err?.message || 'Erreur lors de la demande de modification.');
     } finally {
@@ -309,7 +312,7 @@ export const SettingsView: React.FC = () => {
 
   const handleConfirmOtp = async (code: string) => {
     if (!otpChallenge) return;
-    const updated = await OtpSettingsService.confirmSettingsUpdate(otpChallenge.challengeId, code, currentUser.id);
+    const updated = await SettingsService.confirmUpdate(otpChallenge.challengeId, code, currentUser.id);
     setSettings(updated);
     setOtpChallenge(null);
     setSavedMsg(true);

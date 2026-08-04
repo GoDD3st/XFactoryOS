@@ -117,6 +117,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const currentRole = demo ? demoRole : (realUser?.role || 'collaborator');
   const isAuthenticated = demo ? true : !!realUser;
 
+  // Defensive fallback: never let an unrecognized/empty role crash the UI.
+  // If this fires, it means `currentRole` held a value outside the 10 known
+  // UserRole keys — check the console warning below for the actual value.
+  const safeRoleConfig = ROLE_CONFIGS[currentRole] || ROLE_CONFIGS.collaborator;
+  if (!ROLE_CONFIGS[currentRole]) {
+    console.warn(
+      '[AuthContext] Unrecognized currentRole, falling back to collaborator. ' +
+      'demo=' + demo + ' currentRole=' + JSON.stringify(currentRole) + ' realUser=' + JSON.stringify(realUser)
+    );
+  }
+
   const isAdminOrSuperAdmin = currentRole === 'admin' || currentRole === 'super_admin';
   const canView8Postes = isAdminOrSuperAdmin;
 
@@ -125,7 +136,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       value={{
         currentUser,
         currentRole,
-        roleConfig: ROLE_CONFIGS[currentRole],
+        roleConfig: safeRoleConfig,
         switchRole,
         isAdminOrSuperAdmin,
         canView8Postes,

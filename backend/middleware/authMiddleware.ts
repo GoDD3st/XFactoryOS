@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { supabase } from '@/database/client';
 import { UserRole } from '@/frontend/src/types';
+import { normalizeRoleCode } from '@/frontend/src/modules/auth/utils/normalizeRole';
 
 /**
  * Authentication Middleware — Zero-Trust JWT Verification
@@ -39,7 +40,7 @@ const DEMO_USERS: Record<UserRole, { id: string; email: string; full_name: strin
 
 export async function authenticateJWT(req: Request, res: Response, next: NextFunction): Promise<void> {
   // Skip public routes
-  console.log('🔥 AUTH MIDDLEWARE HIT');
+  console.log('AUTH MIDDLEWARE HIT');
 
     
   const path = req.path || req.originalUrl;
@@ -47,8 +48,9 @@ export async function authenticateJWT(req: Request, res: Response, next: NextFun
     return next();
   }
 
-  // ── DEMO MODE ──
-  if (DEMO_MODE) {
+  // ── DEMO MODE — only when explicitly enabled ──
+  const isDemo = process.env.DEMO_MODE === 'true';
+  if (isDemo) {
     const demoRole = (req.headers['x-demo-role'] as UserRole) || 'collaborator';
     const demoUser = DEMO_USERS[demoRole] || DEMO_USERS.collaborator;
     req.user = {
@@ -95,7 +97,8 @@ export async function authenticateJWT(req: Request, res: Response, next: NextFun
       .limit(1)
       .single();
 
-    const role: UserRole = (userRoleData as any)?.roles?.code || 'collaborator';
+    const rawCode = (userRoleData as any)?.roles?.code;
+    const role: UserRole = normalizeRoleCode(rawCode);
 
     // Fetch user profile
     const { data: profile } = await supabase

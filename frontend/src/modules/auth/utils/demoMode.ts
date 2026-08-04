@@ -1,26 +1,21 @@
 /**
- * Frontend demo-mode flag.
+ * Frontend demo-mode detector.
  *
- * This is intentionally SEPARATE from the backend's `DEMO_MODE` env var
- * (read by `backend/middleware/authMiddleware.ts` via `process.env.DEMO_MODE`).
- * Vite only exposes `VITE_`-prefixed variables to browser code — a plain
- * `DEMO_MODE` in `.env` is invisible here by design, so we use its own key:
+ * Demo mode is ONLY active when VITE_DEMO_MODE is explicitly set to 'true'.
+ * Any other value (including undefined / missing) means real auth mode.
  *
- *   # .env (project root)
- *   DEMO_MODE=false        <- read by the Express backend (Node/process.env)
- *   VITE_DEMO_MODE=false   <- read by the browser bundle (this file)
+ *   # .env
+ *   VITE_DEMO_MODE=true   → Role Switcher shown, no login required
+ *   VITE_DEMO_MODE=false  → Role Switcher hidden, real Supabase Auth required
  *
- * Keep the two values in sync manually — they intentionally use different
- * variable names so it's obvious when reading `.env` which runtime reads which.
- *
- * true  -> Role Switcher UI is shown, no login required (current QA/demo flow).
- * false -> Role Switcher is hidden, a real Supabase Auth session is required.
+ * IMPORTANT: Vite replaces `import.meta.env.VITE_*` via static analysis at
+ * transform time. Dynamic access like `(import.meta as any).env` BREAKS this
+ * replacement and the value will always be undefined. We must use the direct
+ * static property access `import.meta.env.VITE_DEMO_MODE` for Vite to inject
+ * the value correctly.
  */
 export function isDemoMode(): boolean {
-  try {
-    const env = (import.meta as any)?.env;
-    return env?.VITE_DEMO_MODE === 'true';
-  } catch {
-    return false;
-  }
+  // Direct static access — Vite replaces this at transform time
+  const value = import.meta.env.VITE_DEMO_MODE;
+  return value === 'true';
 }

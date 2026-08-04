@@ -69,17 +69,18 @@ export class ReservationService {
       }
     }
 
-    // 2. Booking-window check: date must fall within [today, today + bookingWindowDays]
+    // 2. Anticipation delay check: reservation must start at least bookingWindowDays from today
     if (!isBypassRole && payload.reservation_date) {
       const todayStr = new Date().toISOString().split('T')[0];
       const today = new Date(todayStr + 'T00:00:00');
-      const maxDate = new Date(today);
-      maxDate.setDate(maxDate.getDate() + settings.bookingWindowDays);
+      const minAllowedStart = new Date(today);
+      minAllowedStart.setDate(minAllowedStart.getDate() + settings.bookingWindowDays);
       const requestedDate = new Date(payload.reservation_date + 'T00:00:00');
 
-      if (requestedDate < today || requestedDate > maxDate) {
+      if (requestedDate < minAllowedStart) {
+        const minFormatted = minAllowedStart.toLocaleDateString('fr-FR');
         throw new Error(
-          `Les réservations sont uniquement autorisées entre aujourd'hui et ${settings.bookingWindowDays} jour(s) à l'avance.`
+          `Les réservations doivent être effectuées au moins ${settings.bookingWindowDays} jour(s) à l'avance. Date minimale : ${minFormatted}.`
         );
       }
     }

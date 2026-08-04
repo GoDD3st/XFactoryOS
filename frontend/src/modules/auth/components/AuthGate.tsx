@@ -14,6 +14,8 @@ import { RoleShell } from '@/frontend/src/shared/components/RoleShell';
 export const AuthGate: React.FC = () => {
   const { isDemoMode, authLoading, isAuthenticated } = useAuth();
 
+  console.log('🔍 isDemoMode:', isDemoMode, '| VITE_DEMO_MODE:', import.meta.env.VITE_DEMO_MODE);
+
   if (!isDemoMode && authLoading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">

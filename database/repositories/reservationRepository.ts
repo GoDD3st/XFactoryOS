@@ -1,9 +1,10 @@
 import { supabase } from '../client';
 import { Reservation, ReservationStatus } from '@/frontend/src/types';
+import { AuditRepository } from './auditRepository';
 
 export class ReservationRepository {
   /**
-   * Fetch single reservation by ID (used for ownership verification & authorization)
+   * Fetch single reservation by ID
    */
   static async getReservationById(id: string): Promise<Reservation | null> {
     try {
@@ -18,12 +19,12 @@ export class ReservationRepository {
       return {
         id: data.id,
         user_id: data.user_id,
-        user_name: data.user_name || 'Collaborateur Safi',
-        user_department: data.user_department || 'Digital Factory',
+        user_name: data.user_name || data.metadata?.user_name || 'Collaborateur Safi',
+        user_department: data.user_department || data.metadata?.user_department || 'Digital Factory',
         workstation_id: data.workstation_id,
-        workstation_code: data.workstation_code || 'WS-SF',
-        cluster_id: data.cluster_id || 'cl-a',
-        cluster_name: data.cluster_name || 'Cluster A',
+        workstation_code: data.workstation_code || data.metadata?.workstation_code || 'WS-SF',
+        cluster_id: data.cluster_id || data.metadata?.cluster_id || 'cl-a',
+        cluster_name: data.cluster_name || data.metadata?.cluster_name || 'Cluster A',
         reservation_date: data.start_at ? new Date(data.start_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
         start_time: data.start_at ? new Date(data.start_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '08:30',
         end_time: data.end_at ? new Date(data.end_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '17:30',
@@ -31,7 +32,7 @@ export class ReservationRepository {
         created_at: data.created_at,
         check_in_at: data.check_in_at,
         check_out_at: data.check_out_at,
-        notes: data.cancel_reason || data.notes || '',
+        notes: data.cancel_reason || data.notes || data.metadata?.notes || '',
         purpose: data.purpose || 'Session travail',
       };
     } catch (err) {
@@ -41,7 +42,7 @@ export class ReservationRepository {
   }
 
   /**
-   * Check for double-booking conflicts on the same workstation for an overlapping time window
+   * Check for double-booking conflicts on the same workstation
    */
   static async checkConflict(
     workstationCode: string,
@@ -68,7 +69,6 @@ export class ReservationRepository {
       const { data, error } = await query;
       if (error || !data) return false;
 
-      // Check overlapping timestamps
       const hasConflict = data.some((r: any) => {
         const rStart = new Date(r.start_at).getTime();
         const rEnd = new Date(r.end_at).getTime();
@@ -86,8 +86,7 @@ export class ReservationRepository {
   }
 
   /**
-   * Fetch active reservations for a single user (used for daily/weekly quota enforcement).
-   * "Active" excludes cancelled/rejected/no-show so quotas aren't consumed by dead bookings.
+   * Fetch active reservations for a single user
    */
   static async getUserReservations(userId: string): Promise<Reservation[]> {
     try {
@@ -103,17 +102,19 @@ export class ReservationRepository {
       return data.map((r: any) => ({
         id: r.id,
         user_id: r.user_id,
-        user_name: r.user_name || 'Collaborateur Safi',
-        user_department: r.user_department || 'Digital Factory',
+        user_name: r.user_name || r.metadata?.user_name || 'Collaborateur Safi',
+        user_department: r.user_department || r.metadata?.user_department || 'Digital Factory',
         workstation_id: r.workstation_id,
-        workstation_code: r.workstation_code || 'WS-SF',
-        cluster_id: r.cluster_id || 'cl-a',
-        cluster_name: r.cluster_name || 'Cluster A',
+        workstation_code: r.workstation_code || r.metadata?.workstation_code || 'WS-SF',
+        cluster_id: r.cluster_id || r.metadata?.cluster_id || 'cl-a',
+        cluster_name: r.cluster_name || r.metadata?.cluster_name || 'Cluster A',
         reservation_date: r.start_at ? new Date(r.start_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
         start_time: r.start_at ? new Date(r.start_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '08:30',
         end_time: r.end_at ? new Date(r.end_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '17:30',
         status: this.mapDbStatusToDomain(r.status),
         created_at: r.created_at,
+        purpose: r.purpose || 'Session travail',
+        notes: r.notes || r.metadata?.notes || '',
       }));
     } catch (err) {
       console.warn('getUserReservations fallback:', err);
@@ -138,12 +139,12 @@ export class ReservationRepository {
       return data.map((r: any) => ({
         id: r.id,
         user_id: r.user_id,
-        user_name: r.user_name || 'Collaborateur Safi',
-        user_department: r.user_department || 'Digital Factory',
+        user_name: r.user_name || r.metadata?.user_name || 'Collaborateur Safi',
+        user_department: r.user_department || r.metadata?.user_department || 'Digital Factory',
         workstation_id: r.workstation_id,
-        workstation_code: r.workstation_code || 'WS-SF',
-        cluster_id: r.cluster_id || 'cl-a',
-        cluster_name: r.cluster_name || 'Cluster A',
+        workstation_code: r.workstation_code || r.metadata?.workstation_code || 'WS-SF',
+        cluster_id: r.cluster_id || r.metadata?.cluster_id || 'cl-a',
+        cluster_name: r.cluster_name || r.metadata?.cluster_name || 'Cluster A',
         reservation_date: r.start_at ? new Date(r.start_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
         start_time: r.start_at ? new Date(r.start_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '08:30',
         end_time: r.end_at ? new Date(r.end_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '17:30',
@@ -151,7 +152,7 @@ export class ReservationRepository {
         created_at: r.created_at,
         check_in_at: r.check_in_at,
         check_out_at: r.check_out_at,
-        notes: r.cancel_reason || r.notes || '',
+        notes: r.cancel_reason || r.notes || r.metadata?.notes || '',
         purpose: r.purpose || 'Session travail',
       }));
     } catch (err) {
@@ -161,7 +162,7 @@ export class ReservationRepository {
   }
 
   /**
-   * Create a new reservation in Supabase
+   * Create a new reservation in Supabase & log audit event
    */
   static async createReservation(payload: Partial<Reservation>): Promise<Reservation> {
     const startAt = new Date(`${payload.reservation_date}T${payload.start_time}`).toISOString();
@@ -186,7 +187,7 @@ export class ReservationRepository {
       console.warn('DB insert notice:', error);
     }
 
-    return {
+    const createdReservation: Reservation = {
       id: data?.id || `res_${Date.now()}`,
       user_id: payload.user_id || 'usr-current',
       user_name: payload.user_name || 'Collaborateur Safi',
@@ -203,10 +204,22 @@ export class ReservationRepository {
       purpose: payload.purpose,
       notes: payload.notes,
     };
+
+    // 🛡️ INSERT AUDIT LOG INTO SUPABASE DB
+    await AuditRepository.logEvent(
+      'RESERVATION_CREATED',
+      createdReservation.user_id,
+      createdReservation.user_name,
+      'collaborator',
+      createdReservation.workstation_code,
+      `Création réservation #${createdReservation.id.substring(0, 8)} pour ${createdReservation.user_name} (${createdReservation.user_department}) sur poste ${createdReservation.workstation_code} (${createdReservation.cluster_name}) le ${createdReservation.reservation_date} [${createdReservation.start_time} - ${createdReservation.end_time}]. Motif: ${createdReservation.purpose || 'Session travail'}`
+    );
+
+    return createdReservation;
   }
 
   /**
-   * Update reservation status in Supabase
+   * Update reservation status in Supabase & log audit event
    */
   static async updateReservationStatus(id: string, status: ReservationStatus, extra?: any): Promise<boolean> {
     try {
@@ -218,6 +231,17 @@ export class ReservationRepository {
       };
 
       await supabase.from('reservations').update(updateObj).eq('id', id);
+
+      // 🛡️ INSERT AUDIT LOG INTO SUPABASE DB
+      await AuditRepository.logEvent(
+        `RESERVATION_${status.toUpperCase().replace('-', '_')}`,
+        'system',
+        'XFactory OS',
+        'admin',
+        id,
+        `Mise à jour statut réservation #${id.substring(0, 8)} à : ${status}`
+      );
+
       return true;
     } catch (err) {
       console.error('Error updating reservation status:', err);

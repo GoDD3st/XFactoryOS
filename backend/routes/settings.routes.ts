@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { SettingsService } from '../../services/settings/settingsService';
 import { SettingsRepository } from '../../database/repositories/settingsRepository';
-import { OtpSettingsService } from '../../services/settings/otpSettingsService';
+import { OTPSettingsService } from '../../services/settings/otpSettingsService';
 import { requireRole } from '../middleware/rbacMiddleware';
 import { validateBody } from '../middleware/validateBody';
 import { SystemSettingsUpdateSchema, ConfirmSettingsUpdateSchema } from '../validators';
@@ -48,17 +48,16 @@ settingsRouter.get('/history', requireRole('super_admin'), async (req, res) => {
   }
 });
 
-// POST /api/settings/request-update — Super Admin only. Step 1 of the OTP flow:
-// validates the requested changes and issues a 6-digit OTP (10-min TTL).
+// POST /api/settings/request-update — Super Admin only. Step 1 of OTP flow (1-min TTL):
+// validates requested changes and issues a 6-digit OTP.
 settingsRouter.post(
   '/request-update',
   requireRole('super_admin'),
   validateBody(SystemSettingsUpdateSchema),
   async (req, res) => {
     try {
-      const result = await OtpSettingsService.requestSettingsUpdate(
+      const result = await OTPSettingsService.requestUpdate(
         req.user!.id,
-        req.user!.full_name,
         req.body
       );
       res.json({ status: 'otp_sent', ...result });
@@ -68,20 +67,26 @@ settingsRouter.post(
   }
 );
 
-// POST /api/settings/confirm-update — Super Admin only. Step 2 of the OTP flow:
-// validates the OTP code and, if correct, persists the change + logs an audit diff.
+// POST /api/settings/confirm-update — Super Admin only. Step 2 of OTP flow:
+// validates OTP code and, if correct, applies & persists change + logs audit diff.
 settingsRouter.post(
   '/confirm-update',
   requireRole('super_admin'),
   validateBody(ConfirmSettingsUpdateSchema),
   async (req, res) => {
     try {
-      const settings = await OtpSettingsService.confirmSettingsUpdate(
+      const result = await OTPSettingsService.confirmUpdate(
         req.body.challengeId,
         req.body.otpCode,
         req.user!.id
       );
-      res.json({ status: 'success', data: settings });
+
+      if (!result.success) {
+        res.status(400).json({ status: 'error', message: result.error });
+        return;
+      }
+
+      res.json({ status: 'success', data: result.updatedSettings });
     } catch (error: any) {
       res.status(400).json({ status: 'error', message: error.message });
     }

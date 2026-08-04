@@ -166,21 +166,22 @@ export function validateReservationConstraints(
 ): ReservationValidationResult {
   const isBypassRole = !!userRole && settings.bypassRoles.includes(userRole);
 
-  // 0. Booking window check — date must be within [today, today + bookingWindowDays]
+  // 0. Anticipation delay check — reservation must start at least bookingWindowDays from today
   if (!isBypassRole) {
     const todayStr = new Date().toISOString().split('T')[0];
     const today = new Date(todayStr + 'T00:00:00');
-    const maxDate = new Date(today);
-    maxDate.setDate(maxDate.getDate() + settings.bookingWindowDays);
+    const minAllowedStart = new Date(today);
+    minAllowedStart.setDate(minAllowedStart.getDate() + settings.bookingWindowDays);
     const requestedStart = new Date(startDateStr + 'T00:00:00');
 
-    if (requestedStart < today || requestedStart > maxDate) {
+    if (requestedStart < minAllowedStart) {
+      const minFormatted = minAllowedStart.toLocaleDateString('fr-FR');
       return {
         valid: false,
         requiresExtensionApproval: false,
         businessDays: 0,
         durationMinutes: 0,
-        errorMessage: `Les réservations sont uniquement autorisées entre aujourd'hui et ${settings.bookingWindowDays} jour(s) à l'avance (fenêtre configurée).`
+        errorMessage: `Les réservations doivent être effectuées au moins ${settings.bookingWindowDays} jour(s) à l'avance. Date minimale autorisée : ${minFormatted}.`
       };
     }
   }

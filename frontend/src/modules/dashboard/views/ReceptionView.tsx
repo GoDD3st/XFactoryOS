@@ -111,15 +111,21 @@ export const ReceptionView: React.FC = () => {
               <p className="py-8 text-center text-xs text-slate-400">Aucune réservation aujourd'hui.</p>
             ) : (
               todaysReservations.map((res) => (
-                <div key={res.id} className="py-3 flex items-center justify-between hover:bg-slate-50 px-2 rounded-lg transition-colors">
-                  <div>
+                <div key={res.id} className="py-3 flex items-start justify-between hover:bg-slate-50 px-2 rounded-lg transition-colors border-b border-slate-100/60 last:border-0">
+                  <div className="space-y-0.5">
                     <div className="flex items-center space-x-2">
                       <span className="font-bold text-xs text-slate-900">{res.user_name}</span>
-                      <span className="text-[10px] px-2 py-0.5 rounded bg-slate-100 text-slate-600 font-semibold">{res.user_department}</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200/60 font-bold">{res.user_department}</span>
+                      <span className="text-[9px] font-mono text-slate-400">ID: {res.user_id}</span>
                     </div>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Poste: <strong className="text-slate-800">{res.workstation_code}</strong> ({res.cluster_name}) | Horaire: {res.start_time} - {res.end_time}
+                    <p className="text-xs text-slate-600 font-medium">
+                      Poste: <strong className="text-slate-900">{res.workstation_code}</strong> ({res.cluster_name}) | Horaire: {res.start_time} - {res.end_time}
                     </p>
+                    <p className="text-[11px] text-slate-500 font-semibold">
+                      Motif: <span className="text-slate-800">{res.purpose || 'Session de travail'}</span>
+                      {res.notes && <span className="text-slate-400 font-normal ml-2">— Notes: {res.notes}</span>}
+                    </p>
+                    <p className="text-[9px] font-mono text-slate-400">Réf: #{res.id.substring(0, 8)}</p>
                   </div>
 
                   <div>

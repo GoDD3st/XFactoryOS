@@ -297,10 +297,10 @@ export const ReservationsTable: React.FC<ReservationsTableProps> = ({
           <table className="w-full text-left border-collapse text-xs">
             <thead>
               <tr className="bg-slate-100/80 text-slate-700 font-bold border-b border-slate-200">
-                <th className="py-3 px-4">Collaborateur / Département</th>
-                <th className="py-3 px-4">Code Poste</th>
-                <th className="py-3 px-4">Cluster</th>
+                <th className="py-3 px-4">Collaborateur & ID</th>
+                <th className="py-3 px-4">Poste & Cluster</th>
                 <th className="py-3 px-4">Date & Horaire</th>
+                <th className="py-3 px-4">Motif & Détails</th>
                 <th className="py-3 px-4">Statut</th>
                 <th className="py-3 px-4 text-right">Actions</th>
               </tr>
@@ -310,18 +310,17 @@ export const ReservationsTable: React.FC<ReservationsTableProps> = ({
                 <tr key={res.id} className="hover:bg-slate-50/80 transition-colors">
                   <td className="py-3 px-4">
                     <div className="font-bold text-slate-900">{res.user_name || 'Utilisateur OCP'}</div>
-                    <div className="text-[11px] text-slate-500">{res.user_department || 'OCP SA Safi'}</div>
+                    <div className="text-[11px] font-semibold text-emerald-700">{res.user_department || 'OCP SA Safi'}</div>
+                    <div className="text-[10px] text-slate-400 font-mono">ID: {res.user_id}</div>
                   </td>
 
                   <td className="py-3 px-4">
-                    <span className="font-extrabold px-2.5 py-1 rounded bg-slate-900 text-white tracking-wider">
-                      {res.workstation_code}
-                    </span>
-                  </td>
-
-                  <td className="py-3 px-4">
-                    <div className="font-semibold text-slate-800">{res.cluster_name}</div>
-                    <div className="text-[10px] text-slate-400">{res.cluster_id}</div>
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span className="font-extrabold px-2.5 py-1 rounded bg-slate-900 text-white tracking-wider text-[11px]">
+                        {res.workstation_code}
+                      </span>
+                    </div>
+                    <div className="font-semibold text-slate-800 text-[11px]">{res.cluster_name}</div>
                   </td>
 
                   <td className="py-3 px-4">
@@ -333,6 +332,16 @@ export const ReservationsTable: React.FC<ReservationsTableProps> = ({
                       <Clock className="w-3 h-3" />
                       <span>{res.start_time} - {res.end_time}</span>
                     </div>
+                  </td>
+
+                  <td className="py-3 px-4">
+                    <div className="font-bold text-slate-800 text-[11px]">{res.purpose || 'Session de travail'}</div>
+                    {res.notes && (
+                      <div className="text-[10px] text-slate-500 max-w-xs truncate" title={res.notes}>
+                        Notes: {res.notes}
+                      </div>
+                    )}
+                    <div className="text-[9px] text-slate-400 font-mono mt-0.5">Ref: #{res.id.substring(0, 8)}</div>
                   </td>
 
                   <td className="py-3 px-4">

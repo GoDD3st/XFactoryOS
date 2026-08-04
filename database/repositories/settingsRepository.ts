@@ -123,7 +123,7 @@ export class SettingsRepository {
       const { data, error } = await supabase
         .from('audit_logs')
         .select('*')
-        .in('action', ['SETTINGS_UPDATED', 'SETTINGS_UPDATE_REQUESTED'])
+        .in('action', ['SYSTEM_SETTINGS_UPDATED', 'SETTINGS_UPDATED', 'SETTINGS_UPDATE_REQUESTED'])
         .order('created_at', { ascending: false })
         .limit(limit);
 
