@@ -5,9 +5,9 @@ import { requireOwnerOrAdmin } from '../middleware/rbacMiddleware';
 export const historyRouter = Router();
 
 // POST /api/history — Search reservation history (Authenticated user)
-historyRouter.post('/', (req, res) => {
+historyRouter.post('/', async (req, res) => {
   try {
-    const results = HistoryService.getReservationHistory(req.body);
+    const results = await HistoryService.getReservationHistory(req.body);
     res.json(results);
   } catch (error) {
     res.status(500).json({ error: 'Échec de la recherche dans l\'historique' });
@@ -15,9 +15,9 @@ historyRouter.post('/', (req, res) => {
 });
 
 // GET /api/history/workstation/:code — Workstation history
-historyRouter.get('/workstation/:code', (req, res) => {
+historyRouter.get('/workstation/:code', async (req, res) => {
   try {
-    const results = HistoryService.getWorkstationHistory(req.params.code);
+    const results = await HistoryService.getWorkstationHistory(req.params.code);
     res.json(results);
   } catch (error) {
     res.status(500).json({ error: 'Échec de la récupération de l\'historique du poste' });
@@ -25,9 +25,9 @@ historyRouter.get('/workstation/:code', (req, res) => {
 });
 
 // GET /api/history/user/:id — User history (Ownership enforced: owner or admin only)
-historyRouter.get('/user/:id', requireOwnerOrAdmin(req => req.params.id), (req, res) => {
+historyRouter.get('/user/:id', requireOwnerOrAdmin(req => req.params.id), async (req, res) => {
   try {
-    const results = HistoryService.getUserHistory(req.params.id);
+    const results = await HistoryService.getUserHistory(req.params.id);
     res.json(results);
   } catch (error) {
     res.status(500).json({ error: 'Échec de la récupération de l\'historique utilisateur' });

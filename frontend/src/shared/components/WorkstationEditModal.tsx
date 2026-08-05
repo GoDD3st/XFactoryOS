@@ -32,10 +32,7 @@ export const WorkstationEditModal: React.FC<WorkstationEditModalProps> = ({
   const [status, setStatus] = useState<SeatStatus>(workstation.status);
   const [reservable, setReservable] = useState<boolean>(workstation.reservable);
   const [visibleToUsers, setVisibleToUsers] = useState<boolean>(workstation.visibleToUsers);
-  const [hasDoubleScreen, setHasDoubleScreen] = useState<boolean>(
-    workstation.metadata.has_double_screen
-  );
-  const [nearWindow, setNearWindow] = useState<boolean>(workstation.metadata.near_window);
+  const [nearWindow, setNearWindow] = useState<boolean>(!!workstation.metadata.near_window);
   const [isPmr, setIsPmr] = useState<boolean>(workstation.metadata.is_pmr);
   const [isQuietZone, setIsQuietZone] = useState<boolean>(workstation.metadata.is_quiet_zone);
   const [notes, setNotes] = useState<string>(workstation.metadata.notes || '');
@@ -142,16 +139,6 @@ export const WorkstationEditModal: React.FC<WorkstationEditModalProps> = ({
                 className="w-4 h-4 text-[#008751] rounded border-slate-300"
               />
               <span className="text-xs font-bold text-slate-700">Visible sur le twin 2D</span>
-            </label>
-
-            <label className="flex items-center space-x-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={hasDoubleScreen}
-                onChange={(e) => setHasDoubleScreen(e.target.checked)}
-                className="w-4 h-4 text-[#008751] rounded border-slate-300"
-              />
-              <span className="text-xs font-bold text-slate-700">Double Écran 4K</span>
             </label>
 
             <label className="flex items-center space-x-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200 cursor-pointer">

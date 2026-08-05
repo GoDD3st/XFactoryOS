@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { AuthService, ROLE_CONFIGS, DEFAULT_USERS_BY_ROLE } from '@/services/auth/authService';
 import { supabase } from '@/database/client';
+import { UserRepository } from '@/database/repositories/userRepository';
+import { AuditRepository } from '@/database/repositories/auditRepository';
 import { UserRole } from '@/frontend/src/types';
 import { validateBody } from '../middleware/validateBody';
 import { LoginSchema, RegisterSchema } from '../validators';
@@ -72,6 +74,23 @@ authRouter.post('/register', validateBody(RegisterSchema), async (req, res) => {
     if (error) {
       res.status(400).json({ status: 'error', message: error.message });
       return;
+    }
+
+    if (data.user) {
+      await UserRepository.ensureUserProfile({
+        id: data.user.id,
+        email: data.user.email,
+        user_metadata: { full_name, department },
+      });
+
+      await AuditRepository.logEvent(
+        'USER_REGISTERED',
+        data.user.id,
+        full_name,
+        'collaborator',
+        data.user.id,
+        `Nouveau compte créé : ${email} (${department || 'Digital Factory'})`
+      );
     }
 
     res.status(201).json({

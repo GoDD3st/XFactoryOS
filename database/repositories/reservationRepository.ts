@@ -1,6 +1,9 @@
-import { supabase } from '../client';
+import { supabase, executeDbQuery, DatabaseError } from '../client';
+import { SupabaseClient } from '@supabase/supabase-js';
 import { Reservation, ReservationStatus } from '@/frontend/src/types';
 import { AuditRepository } from './auditRepository';
+import { WorkstationRepository } from './workstationRepository';
+import { isValidUuid } from '../utils/uuid';
 
 export class ReservationRepository {
   /**
@@ -16,25 +19,7 @@ export class ReservationRepository {
 
       if (error || !data) return null;
 
-      return {
-        id: data.id,
-        user_id: data.user_id,
-        user_name: data.user_name || data.metadata?.user_name || 'Collaborateur Safi',
-        user_department: data.user_department || data.metadata?.user_department || 'Digital Factory',
-        workstation_id: data.workstation_id,
-        workstation_code: data.workstation_code || data.metadata?.workstation_code || 'WS-SF',
-        cluster_id: data.cluster_id || data.metadata?.cluster_id || 'cl-a',
-        cluster_name: data.cluster_name || data.metadata?.cluster_name || 'Cluster A',
-        reservation_date: data.start_at ? new Date(data.start_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-        start_time: data.start_at ? new Date(data.start_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '08:30',
-        end_time: data.end_at ? new Date(data.end_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '17:30',
-        status: this.mapDbStatusToDomain(data.status),
-        created_at: data.created_at,
-        check_in_at: data.check_in_at,
-        check_out_at: data.check_out_at,
-        notes: data.cancel_reason || data.notes || data.metadata?.notes || '',
-        purpose: data.purpose || 'Session travail',
-      };
+      return this.mapRowToReservation(data);
     } catch (err) {
       console.warn('getReservationById fallback:', err);
       return null;
@@ -49,15 +34,18 @@ export class ReservationRepository {
     reservationDate: string,
     startTime: string,
     endTime: string,
-    excludeReservationId?: string
+    excludeReservationId?: string,
+    dbClient: SupabaseClient = supabase
   ): Promise<boolean> {
     try {
+      const workstationId = await WorkstationRepository.resolveWorkstationId(undefined, workstationCode, dbClient);
       const startAt = new Date(`${reservationDate}T${startTime}`).toISOString();
       const endAt = new Date(`${reservationDate}T${endTime}`).toISOString();
 
-      let query = supabase
+      let query = dbClient
         .from('reservations')
         .select('id, workstation_id, start_at, end_at, status')
+        .eq('workstation_id', workstationId)
         .neq('status', 'CANCELLED')
         .neq('status', 'NO_SHOW')
         .neq('status', 'COMPLETED');
@@ -69,16 +57,14 @@ export class ReservationRepository {
       const { data, error } = await query;
       if (error || !data) return false;
 
-      const hasConflict = data.some((r: any) => {
+      const newStart = new Date(startAt).getTime();
+      const newEnd = new Date(endAt).getTime();
+
+      return data.some((r: any) => {
         const rStart = new Date(r.start_at).getTime();
         const rEnd = new Date(r.end_at).getTime();
-        const newStart = new Date(startAt).getTime();
-        const newEnd = new Date(endAt).getTime();
-
         return newStart < rEnd && newEnd > rStart;
       });
-
-      return hasConflict;
     } catch (err) {
       console.warn('Conflict check warning:', err);
       return false;
@@ -88,9 +74,11 @@ export class ReservationRepository {
   /**
    * Fetch active reservations for a single user
    */
-  static async getUserReservations(userId: string): Promise<Reservation[]> {
+  static async getUserReservations(userId: string, dbClient: SupabaseClient = supabase): Promise<Reservation[]> {
+    if (!isValidUuid(userId)) return [];
+
     try {
-      const { data, error } = await supabase
+      const { data, error } = await dbClient
         .from('reservations')
         .select('*')
         .eq('user_id', userId)
@@ -99,23 +87,7 @@ export class ReservationRepository {
 
       if (error || !data) return [];
 
-      return data.map((r: any) => ({
-        id: r.id,
-        user_id: r.user_id,
-        user_name: r.user_name || r.metadata?.user_name || 'Collaborateur Safi',
-        user_department: r.user_department || r.metadata?.user_department || 'Digital Factory',
-        workstation_id: r.workstation_id,
-        workstation_code: r.workstation_code || r.metadata?.workstation_code || 'WS-SF',
-        cluster_id: r.cluster_id || r.metadata?.cluster_id || 'cl-a',
-        cluster_name: r.cluster_name || r.metadata?.cluster_name || 'Cluster A',
-        reservation_date: r.start_at ? new Date(r.start_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-        start_time: r.start_at ? new Date(r.start_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '08:30',
-        end_time: r.end_at ? new Date(r.end_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '17:30',
-        status: this.mapDbStatusToDomain(r.status),
-        created_at: r.created_at,
-        purpose: r.purpose || 'Session travail',
-        notes: r.notes || r.metadata?.notes || '',
-      }));
+      return data.map((r: any) => this.mapRowToReservation(r));
     } catch (err) {
       console.warn('getUserReservations fallback:', err);
       return [];
@@ -123,55 +95,53 @@ export class ReservationRepository {
   }
 
   /**
-   * Fetch all reservations from Supabase
+   * Fetch all reservations from Supabase (throws on query error — never silently wipe cache)
    */
-  static async getAllReservations(): Promise<Reservation[]> {
-    try {
-      const { data, error } = await supabase
-        .from('reservations')
-        .select('*')
-        .order('created_at', { ascending: false });
+  static async getAllReservations(dbClient: SupabaseClient = supabase): Promise<Reservation[]> {
+    const { data, error } = await dbClient
+      .from('reservations')
+      .select('*')
+      .order('created_at', { ascending: false });
 
-      if (error || !data || data.length === 0) {
-        return [];
-      }
+    if (error) {
+      console.error('getAllReservations error:', error);
+      throw new DatabaseError('reservations', 'select', error.message || 'Impossible de lire les réservations', error);
+    }
 
-      return data.map((r: any) => ({
-        id: r.id,
-        user_id: r.user_id,
-        user_name: r.user_name || r.metadata?.user_name || 'Collaborateur Safi',
-        user_department: r.user_department || r.metadata?.user_department || 'Digital Factory',
-        workstation_id: r.workstation_id,
-        workstation_code: r.workstation_code || r.metadata?.workstation_code || 'WS-SF',
-        cluster_id: r.cluster_id || r.metadata?.cluster_id || 'cl-a',
-        cluster_name: r.cluster_name || r.metadata?.cluster_name || 'Cluster A',
-        reservation_date: r.start_at ? new Date(r.start_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-        start_time: r.start_at ? new Date(r.start_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '08:30',
-        end_time: r.end_at ? new Date(r.end_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '17:30',
-        status: this.mapDbStatusToDomain(r.status),
-        created_at: r.created_at,
-        check_in_at: r.check_in_at,
-        check_out_at: r.check_out_at,
-        notes: r.cancel_reason || r.notes || r.metadata?.notes || '',
-        purpose: r.purpose || 'Session travail',
-      }));
-    } catch (err) {
-      console.warn('Fetch reservations fallback:', err);
+    if (!data || data.length === 0) {
       return [];
     }
+
+    return data.map((r: any) => this.mapRowToReservation(r));
   }
 
   /**
-   * Create a new reservation in Supabase & log audit event
+   * Create a new reservation in Supabase & log audit event.
+   * Throws if the insert fails — never returns a fake local-only reservation.
    */
-  static async createReservation(payload: Partial<Reservation>): Promise<Reservation> {
+  static async createReservation(
+    payload: Partial<Reservation>,
+    dbClient: SupabaseClient = supabase
+  ): Promise<Reservation> {
+    if (!payload.user_id || !isValidUuid(payload.user_id)) {
+      throw new Error(
+        'Session utilisateur invalide. Déconnectez-vous puis reconnectez-vous avec votre compte Supabase.'
+      );
+    }
+
+    const workstationId = await WorkstationRepository.resolveWorkstationId(
+      payload.workstation_id,
+      payload.workstation_code,
+      dbClient
+    );
+
     const startAt = new Date(`${payload.reservation_date}T${payload.start_time}`).toISOString();
     const endAt = new Date(`${payload.reservation_date}T${payload.end_time}`).toISOString();
     const dbStatus = this.mapDomainStatusToDb(payload.status || 'confirmée');
 
     const dbPayload = {
-      workstation_id: payload.workstation_id || '00000000-0000-0000-0000-000000000000',
-      user_id: payload.user_id || '00000000-0000-0000-0000-000000000000',
+      workstation_id: workstationId,
+      user_id: payload.user_id,
       type: 'STANDARD',
       start_at: startAt,
       end_at: endAt,
@@ -181,38 +151,19 @@ export class ReservationRepository {
       check_in_deadline: new Date(new Date(startAt).getTime() + 30 * 60000).toISOString(),
     };
 
-    const { data, error } = await supabase.from('reservations').insert(dbPayload).select().single();
+    const data = await executeDbQuery<any>('reservations', 'insert', async () =>
+      dbClient.from('reservations').insert(dbPayload).select().single()
+    );
 
-    if (error) {
-      console.warn('DB insert notice:', error);
-    }
+    const createdReservation = this.mapRowToReservation(data, payload);
 
-    const createdReservation: Reservation = {
-      id: data?.id || `res_${Date.now()}`,
-      user_id: payload.user_id || 'usr-current',
-      user_name: payload.user_name || 'Collaborateur Safi',
-      user_department: payload.user_department || 'Digital Factory',
-      workstation_id: payload.workstation_id || '',
-      workstation_code: payload.workstation_code || 'WS-SF',
-      cluster_id: payload.cluster_id || 'cl-a',
-      cluster_name: payload.cluster_name || 'Cluster A',
-      reservation_date: payload.reservation_date || new Date().toISOString().split('T')[0],
-      start_time: payload.start_time || '08:30',
-      end_time: payload.end_time || '17:30',
-      status: (payload.status as ReservationStatus) || 'confirmée',
-      created_at: new Date().toISOString(),
-      purpose: payload.purpose,
-      notes: payload.notes,
-    };
-
-    // 🛡️ INSERT AUDIT LOG INTO SUPABASE DB
     await AuditRepository.logEvent(
       'RESERVATION_CREATED',
       createdReservation.user_id,
       createdReservation.user_name,
       'collaborator',
       createdReservation.workstation_code,
-      `Création réservation #${createdReservation.id.substring(0, 8)} pour ${createdReservation.user_name} (${createdReservation.user_department}) sur poste ${createdReservation.workstation_code} (${createdReservation.cluster_name}) le ${createdReservation.reservation_date} [${createdReservation.start_time} - ${createdReservation.end_time}]. Motif: ${createdReservation.purpose || 'Session travail'}`
+      `Création réservation #${createdReservation.id.substring(0, 8)} pour ${createdReservation.user_name} sur poste ${createdReservation.workstation_code} le ${createdReservation.reservation_date}`
     );
 
     return createdReservation;
@@ -230,9 +181,12 @@ export class ReservationRepository {
         ...extra,
       };
 
-      await supabase.from('reservations').update(updateObj).eq('id', id);
+      const { error } = await supabase.from('reservations').update(updateObj).eq('id', id);
+      if (error) {
+        console.error('Error updating reservation status:', error);
+        return false;
+      }
 
-      // 🛡️ INSERT AUDIT LOG INTO SUPABASE DB
       await AuditRepository.logEvent(
         `RESERVATION_${status.toUpperCase().replace('-', '_')}`,
         'system',
@@ -247,6 +201,35 @@ export class ReservationRepository {
       console.error('Error updating reservation status:', err);
       return false;
     }
+  }
+
+  private static mapRowToReservation(data: any, fallback?: Partial<Reservation>): Reservation {
+    const formatTime = (iso: string) => {
+      const d = new Date(iso);
+      return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    };
+
+    return {
+      id: data.id,
+      user_id: data.user_id,
+      user_name: fallback?.user_name || data.user_name || 'Collaborateur Safi',
+      user_department: fallback?.user_department || data.user_department || 'Digital Factory',
+      workstation_id: data.workstation_id,
+      workstation_code: fallback?.workstation_code || data.workstation_code || 'WS-SF',
+      cluster_id: fallback?.cluster_id || data.cluster_id || 'cl-a',
+      cluster_name: fallback?.cluster_name || data.cluster_name || 'Cluster A',
+      reservation_date: data.start_at
+        ? new Date(data.start_at).toISOString().split('T')[0]
+        : fallback?.reservation_date || new Date().toISOString().split('T')[0],
+      start_time: data.start_at ? formatTime(data.start_at) : fallback?.start_time || '08:30',
+      end_time: data.end_at ? formatTime(data.end_at) : fallback?.end_time || '17:30',
+      status: this.mapDbStatusToDomain(data.status),
+      created_at: data.created_at,
+      check_in_at: data.check_in_at,
+      check_out_at: data.check_out_at,
+      notes: data.cancel_reason || fallback?.notes || '',
+      purpose: data.purpose || fallback?.purpose || 'Session travail',
+    };
   }
 
   static mapDbStatusToDomain(dbStatus: string): ReservationStatus {

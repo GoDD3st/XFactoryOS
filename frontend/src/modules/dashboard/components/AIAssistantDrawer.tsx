@@ -7,9 +7,10 @@ interface AIAssistantDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   userRole: string;
+  userId?: string;
 }
 
-export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ isOpen, onClose, userRole }: AIAssistantDrawerProps) => {
+export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ isOpen, onClose, userRole, userId }: AIAssistantDrawerProps) => {
   const [inputQuery, setInputQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [messages, setMessages] = useState<AIAssistantMessage[]>([
@@ -45,7 +46,7 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ isOpen, on
     setLoading(true);
 
     try {
-      const response = await askXFactoryAI(query, userRole);
+      const response = await askXFactoryAI(query, userRole, userId);
       setMessages((prev) => [...prev, response]);
     } catch (err) {
       console.error('AI error:', err);

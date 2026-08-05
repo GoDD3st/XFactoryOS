@@ -13,9 +13,6 @@ export class SearchService {
     if (query.status) {
       workstations = workstations.filter(w => w.status === query.status);
     }
-    if (query.hasDoubleScreen !== undefined) {
-      workstations = workstations.filter(w => w.metadata.has_double_screen === query.hasDoubleScreen);
-    }
     if (query.nearWindow !== undefined) {
       workstations = workstations.filter(w => w.metadata.near_window === query.nearWindow);
     }

@@ -24,14 +24,9 @@ export interface UserProfile {
 export type SeatStatus = 'disponible' | 'réservé' | 'maintenance' | 'occupé' | 'extension' | 'management_reserved';
 
 export interface WorkstationMetadata {
-  has_double_screen?: boolean;
   near_window?: boolean;
   is_pmr?: boolean;
   is_quiet_zone?: boolean;
-  power_outlet?: boolean;
-  docking_station?: string;
-  monitor_size?: string;
-  network_port?: string;
   notes?: string;
 }
 
@@ -83,7 +78,6 @@ export interface Reservation {
 }
 
 export interface QuickFilters {
-  doubleScreen: boolean;
   nearWindow: boolean;
   pmr: boolean;
   quietZone: boolean;
@@ -180,7 +174,6 @@ export interface WorkstationSearchQuery {
   keyword?: string;
   clusterId?: string;
   status?: SeatStatus;
-  hasDoubleScreen?: boolean;
   nearWindow?: boolean;
   isPMR?: boolean;
   isQuietZone?: boolean;

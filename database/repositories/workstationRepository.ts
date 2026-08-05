@@ -1,7 +1,35 @@
 import { supabase } from '../client';
 import { Workstation, Cluster } from '@/frontend/src/types';
+import { SupabaseClient } from '@supabase/supabase-js';
 
 export class WorkstationRepository {
+  /**
+   * Resolve a workstation UUID from id and/or code (required for Supabase FK inserts).
+   */
+  static async resolveWorkstationId(
+    workstationId?: string,
+    workstationCode?: string,
+    dbClient?: SupabaseClient
+  ): Promise<string> {
+    const { isValidUuid } = await import('../utils/uuid');
+    const client = dbClient || (await import('../client')).supabase;
+
+    if (workstationId && isValidUuid(workstationId)) {
+      const { data } = await client.from('workstations').select('id').eq('id', workstationId).maybeSingle();
+      if (data?.id) return data.id;
+    }
+
+    if (workstationCode) {
+      const { data } = await client.from('workstations').select('id').eq('code', workstationCode).maybeSingle();
+      if (data?.id) return data.id;
+    }
+
+    throw new Error(
+      `Poste introuvable dans Supabase (${workstationCode || workstationId || 'inconnu'}). ` +
+        'Vérifiez que le serveur a bien initialisé les clusters (npm run dev).'
+    );
+  }
+
   /**
    * Fetch all active clusters from Supabase
    */
@@ -66,13 +94,10 @@ export class WorkstationRepository {
           is_extension: seatNum > 4,
           visibleToUsers: w.visibleToUsers ?? true,
           metadata: {
-            monitor_size: w.metadata?.monitor_size || '27" 4K Dual Dock',
-            docking_station: w.metadata?.docking_station || 'USB-C Thunderbolt 4',
-            has_double_screen: w.metadata?.has_double_screen ?? (seatNum % 2 === 0),
             near_window: w.metadata?.near_window ?? (seatNum === 1),
             is_pmr: w.metadata?.is_pmr ?? (seatNum === 1),
             is_quiet_zone: w.metadata?.is_quiet_zone ?? false,
-            notes: w.metadata?.notes || 'Équipement OCP Safi',
+            notes: w.metadata?.notes || '',
           },
         };
 

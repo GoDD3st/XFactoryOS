@@ -122,7 +122,11 @@ export const WorkstationsAdminView: React.FC = () => {
                   </span>
                 </td>
                 <td className="py-3 px-3 text-slate-500 text-[11px]">
-                  {ws.metadata.monitor_size} • {ws.metadata.docking_station}
+                  {[
+                    ws.metadata.is_pmr && 'PMR',
+                    ws.metadata.near_window && 'Fenêtre',
+                    ws.metadata.is_quiet_zone && 'Zone calme',
+                  ].filter(Boolean).join(' • ') || '—'}
                 </td>
                 <td className="py-3 px-3 font-semibold text-slate-600">
                   {ws.is_extension ? (

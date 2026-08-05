@@ -65,7 +65,6 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
 
   // Quick filters
   const [filters, setFilters] = useState<QuickFilters>({
-    doubleScreen: false,
     nearWindow: false,
     pmr: false,
     quietZone: false,
@@ -138,7 +137,6 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
         }
 
         // Quick filters
-        if (filters.doubleScreen && !ws.metadata.has_double_screen) return false;
         if (filters.nearWindow && !ws.metadata.near_window) return false;
         if (filters.pmr && !ws.metadata.is_pmr) return false;
         if (filters.quietZone && !ws.metadata.is_quiet_zone) return false;
@@ -326,17 +324,6 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
           </span>
 
           <button
-            onClick={() => setFilters((f) => ({ ...f, doubleScreen: !f.doubleScreen }))}
-            className={`text-xs px-2.5 py-1 rounded-lg border transition-all flex items-center gap-1.5 ${
-              filters.doubleScreen
-                ? 'bg-emerald-50 text-emerald-700 border-emerald-300 font-bold'
-                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
-            }`}
-          >
-            <Monitor className="w-3 h-3" /> Double écran
-          </button>
-
-          <button
             onClick={() => setFilters((f) => ({ ...f, nearWindow: !f.nearWindow }))}
             className={`text-xs px-2.5 py-1 rounded-lg border transition-all flex items-center gap-1.5 ${
               filters.nearWindow
@@ -380,11 +367,10 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
             <CheckCircle2 className="w-3 h-3 text-[#00b050]" /> Libres uniquement
           </button>
 
-          {(filters.doubleScreen || filters.nearWindow || filters.pmr || filters.quietZone || filters.statusFreeOnly) && (
+          {(filters.nearWindow || filters.pmr || filters.quietZone || filters.statusFreeOnly) && (
             <button
               onClick={() =>
                 setFilters({
-                  doubleScreen: false,
                   nearWindow: false,
                   pmr: false,
                   quietZone: false,
@@ -471,7 +457,6 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
 
                             {/* Badge indicator for features */}
                             <div className="flex items-center justify-center space-x-1 mt-1 text-[9px] opacity-90">
-                              {ws.metadata.has_double_screen && <span>🖥️</span>}
                               {ws.metadata.near_window && <span>🪟</span>}
                               {ws.metadata.is_pmr && <span>♿</span>}
                             </div>
@@ -541,7 +526,10 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
                 </span>
               </div>
               <p className="text-xs text-slate-300 mt-1">
-                Écran: {activeHoverSeat.workstation.metadata.monitor_size} | Dock: {activeHoverSeat.workstation.metadata.docking_station} | Port: {activeHoverSeat.workstation.metadata.network_port}
+                Poste {activeHoverSeat.workstation.seat_number}
+                {activeHoverSeat.workstation.metadata.is_pmr ? ' • Accès PMR' : ''}
+                {activeHoverSeat.workstation.metadata.near_window ? ' • Proximité fenêtre' : ''}
+                {activeHoverSeat.workstation.metadata.is_quiet_zone ? ' • Zone calme' : ''}
               </p>
             </div>
           </div>

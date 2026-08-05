@@ -8,7 +8,8 @@ export const notificationsRouter = Router();
 // GET /api/notifications — User's notifications
 notificationsRouter.get('/', async (req, res) => {
   try {
-    const data = NotificationService.getNotifications();
+    const userId = req.user!.id;
+    const data = await NotificationService.getNotifications(userId);
     res.json({ success: true, data });
   } catch (err) {
     res.status(500).json({ success: false, error: 'Échec de la récupération des notifications' });
@@ -20,7 +21,7 @@ notificationsRouter.post('/', validateBody(CreateNotificationSchema), async (req
   try {
     const { title, message, type } = req.body;
     const user_id = req.user!.id;
-    const notif = NotificationService.sendNotification(user_id, title, message, type || 'info');
+    const notif = await NotificationService.sendNotification(user_id, title, message, type || 'info');
     res.status(201).json({ success: true, data: notif });
   } catch (err) {
     res.status(500).json({ success: false, error: 'Échec de l\'envoi de la notification' });
@@ -30,7 +31,7 @@ notificationsRouter.post('/', validateBody(CreateNotificationSchema), async (req
 // PUT /api/notifications/:id/read — Mark notification as read
 notificationsRouter.put('/:id/read', async (req, res) => {
   try {
-    NotificationService.markAsRead(req.params.id);
+    await NotificationService.markAsRead(req.params.id);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false, error: 'Échec de la mise à jour de la notification' });

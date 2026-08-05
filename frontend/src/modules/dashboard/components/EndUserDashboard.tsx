@@ -22,7 +22,7 @@ import { ReservationsTable } from '../../../shared/components/ReservationsTable'
 import { DateTimePicker24h } from '../../../shared/components/DateTimePicker24h';
 import { ExtensionRequestModal } from '../../../shared/components/ExtensionRequestModal';
 import { Workstation, Cluster, Reservation, ApprovalRequest, SystemSettings } from '../../../types';
-import { createReservation, getLocalReservations } from '@/services/reservations/reservationService';
+import { createReservation, syncReservationsFromDb } from '@/services/reservations/reservationService';
 import { ApprovalService } from '@/services/approval/approvalService';
 import { SettingsService } from '@/services/settings/settingsService';
 import { useAuth } from '../../../modules/auth/context/AuthContext';
@@ -83,7 +83,7 @@ export const EndUserDashboard: React.FC = () => {
   const [myReservations, setMyReservations] = useState<Reservation[]>([]);
 
   const loadMyData = async () => {
-    const all = getLocalReservations();
+    const all = await syncReservationsFromDb();
     const mine = all.filter(
       (r) => r.user_id === currentUser.id || r.user_name === currentUser.full_name
     );

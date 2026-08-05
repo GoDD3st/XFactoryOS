@@ -9,3 +9,6 @@ export * from './repositories/waitingListRepository';
 export * from './repositories/settingsRepository';
 export * from './repositories/auditRepository';
 export * from './repositories/userRepository';
+export * from './repositories/notificationRepository';
+export * from './repositories/checkEventRepository';
+export * from './repositories/aiInteractionRepository';

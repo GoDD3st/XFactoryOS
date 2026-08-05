@@ -92,13 +92,8 @@ export const ReservationPanel: React.FC<ReservationPanelProps> = ({
           </button>
         </div>
 
-        {/* Equipment Badges Summary */}
+        {/* Zone attributes (Module 1 — no equipment/accessories per SRS) */}
         <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-wrap gap-2 text-xs">
-          {workstation.metadata.has_double_screen && (
-            <span className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 font-semibold">
-              <Monitor className="w-3.5 h-3.5" /> Double Écran 4K
-            </span>
-          )}
           {workstation.metadata.is_pmr && (
             <span className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold">
               PMR Accessible

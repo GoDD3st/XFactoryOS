@@ -407,7 +407,7 @@ export const RoleShell: React.FC = () => {
       </footer>
 
       {/* AI Assistant Drawer (SRS 28.14) */}
-      <AIAssistantDrawer isOpen={isAIOpen} onClose={() => setIsAIOpen(false)} userRole={currentRole} />
+      <AIAssistantDrawer isOpen={isAIOpen} onClose={() => setIsAIOpen(false)} userRole={currentRole} userId={currentUser.id} />
     </div>
   );
 };

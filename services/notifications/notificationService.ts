@@ -1,50 +1,27 @@
 import { UserNotification } from '@/frontend/src/types';
+import { NotificationRepository } from '@/database/repositories/notificationRepository';
+import { AuditRepository } from '@/database/repositories/auditRepository';
 
 const STORAGE_KEY = 'xfactory_notifications';
 
-const INITIAL_NOTIFICATIONS: UserNotification[] = [
-  {
-    id: 'notif-1',
-    user_id: 'usr-1',
-    title: 'Rappel Check-in XFactory',
-    message: 'Votre réservation sur CL-A-02 commence dans 15 minutes. N\'oubliez pas d\'effectuer votre check-in.',
-    type: 'info',
-    read: false,
-    created_at: new Date(Date.now() - 900000).toISOString(),
-  },
-  {
-    id: 'notif-2',
-    user_id: 'usr-3',
-    title: 'Demande en attente d\'approbation',
-    message: 'Votre réservation de longue durée sur CL-C-03 est en attente d\'approbation par la Direction.',
-    type: 'warning',
-    read: false,
-    created_at: new Date(Date.now() - 3600000).toISOString(),
-  },
-  {
-    id: 'notif-3',
-    user_id: 'usr-5',
-    title: 'Poste disponible - Liste d\'attente',
-    message: 'Un poste s\'est libéré dans le cluster CL-A. Veuillez confirmer votre réservation.',
-    type: 'success',
-    read: true,
-    created_at: new Date(Date.now() - 7200000).toISOString(),
-  },
-];
-
-export function getNotifications(): UserNotification[] {
+export async function getNotifications(userId?: string): Promise<UserNotification[]> {
   try {
-    if (typeof window !== 'undefined') {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        return JSON.parse(raw);
+    const fromDb = await NotificationRepository.getNotificationsForUser(userId);
+    if (fromDb.length > 0) {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(fromDb));
       }
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_NOTIFICATIONS));
+      return fromDb;
     }
   } catch (err) {
-    console.error('Error loading notifications:', err);
+    console.error('Error loading notifications from DB:', err);
   }
-  return INITIAL_NOTIFICATIONS;
+
+  if (typeof window !== 'undefined') {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  }
+  return [];
 }
 
 export function saveNotifications(notifications: UserNotification[]): void {
@@ -58,13 +35,16 @@ export function saveNotifications(notifications: UserNotification[]): void {
   }
 }
 
-export function sendNotification(
+export async function sendNotification(
   user_id: string,
   title: string,
   message: string,
-  type: 'info' | 'warning' | 'success' | 'alert' = 'info'
-): UserNotification {
-  const newNotif: UserNotification = {
+  type: 'info' | 'warning' | 'success' | 'alert' = 'info',
+  reservationId?: string
+): Promise<UserNotification> {
+  const dbNotif = await NotificationRepository.createNotification(user_id, title, message, type, reservationId);
+
+  const newNotif: UserNotification = dbNotif || {
     id: `notif-${Date.now()}`,
     user_id,
     title,
@@ -74,13 +54,29 @@ export function sendNotification(
     created_at: new Date().toISOString(),
   };
 
-  const current = getNotifications();
+  const current = typeof window !== 'undefined'
+    ? JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]') as UserNotification[]
+    : [];
   saveNotifications([newNotif, ...current]);
+
+  await AuditRepository.logEvent(
+    'NOTIFICATION_SENT',
+    user_id,
+    'Système XFactory',
+    'admin',
+    user_id,
+    `Notification "${title}" envoyée à l'utilisateur ${user_id}`
+  );
+
   return newNotif;
 }
 
-export function markAsRead(id: string): void {
-  const current = getNotifications();
+export async function markAsRead(id: string): Promise<void> {
+  await NotificationRepository.markAsRead(id);
+
+  const current = typeof window !== 'undefined'
+    ? JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]') as UserNotification[]
+    : [];
   const index = current.findIndex((n) => n.id === id);
   if (index !== -1) {
     current[index].read = true;

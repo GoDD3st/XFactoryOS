@@ -1,13 +1,15 @@
 import { AIAssistantMessage, Workstation } from '@/frontend/src/types';
 import { getSavedWorkstations } from '@/services/workspaces/workspaceService';
-import { getLocalReservations } from '@/services/reservations/reservationService';
+import { ReservationRepository } from '@/database/repositories/reservationRepository';
+import { AIInteractionRepository } from '@/database/repositories/aiInteractionRepository';
 
 export async function askXFactoryAI(
   userQuery: string,
-  userRole = 'collaborateur'
+  userRole = 'collaborateur',
+  userId?: string
 ): Promise<AIAssistantMessage> {
   const wsMap = getSavedWorkstations();
-  const reservations = getLocalReservations();
+  const reservations = await ReservationRepository.getAllReservations();
 
   let totalDesks = 0;
   let occupiedCount = 0;
@@ -53,13 +55,22 @@ Comment puis-je vous aider aujourd'hui ?`;
     );
   }
 
-  return {
+  const result: AIAssistantMessage = {
     id: `msg-${Date.now()}`,
     sender: 'ai',
     text: aiResponseText,
     timestamp: new Date().toISOString(),
     suggestions,
   };
+
+  if (userId) {
+    await AIInteractionRepository.logInteraction(userId, userQuery, aiResponseText, {
+      role: userRole,
+      occupancy_rate: occupancyRate,
+    });
+  }
+
+  return result;
 }
 
 export class AIAssistantService {

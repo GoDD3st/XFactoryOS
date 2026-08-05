@@ -5,17 +5,21 @@ import { requireOwnerOrAdmin } from '../middleware/rbacMiddleware';
 import { reservationLimiter } from '../middleware/rateLimiter';
 import { CreateReservationSchema, UpdateReservationStatusSchema } from '../validators';
 import { ReservationRepository } from '@/database/repositories/reservationRepository';
+import { getServerWriteClient, extractBearerToken, hasAdminClient, requireAdminClient } from '@/database/serverClient';
+
+function getDbClient(req: { headers: { authorization?: string } }) {
+  if (hasAdminClient()) return requireAdminClient();
+  return getServerWriteClient(extractBearerToken(req.headers.authorization));
+}
 
 export const reservationsRouter = Router();
 
 // GET /api/reservations — Authenticated users only
 reservationsRouter.get('/', async (req, res) => {
   try {
-    const reservations = await ReservationService.fetchReservations();
-    res.json({
-      status: 'success',
-      data: reservations,
-    });
+    const dbClient = getDbClient(req);
+    const reservations = await ReservationRepository.getAllReservations(dbClient);
+    res.json({ status: 'success', data: reservations });
   } catch (error: any) {
     res.status(500).json({ status: 'error', message: error.message });
   }
@@ -24,7 +28,7 @@ reservationsRouter.get('/', async (req, res) => {
 // POST /api/reservations — Create reservation (Rate limited + Zod validated + Zero-trust user identity)
 reservationsRouter.post('/', reservationLimiter, validateBody(CreateReservationSchema), async (req, res) => {
   try {
-    // 🛡️ Untrust client input: user_id, user_name, user_department come from req.user (JWT)
+    const dbClient = getDbClient(req);
     const payload = {
       ...req.body,
       user_id: req.user!.id,
@@ -32,11 +36,8 @@ reservationsRouter.post('/', reservationLimiter, validateBody(CreateReservationS
       user_department: req.user!.department,
     };
 
-    const reservation = await ReservationService.createReservation(payload, req.user!.role);
-    res.status(201).json({
-      status: 'success',
-      data: reservation,
-    });
+    const reservation = await ReservationService.createReservation(payload, req.user!.role, dbClient);
+    res.status(201).json({ status: 'success', data: reservation });
   } catch (error: any) {
     res.status(400).json({ status: 'error', message: error.message });
   }
@@ -54,10 +55,7 @@ reservationsRouter.patch(
     try {
       const { status } = req.body;
       const result = await ReservationService.updateReservationStatus(req.params.id, status);
-      res.json({
-        status: 'success',
-        updated: result,
-      });
+      res.json({ status: 'success', updated: result });
     } catch (error: any) {
       res.status(500).json({ status: 'error', message: error.message });
     }
@@ -74,10 +72,7 @@ reservationsRouter.delete(
   async (req, res) => {
     try {
       const result = await ReservationService.deleteReservation(req.params.id);
-      res.json({
-        status: 'success',
-        deleted: result,
-      });
+      res.json({ status: 'success', deleted: result });
     } catch (error: any) {
       res.status(500).json({ status: 'error', message: error.message });
     }

@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { LoginScreen } from './LoginScreen';
 import { RoleShell } from '@/frontend/src/shared/components/RoleShell';
+import { DataSyncService } from '@/services/sync/dataSyncService';
 
 /**
  * - Demo mode (VITE_DEMO_MODE=true): always renders RoleShell directly,
@@ -12,7 +13,13 @@ import { RoleShell } from '@/frontend/src/shared/components/RoleShell';
  *   `isDemoMode` is false (see RoleShell.tsx).
  */
 export const AuthGate: React.FC = () => {
-  const { isDemoMode, authLoading, isAuthenticated } = useAuth();
+  const { isDemoMode, authLoading, isAuthenticated, currentUser } = useAuth();
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      DataSyncService.initialize(currentUser.id || undefined).catch(console.warn);
+    }
+  }, [isAuthenticated, currentUser.id]);
 
   console.log('🔍 isDemoMode:', isDemoMode, '| VITE_DEMO_MODE:', import.meta.env.VITE_DEMO_MODE);
 

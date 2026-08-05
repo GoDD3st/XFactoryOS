@@ -1,98 +1,134 @@
-import { getLocalReservations, saveLocalReservations } from '../reservations/reservationService';
+import { ReservationRepository } from '@/database/repositories/reservationRepository';
+import { CheckEventRepository } from '@/database/repositories/checkEventRepository';
+import { WorkstationRepository } from '@/database/repositories/workstationRepository';
 import { processWaitingListFIFO } from '../waitinglist/waitingListService';
 import { sendNotification } from '../notifications/notificationService';
 import { logAuditEvent } from '../audit/auditService';
+import { ReservationService } from '../reservations/reservationService';
 import { Reservation } from '@/frontend/src/types';
 
 export class CheckInOutService {
-  public static performCheckIn(reservationId: string, userId: string): boolean {
-    const reservations = getLocalReservations();
-    const index = reservations.findIndex(r => r.id === reservationId && r.user_id === userId);
-    
-    if (index !== -1 && reservations[index].status === 'confirmée') {
-      reservations[index].status = 'check-in';
-      reservations[index].check_in_at = new Date().toISOString();
-      
-      saveLocalReservations(reservations);
+  public static async performCheckIn(reservationId: string, userId: string): Promise<boolean> {
+    const reservation = await ReservationRepository.getReservationById(reservationId);
 
-      sendNotification(
-        userId,
-        'Check-in Confirmé',
-        `Votre check-in sur le poste ${reservations[index].workstation_code} a été enregistré avec succès.`,
-        'success'
-      );
-
-      logAuditEvent(
-        'CHECK_IN_PERFORMED',
-        userId,
-        reservations[index].user_name || userId,
-        'collaborator',
-        reservations[index].workstation_code,
-        `Check-in effectué pour la réservation ${reservationId}`
-      );
-
-      return true;
+    if (!reservation || reservation.user_id !== userId || reservation.status !== 'confirmée') {
+      return false;
     }
-    return false;
+
+    const checkInAt = new Date().toISOString();
+    const success = await ReservationRepository.updateReservationStatus(reservationId, 'check-in', {
+      check_in_at: checkInAt,
+    });
+
+    if (!success) return false;
+
+    if (reservation.workstation_id) {
+      await WorkstationRepository.updateWorkstationStatus(reservation.workstation_id, 'occupé', false);
+    }
+
+    await CheckEventRepository.logEvent(reservationId, 'CHECK_IN', userId, {
+      workstation_code: reservation.workstation_code,
+    });
+
+    await sendNotification(
+      userId,
+      'Check-in Confirmé',
+      `Votre check-in sur le poste ${reservation.workstation_code} a été enregistré avec succès.`,
+      'success',
+      reservationId
+    );
+
+    logAuditEvent(
+      'CHECK_IN_PERFORMED',
+      userId,
+      reservation.user_name || userId,
+      'collaborator',
+      reservation.workstation_code,
+      `Check-in effectué pour la réservation ${reservationId}`
+    );
+
+    await ReservationService.syncFromDatabase();
+    return true;
   }
 
-  public static performCheckOut(reservationId: string, userId: string): boolean {
-    const reservations = getLocalReservations();
-    const index = reservations.findIndex(r => r.id === reservationId && r.user_id === userId);
-    
-    if (index !== -1 && reservations[index].status === 'check-in') {
-      const targetRes = reservations[index];
-      reservations[index].status = 'terminée';
-      
-      saveLocalReservations(reservations);
+  public static async performCheckOut(reservationId: string, userId: string): Promise<boolean> {
+    const reservation = await ReservationRepository.getReservationById(reservationId);
 
-      // Process waiting list for the freed workstation cluster
-      const todayDate = new Date().toISOString().split('T')[0];
-      processWaitingListFIFO(targetRes.cluster_id, todayDate);
-
-      logAuditEvent(
-        'CHECK_OUT_PERFORMED',
-        userId,
-        targetRes.user_name || userId,
-        'collaborator',
-        targetRes.workstation_code,
-        `Check-out effectué pour le poste ${targetRes.workstation_code}`
-      );
-
-      return true;
+    if (!reservation || reservation.user_id !== userId || reservation.status !== 'check-in') {
+      return false;
     }
-    return false;
+
+    const checkOutAt = new Date().toISOString();
+    const success = await ReservationRepository.updateReservationStatus(reservationId, 'terminée', {
+      check_out_at: checkOutAt,
+    });
+
+    if (!success) return false;
+
+    if (reservation.workstation_id) {
+      await WorkstationRepository.updateWorkstationStatus(reservation.workstation_id, 'disponible', true);
+    }
+
+    await CheckEventRepository.logEvent(reservationId, 'CHECK_OUT', userId, {
+      workstation_code: reservation.workstation_code,
+    });
+
+    const todayDate = new Date().toISOString().split('T')[0];
+    await processWaitingListFIFO(reservation.cluster_id, todayDate);
+
+    logAuditEvent(
+      'CHECK_OUT_PERFORMED',
+      userId,
+      reservation.user_name || userId,
+      'collaborator',
+      reservation.workstation_code,
+      `Check-out effectué pour le poste ${reservation.workstation_code}`
+    );
+
+    await ReservationService.syncFromDatabase();
+    return true;
   }
 
-  public static autoCheckOutExpired(): number {
-    const reservations = getLocalReservations();
+  public static async autoCheckOutExpired(): Promise<number> {
+    const reservations = await ReservationRepository.getAllReservations();
     const now = new Date();
     const todayDate = now.toISOString().split('T')[0];
     let checkedOut = 0;
 
-    const updated = reservations.map(res => {
+    for (const res of reservations) {
       if (res.status === 'check-in') {
         const endDateTime = new Date(`${res.reservation_date}T${res.end_time}`);
         if (now > endDateTime) {
-          res.status = 'terminée';
+          await ReservationRepository.updateReservationStatus(res.id, 'terminée', {
+            check_out_at: new Date().toISOString(),
+          });
+
+          if (res.workstation_id) {
+            await WorkstationRepository.updateWorkstationStatus(res.workstation_id, 'disponible', true);
+          }
+
+          await CheckEventRepository.logEvent(res.id, 'AUTO_CHECK_OUT', res.user_id, {
+            workstation_code: res.workstation_code,
+          });
+
+          await processWaitingListFIFO(res.cluster_id, todayDate);
           checkedOut++;
-          processWaitingListFIFO(res.cluster_id, todayDate);
         }
       }
-      return res;
-    });
+    }
 
     if (checkedOut > 0) {
-      saveLocalReservations(updated);
+      await ReservationService.syncFromDatabase();
     }
+
     return checkedOut;
   }
 
-  public static getCheckInReminders(): Reservation[] {
-    const reservations = getLocalReservations();
+  public static async getCheckInReminders(): Promise<Reservation[]> {
+    const reservations = await ReservationRepository.getAllReservations();
     const now = new Date();
-    
-    return reservations.filter(res => {
+
+    return reservations.filter((res) => {
       if (res.status === 'confirmée') {
         const start = new Date(`${res.reservation_date}T${res.start_time}`);
         const diffMinutes = (start.getTime() - now.getTime()) / (1000 * 60);

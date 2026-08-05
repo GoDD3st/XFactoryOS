@@ -1,7 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
-import { supabase } from '@/database/client';
+import { createUserClient, getAdminClient } from '@/database/serverClient';
 import { UserRole } from '@/frontend/src/types';
 import { normalizeRoleCode } from '@/frontend/src/modules/auth/utils/normalizeRole';
+import { supabase } from '@/database/client';
 
 /**
  * Authentication Middleware — Zero-Trust JWT Verification
@@ -39,10 +40,6 @@ const DEMO_USERS: Record<UserRole, { id: string; email: string; full_name: strin
 };
 
 export async function authenticateJWT(req: Request, res: Response, next: NextFunction): Promise<void> {
-  // Skip public routes
-  console.log('AUTH MIDDLEWARE HIT');
-
-    
   const path = req.path || req.originalUrl;
   if (PUBLIC_ROUTES.some(route => path.startsWith(route))) {
     return next();
@@ -74,10 +71,9 @@ export async function authenticateJWT(req: Request, res: Response, next: NextFun
     return;
   }
 
-  const token = authHeader.substring(7); // Remove "Bearer "
+  const token = authHeader.substring(7);
 
   try {
-    // Verify token with Supabase (network call — no JWT secret needed)
     const { data: { user }, error } = await supabase.auth.getUser(token);
 
     if (error || !user) {
@@ -89,8 +85,9 @@ export async function authenticateJWT(req: Request, res: Response, next: NextFun
       return;
     }
 
-    // Fetch user role from the database (users → user_roles → roles)
-    const { data: userRoleData } = await supabase
+    const db = getAdminClient() || createUserClient(token);
+
+    const { data: userRoleData } = await db
       .from('user_roles')
       .select('role_id, roles(code)')
       .eq('user_id', user.id)
@@ -101,7 +98,7 @@ export async function authenticateJWT(req: Request, res: Response, next: NextFun
     const role: UserRole = normalizeRoleCode(rawCode);
 
     // Fetch user profile
-    const { data: profile } = await supabase
+    const { data: profile } = await db
       .from('users')
       .select('full_name, department')
       .eq('id', user.id)

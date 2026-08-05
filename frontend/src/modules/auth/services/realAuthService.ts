@@ -1,6 +1,8 @@
 import { supabase } from '@/database/client';
 import { UserProfile, UserRole } from '@/frontend/src/types';
 import { normalizeRoleCode } from '../utils/normalizeRole';
+import { UserRepository } from '@/database/repositories/userRepository';
+import { AuditRepository } from '@/database/repositories/auditRepository';
 
 /**
  * Real (non-demo) authentication against Supabase Auth.
@@ -37,7 +39,10 @@ export async function signOut() {
 export async function fetchRealUserProfile(authUser: {
   id: string;
   email?: string | null;
+  user_metadata?: { full_name?: string; department?: string };
 }): Promise<{ profile: UserProfile; role: UserRole }> {
+  await UserRepository.ensureUserProfile(authUser);
+
   let role: UserRole = 'collaborator';
   let full_name = authUser.email || 'Utilisateur';
   let department = '';

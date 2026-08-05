@@ -462,7 +462,7 @@ export const ReservationsTable: React.FC<ReservationsTableProps> = ({
                     <optgroup key={cl.id} label={`${cl.code} - ${cl.name}`}>
                       {cl.workstations.map((ws) => (
                         <option key={ws.id} value={ws.code}>
-                          {ws.code} ({ws.status === 'disponible' ? 'Libre' : ws.status}) {ws.metadata.has_double_screen ? '🖥️ Double screen' : ''}
+                          {ws.code} ({ws.status === 'disponible' ? 'Libre' : ws.status})
                         </option>
                       ))}
                     </optgroup>

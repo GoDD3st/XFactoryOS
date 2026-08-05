@@ -1,4 +1,9 @@
 import { supabase } from './client';
+import { getAdminClient } from './serverClient';
+
+function db() {
+  return getAdminClient() || supabase;
+}
 
 export const INITIAL_CLUSTERS_SEED = [
   { code: 'CL-A', name: 'Cluster A — Innovation & R&D', management_reserved: false, enabled: true, desk_count: 4 },
@@ -13,15 +18,15 @@ export const INITIAL_CLUSTERS_SEED = [
 export async function seedDatabaseIfEmpty(): Promise<void> {
   try {
     // 1. Check & Seed Buildings / Spaces / Clusters
-    const { data: existingClusters } = await supabase.from('clusters').select('id');
+    const { data: existingClusters } = await db().from('clusters').select('id');
     
     if (!existingClusters || existingClusters.length === 0) {
       console.log('🌱 Seeding initial Supabase building, floor, space, and clusters...');
 
       // Seed Building
-      let { data: building } = await supabase.from('buildings').select('id').eq('code', 'BLD-SFI-01').single();
+      let { data: building } = await db().from('buildings').select('id').eq('code', 'BLD-SFI-01').single();
       if (!building) {
-        const { data: newBuilding } = await supabase.from('buildings').insert({
+        const { data: newBuilding } = await db().from('buildings').insert({
           name: 'Bâtiment Principal XFactory Safi',
           code: 'BLD-SFI-01',
           active: true,
@@ -31,9 +36,9 @@ export async function seedDatabaseIfEmpty(): Promise<void> {
 
       if (building) {
         // Seed Floor
-        let { data: floor } = await supabase.from('floors').select('id').eq('building_id', building.id).single();
+        let { data: floor } = await db().from('floors').select('id').eq('building_id', building.id).single();
         if (!floor) {
-          const { data: newFloor } = await supabase.from('floors').insert({
+          const { data: newFloor } = await db().from('floors').insert({
             building_id: building.id,
             name: 'Niveau 1 — Open Space Smart',
             level: 1,
@@ -43,9 +48,9 @@ export async function seedDatabaseIfEmpty(): Promise<void> {
 
         if (floor) {
           // Seed Space
-          let { data: space } = await supabase.from('spaces').select('id').eq('floor_id', floor.id).single();
+          let { data: space } = await db().from('spaces').select('id').eq('floor_id', floor.id).single();
           if (!space) {
-            const { data: newSpace } = await supabase.from('spaces').insert({
+            const { data: newSpace } = await db().from('spaces').insert({
               floor_id: floor.id,
               name: 'Open Space Central Safi',
               type: 'OPEN_SPACE',
@@ -58,7 +63,7 @@ export async function seedDatabaseIfEmpty(): Promise<void> {
           if (space) {
             // Seed Clusters & 28 Workstations (4 per cluster per SRS §3.2)
             for (const clSeed of INITIAL_CLUSTERS_SEED) {
-              const { data: cluster } = await supabase.from('clusters').insert({
+              const { data: cluster } = await db().from('clusters').insert({
                 space_id: space.id,
                 code: clSeed.code,
                 name: clSeed.name,
@@ -70,7 +75,7 @@ export async function seedDatabaseIfEmpty(): Promise<void> {
               if (cluster) {
                 for (let seat = 1; seat <= 4; seat++) {
                   const wsCode = `${clSeed.code}-W${seat}`;
-                  await supabase.from('workstations').insert({
+                  await db().from('workstations').insert({
                     cluster_id: cluster.id,
                     code: wsCode,
                     status: clSeed.management_reserved ? 'MANAGEMENT_RESERVED' : 'AVAILABLE',
@@ -78,11 +83,9 @@ export async function seedDatabaseIfEmpty(): Promise<void> {
                     svg_position: { x: 50 + seat * 100, y: 100 },
                     metadata: {
                       seat_number: seat,
-                      has_double_screen: seat % 2 === 0,
                       near_window: seat === 1,
                       is_pmr: seat === 1,
                       is_quiet_zone: clSeed.code === 'CL-E',
-                      notes: 'Équipement standard OCP Dock 4K & RJ45 Gigabit',
                     },
                   });
                 }
@@ -94,10 +97,10 @@ export async function seedDatabaseIfEmpty(): Promise<void> {
     }
 
     // 2. Seed Default System Settings
-    const { data: settings } = await supabase.from('settings').select('id');
+    const { data: settings } = await db().from('settings').select('id');
     if (!settings || settings.length === 0) {
       console.log('🌱 Seeding initial Supabase system settings...');
-      await supabase.from('settings').insert({
+      await db().from('settings').insert({
         max_duration_hours_no_approval: 72, // 3 days
         no_show_window_minutes: 30,
         business_days: [1, 2, 3, 4, 5],

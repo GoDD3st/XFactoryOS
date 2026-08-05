@@ -72,6 +72,19 @@ async function startServer() {
   // Auto-seed Supabase Database if empty
   await seedDatabaseIfEmpty();
 
+  const { hasAdminClient } = await import('../database/serverClient');
+  if (!hasAdminClient()) {
+    console.warn('');
+    console.warn('⚠️  SUPABASE_SERVICE_ROLE_KEY is not set in .env');
+    console.warn('   Backend DB operations (reservations, seed) will fail with "permission denied".');
+    console.warn('   Fix: Supabase Dashboard → Project Settings → API → copy service_role key');
+    console.warn('   Add to .env:  SUPABASE_SERVICE_ROLE_KEY=your_key_here');
+    console.warn('   Then restart: npm run dev');
+    console.warn('');
+  } else {
+    console.log('✅ Supabase service role configured — backend DB access enabled.');
+  }
+
   // Background No-Show Auto Detection Ticker (BPMN D4 / SRS BR-12)
   setInterval(async () => {
     try {
@@ -83,6 +96,19 @@ async function startServer() {
       // Background ticker non-blocking catch
     }
   }, 60000);
+
+  // Background Auto Check-Out Ticker
+  const { CheckInOutService } = await import('../services/checkinout/checkInOutService');
+  setInterval(async () => {
+    try {
+      const count = await CheckInOutService.autoCheckOutExpired();
+      if (count > 0) {
+        console.log(`[Auto Check-Out] Released ${count} expired check-in reservation(s).`);
+      }
+    } catch (err) {
+      // non-blocking
+    }
+  }, 120000);
 
   // Vite middleware or Static files handler
   if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {

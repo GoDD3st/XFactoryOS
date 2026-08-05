@@ -18,7 +18,7 @@ export function getHardwareDiagnostics(): HardwareDiagnosticsInfo[] {
         link_speed: portStatus === 'online' ? '1.0 Gbps' : '100 Mbps',
         port_status: portStatus,
         dock_power_delivery: '85W PD Active',
-        display_count: ws.metadata.has_double_screen ? 2 : 1,
+        display_count: 1,
         last_ping: new Date().toISOString(),
       });
     });

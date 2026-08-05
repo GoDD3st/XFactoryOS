@@ -23,7 +23,8 @@ aiRouter.post('/ask', requireRole(...AI_ALLOWED_ROLES), validateBody(AIQuerySche
     const { query } = req.body;
     // 🛡️ Role is derived from authenticated JWT user, not client body
     const userRole = req.user!.role;
-    const response = await AIAssistantService.askXFactoryAI(query, userRole);
+    const userId = req.user!.id;
+    const response = await AIAssistantService.askXFactoryAI(query, userRole, userId);
     res.json({ success: true, data: response });
   } catch (err) {
     res.status(500).json({ success: false, error: 'Échec du traitement de la requête IA' });

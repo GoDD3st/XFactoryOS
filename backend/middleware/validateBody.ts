@@ -23,7 +23,7 @@ export function validateBody<T>(schema: ZodSchema<T>) {
         res.status(400).json({
           status: 'error',
           code: 'VALIDATION_FAILED',
-          message: 'Données de requête invalides.',
+          message: formattedErrors[0]?.message || 'Données de requête invalides.',
           errors: formattedErrors,
         });
         return;

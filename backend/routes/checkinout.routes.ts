@@ -7,11 +7,10 @@ import { CheckInOutSchema } from '../validators';
 export const checkInOutRouter = Router();
 
 // POST /api/checkinout/check-in — Check in (userId forced from req.user, optionally supports QR token verification)
-checkInOutRouter.post('/check-in', validateBody(CheckInOutSchema), (req, res) => {
+checkInOutRouter.post('/check-in', validateBody(CheckInOutSchema), async (req, res) => {
   const { reservationId, qrToken } = req.body;
   const userId = req.user!.id;
 
-  // If QR token is supplied, verify HMAC signature & ownership
   if (qrToken) {
     const qrResult = QRTokenService.verifyQRToken(qrToken, userId);
     if (!qrResult.valid) {
@@ -20,7 +19,7 @@ checkInOutRouter.post('/check-in', validateBody(CheckInOutSchema), (req, res) =>
     }
   }
 
-  const success = CheckInOutService.performCheckIn(reservationId, userId);
+  const success = await CheckInOutService.performCheckIn(reservationId, userId);
   if (!success) {
     res.status(400).json({ status: 'error', message: 'Échec du check-in. Réservation introuvable ou déjà validée.' });
     return;
@@ -29,10 +28,10 @@ checkInOutRouter.post('/check-in', validateBody(CheckInOutSchema), (req, res) =>
 });
 
 // POST /api/checkinout/check-out — Check out (userId forced from req.user)
-checkInOutRouter.post('/check-out', validateBody(CheckInOutSchema), (req, res) => {
+checkInOutRouter.post('/check-out', validateBody(CheckInOutSchema), async (req, res) => {
   const { reservationId } = req.body;
   const userId = req.user!.id;
-  const success = CheckInOutService.performCheckOut(reservationId, userId);
+  const success = await CheckInOutService.performCheckOut(reservationId, userId);
   if (!success) {
     res.status(400).json({ status: 'error', message: 'Échec du check-out.' });
     return;
@@ -49,13 +48,13 @@ checkInOutRouter.get('/qr/:reservationId', (req, res) => {
 });
 
 // GET /api/checkinout/auto-checkout — Internal system auto-checkout
-checkInOutRouter.get('/auto-checkout', (req, res) => {
-  const count = CheckInOutService.autoCheckOutExpired();
+checkInOutRouter.get('/auto-checkout', async (req, res) => {
+  const count = await CheckInOutService.autoCheckOutExpired();
   res.json({ checkedOut: count });
 });
 
 // GET /api/checkinout/reminders — Check-in reminders
-checkInOutRouter.get('/reminders', (req, res) => {
-  const reminders = CheckInOutService.getCheckInReminders();
+checkInOutRouter.get('/reminders', async (req, res) => {
+  const reminders = await CheckInOutService.getCheckInReminders();
   res.json(reminders);
 });

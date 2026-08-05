@@ -1,5 +1,6 @@
 import { supabase } from '../client';
 import { UserProfile } from '@/frontend/src/types';
+import { AuditRepository } from './auditRepository';
 
 export class UserRepository {
   static async getUsers(): Promise<UserProfile[]> {
@@ -42,6 +43,78 @@ export class UserRepository {
       return true;
     } catch (err) {
       return false;
+    }
+  }
+
+  /**
+   * Ensure a Supabase Auth user has a corresponding profile row in public.users
+   * and a default collaborator role assignment.
+   */
+  static async ensureUserProfile(authUser: {
+    id: string;
+    email?: string | null;
+    user_metadata?: { full_name?: string; department?: string };
+  }): Promise<void> {
+    try {
+      const { data: existing } = await supabase
+        .from('users')
+        .select('id')
+        .eq('id', authUser.id)
+        .maybeSingle();
+
+      const fullName =
+        authUser.user_metadata?.full_name ||
+        authUser.email?.split('@')[0]?.replace('.', ' ') ||
+        'Utilisateur';
+      const department = authUser.user_metadata?.department || 'Digital Factory';
+
+      if (!existing) {
+        const { error: insertError } = await supabase.from('users').insert({
+          id: authUser.id,
+          email: authUser.email,
+          full_name: fullName,
+          department,
+          status: 'ACTIVE',
+        });
+
+        if (insertError) {
+          console.error('ensureUserProfile insert failed:', insertError);
+        }
+
+        const { data: roleRow } = await supabase
+          .from('roles')
+          .select('id')
+          .or('code.eq.COLLABORATOR,code.eq.collaborator,code.eq.EMPLOYEE')
+          .limit(1)
+          .maybeSingle();
+
+        if (roleRow?.id) {
+          await supabase.from('user_roles').insert({
+            user_id: authUser.id,
+            role_id: roleRow.id,
+          });
+        }
+
+        await AuditRepository.logEvent(
+          'USER_CREATED',
+          authUser.id,
+          fullName,
+          'collaborator',
+          authUser.id,
+          `Profil utilisateur créé pour ${authUser.email}`
+        );
+      } else {
+        await supabase
+          .from('users')
+          .update({
+            last_login_at: new Date().toISOString(),
+            full_name: fullName,
+            department,
+          })
+          .eq('id', authUser.id);
+      }
+    } catch (err) {
+      console.warn('ensureUserProfile notice:', err);
     }
   }
 }

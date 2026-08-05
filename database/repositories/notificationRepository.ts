@@ -1,0 +1,102 @@
+import { supabase } from '../client';
+import { UserNotification } from '@/frontend/src/types';
+
+const TYPE_TO_EVENT: Record<string, string> = {
+  info: 'INFO',
+  warning: 'WARNING',
+  success: 'SUCCESS',
+  alert: 'ALERT',
+};
+
+export class NotificationRepository {
+  static async getNotificationsForUser(userId?: string): Promise<UserNotification[]> {
+    try {
+      let query = supabase
+        .from('notifications')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(100);
+
+      if (userId) {
+        query = query.eq('user_id', userId);
+      }
+
+      const { data, error } = await query;
+      if (error || !data) return [];
+
+      return data.map((n: any) => ({
+        id: n.id,
+        user_id: n.user_id,
+        title: n.title,
+        message: n.body || '',
+        type: this.mapEventToType(n.event_code),
+        read: !!n.read_at,
+        created_at: n.created_at,
+      }));
+    } catch (err) {
+      console.warn('Fetch notifications fallback:', err);
+      return [];
+    }
+  }
+
+  static async createNotification(
+    userId: string,
+    title: string,
+    message: string,
+    type: 'info' | 'warning' | 'success' | 'alert' = 'info',
+    reservationId?: string
+  ): Promise<UserNotification | null> {
+    try {
+      const { data, error } = await supabase
+        .from('notifications')
+        .insert({
+          user_id: userId,
+          reservation_id: reservationId || null,
+          event_code: TYPE_TO_EVENT[type] || 'INFO',
+          channel: 'IN_APP',
+          status: 'SENT',
+          title,
+          body: message,
+          sent_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      if (error || !data) return null;
+
+      return {
+        id: data.id,
+        user_id: data.user_id,
+        title: data.title,
+        message: data.body || message,
+        type,
+        read: false,
+        created_at: data.created_at,
+      };
+    } catch (err) {
+      console.warn('Create notification DB notice:', err);
+      return null;
+    }
+  }
+
+  static async markAsRead(id: string): Promise<boolean> {
+    try {
+      const { error } = await supabase
+        .from('notifications')
+        .update({ read_at: new Date().toISOString(), status: 'READ' })
+        .eq('id', id);
+
+      return !error;
+    } catch {
+      return false;
+    }
+  }
+
+  private static mapEventToType(eventCode?: string): 'info' | 'warning' | 'success' | 'alert' {
+    const code = (eventCode || 'INFO').toUpperCase();
+    if (code === 'WARNING') return 'warning';
+    if (code === 'SUCCESS') return 'success';
+    if (code === 'ALERT') return 'alert';
+    return 'info';
+  }
+}

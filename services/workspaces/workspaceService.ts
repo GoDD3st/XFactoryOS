@@ -1,5 +1,7 @@
 import { Cluster, Workstation, SeatStatus } from '@/frontend/src/types';
 import { WorkstationRepository } from '@/database/repositories/workstationRepository';
+import { ReservationRepository } from '@/database/repositories/reservationRepository';
+import { Reservation } from '@/frontend/src/types';
 
 export const INITIAL_CLUSTERS: Cluster[] = [
   { id: 'cl-a', code: 'CL-A', name: 'Cluster A — Innovation & R&D', description: 'Zone dédiée aux projets d\'innovation et R&D Safi', desk_count: 4, is_management_only: false, enabled: true, location_zone: 'Zone Ouest Level 1', workstations: [] },
@@ -33,6 +35,46 @@ export class WorkspaceService {
     const wsMap = await WorkstationRepository.getWorkstations();
     const clusters = await WorkstationRepository.getClusters();
 
+    let reservations: Reservation[] = [];
+    if (typeof window !== 'undefined') {
+      const { ReservationService } = await import('../reservations/reservationService');
+      reservations = ReservationService.readCachedReservations();
+    } else {
+      try {
+        const { getAdminClient } = await import('@/database/serverClient');
+        const admin = getAdminClient();
+        reservations = admin
+          ? await ReservationRepository.getAllReservations(admin)
+          : await ReservationRepository.getAllReservations();
+      } catch {
+        reservations = [];
+      }
+    }
+
+    const reservedStatuses = new Set(['confirmée', 'check-in', 'en attente']);
+    const reservedByWorkstationId = new Map<string, Reservation>();
+    const reservedByWorkstationCode = new Map<string, Reservation>();
+
+    reservations.forEach((r) => {
+      if (!reservedStatuses.has(r.status)) return;
+      if (r.workstation_id) reservedByWorkstationId.set(r.workstation_id, r);
+      if (r.workstation_code) reservedByWorkstationCode.set(r.workstation_code, r);
+    });
+
+    const applyReservationOverlay = (ws: Workstation): Workstation => {
+      if (ws.status === 'maintenance' || ws.status === 'management_reserved') return ws;
+
+      const activeRes =
+        reservedByWorkstationId.get(ws.id) || reservedByWorkstationCode.get(ws.code);
+
+      if (!activeRes) return ws;
+
+      const overlayStatus: SeatStatus =
+        activeRes.status === 'check-in' ? 'occupé' : 'réservé';
+
+      return { ...ws, status: overlayStatus, reservable: false };
+    };
+
     const targetClusters = clusters.length > 0 ? clusters : INITIAL_CLUSTERS;
     const defaultWsMap = this.generateDefaultWorkstations();
 
@@ -51,7 +93,7 @@ export class WorkspaceService {
 
       return {
         ...c,
-        workstations: seats,
+        workstations: seats.map(applyReservationOverlay),
       };
     });
   }
@@ -71,13 +113,9 @@ export class WorkspaceService {
           is_extension: false,
           visibleToUsers: true,
           metadata: {
-            monitor_size: '27" 4K Dual Dock',
-            docking_station: 'USB-C Thunderbolt 4',
-            has_double_screen: seatNum % 2 === 0,
             near_window: seatNum === 1,
             is_pmr: seatNum === 1,
             is_quiet_zone: cluster.id === 'cl-e',
-            notes: 'Équipement OCP Safi',
           },
         };
       });

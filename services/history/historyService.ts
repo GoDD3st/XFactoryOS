@@ -1,5 +1,5 @@
 import { Reservation, ReservationStatus } from '@/frontend/src/types';
-import { ReservationService } from '@/services/reservations/reservationService';
+import { ReservationRepository } from '@/database/repositories/reservationRepository';
 
 export interface HistoryFilters {
   userId?: string;
@@ -11,45 +11,53 @@ export interface HistoryFilters {
 }
 
 export class HistoryService {
-  static getReservationHistory(filters?: HistoryFilters): Reservation[] {
-    let reservations = ReservationService.getLocalReservations();
+  static async getReservationHistory(filters?: HistoryFilters): Promise<Reservation[]> {
+    let reservations = await ReservationRepository.getAllReservations();
 
     if (filters) {
       if (filters.userId) {
-        reservations = reservations.filter(r => r.user_id === filters.userId);
+        reservations = reservations.filter((r) => r.user_id === filters.userId);
       }
       if (filters.workstationCode) {
-        reservations = reservations.filter(r => r.workstation_code === filters.workstationCode);
+        reservations = reservations.filter((r) => r.workstation_code === filters.workstationCode);
       }
       if (filters.clusterId) {
-        reservations = reservations.filter(r => r.cluster_id === filters.clusterId);
+        reservations = reservations.filter((r) => r.cluster_id === filters.clusterId);
       }
       if (filters.dateFrom) {
-        reservations = reservations.filter(r => r.reservation_date >= (filters.dateFrom as string));
+        reservations = reservations.filter((r) => r.reservation_date >= (filters.dateFrom as string));
       }
       if (filters.dateTo) {
-        reservations = reservations.filter(r => r.reservation_date <= (filters.dateTo as string));
+        reservations = reservations.filter((r) => r.reservation_date <= (filters.dateTo as string));
       }
       if (filters.status) {
-        reservations = reservations.filter(r => r.status === filters.status);
+        reservations = reservations.filter((r) => r.status === filters.status);
       }
     }
 
     return reservations.sort((a, b) => {
       const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
       const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
-      return dateB - dateA; // descending
+      return dateB - dateA;
     });
   }
 
-  static getWorkstationHistory(workstationCode: string): Reservation[] {
-    const reservations = ReservationService.getLocalReservations().filter(r => r.workstation_code === workstationCode);
-    return reservations.sort((a, b) => new Date(b.reservation_date).getTime() - new Date(a.reservation_date).getTime());
+  static async getWorkstationHistory(workstationCode: string): Promise<Reservation[]> {
+    const reservations = (await ReservationRepository.getAllReservations()).filter(
+      (r) => r.workstation_code === workstationCode
+    );
+    return reservations.sort(
+      (a, b) => new Date(b.reservation_date).getTime() - new Date(a.reservation_date).getTime()
+    );
   }
 
-  static getUserHistory(userId: string): Reservation[] {
-    const reservations = ReservationService.getLocalReservations().filter(r => r.user_id === userId);
-    return reservations.sort((a, b) => new Date(b.reservation_date).getTime() - new Date(a.reservation_date).getTime());
+  static async getUserHistory(userId: string): Promise<Reservation[]> {
+    const reservations = (await ReservationRepository.getAllReservations()).filter(
+      (r) => r.user_id === userId
+    );
+    return reservations.sort(
+      (a, b) => new Date(b.reservation_date).getTime() - new Date(a.reservation_date).getTime()
+    );
   }
 
   static exportHistoryAsCSV(reservations: Reservation[]): string {
