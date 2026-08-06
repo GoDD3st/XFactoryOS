@@ -7,7 +7,7 @@ export const auditRouter = Router();
 // GET /api/audit — Restricted to Governance Managers & Admins
 auditRouter.get('/', requireRole('gci_manager', 'admin', 'super_admin'), async (req, res) => {
   try {
-    const data = AuditService.getAuditLogs();
+    const data = await AuditService.getAuditLogs();
     res.json({ success: true, data });
   } catch (err) {
     res.status(500).json({ success: false, error: 'Échec de la récupération des journaux d\'audit' });

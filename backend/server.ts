@@ -4,6 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import { authRouter } from './routes/auth.routes';
+import { usersRouter } from './routes/users.routes';
 import { reservationsRouter } from './routes/reservations.routes';
 import { workspacesRouter } from './routes/workspaces.routes';
 import { waitingListRouter } from './routes/waitinglist.routes';
@@ -46,6 +47,7 @@ export function createExpressApp() {
 
   // Microservices Express Routers (All protected by JWT + RBAC guards)
   app.use('/api/auth', authRouter);
+  app.use('/api/users', usersRouter);
   app.use('/api/reservations', reservationsRouter);
   app.use('/api/workspaces', workspacesRouter);
   app.use('/api/waiting-list', waitingListRouter);

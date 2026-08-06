@@ -1,13 +1,18 @@
 import { supabase } from '../client';
+import { getAdminClient } from '../serverClient';
 import { UserProfile } from '@/frontend/src/types';
+import { normalizeRoleCode } from '@/frontend/src/modules/auth/utils/normalizeRole';
 import { AuditRepository } from './auditRepository';
 
 export class UserRepository {
   static async getUsers(): Promise<UserProfile[]> {
     try {
-      const { data, error } = await supabase
+      const db = getAdminClient() || supabase;
+      // `role` is NOT a column on public.users — roles live in user_roles -> roles.
+      // Embed the join so each user's real assigned role code comes back with the row.
+      const { data, error } = await db
         .from('users')
-        .select('*')
+        .select('*, user_roles(roles(code))')
         .order('created_at', { ascending: false });
 
       if (error || !data || data.length === 0) {
@@ -20,14 +25,17 @@ export class UserRepository {
         ];
       }
 
-      return data.map((u: any) => ({
-        id: u.id,
-        email: u.email,
-        full_name: u.full_name,
-        department: u.department || 'Digital Factory',
-        role: u.role || 'collaborator',
-        status: u.status === 'ACTIVE' ? 'active' : 'inactive',
-      }));
+      return data.map((u: any) => {
+        const rawCode = u.user_roles?.[0]?.roles?.code;
+        return {
+          id: u.id,
+          email: u.email,
+          full_name: u.full_name,
+          department: u.department || 'Digital Factory',
+          role: normalizeRoleCode(rawCode),
+          status: u.status === 'ACTIVE' ? 'active' : 'inactive',
+        };
+      });
     } catch (err) {
       console.warn('Fetch users fallback:', err);
       return [];
@@ -36,7 +44,8 @@ export class UserRepository {
 
   static async updateUserStatus(userId: string, status: 'active' | 'inactive'): Promise<boolean> {
     try {
-      await supabase
+      const db = getAdminClient() || supabase;
+      await db
         .from('users')
         .update({ status: status === 'active' ? 'ACTIVE' : 'INACTIVE' })
         .eq('id', userId);
@@ -56,7 +65,9 @@ export class UserRepository {
     user_metadata?: { full_name?: string; department?: string };
   }): Promise<void> {
     try {
-      const { data: existing } = await supabase
+      const db = getAdminClient() || supabase;
+
+      const { data: existing } = await db
         .from('users')
         .select('id')
         .eq('id', authUser.id)
@@ -69,7 +80,7 @@ export class UserRepository {
       const department = authUser.user_metadata?.department || 'Digital Factory';
 
       if (!existing) {
-        const { error: insertError } = await supabase.from('users').insert({
+        const { error: insertError } = await db.from('users').insert({
           id: authUser.id,
           email: authUser.email,
           full_name: fullName,
@@ -81,7 +92,7 @@ export class UserRepository {
           console.error('ensureUserProfile insert failed:', insertError);
         }
 
-        const { data: roleRow } = await supabase
+        const { data: roleRow } = await db
           .from('roles')
           .select('id')
           .or('code.eq.COLLABORATOR,code.eq.collaborator,code.eq.EMPLOYEE')
@@ -89,7 +100,7 @@ export class UserRepository {
           .maybeSingle();
 
         if (roleRow?.id) {
-          await supabase.from('user_roles').insert({
+          await db.from('user_roles').insert({
             user_id: authUser.id,
             role_id: roleRow.id,
           });
@@ -104,7 +115,7 @@ export class UserRepository {
           `Profil utilisateur créé pour ${authUser.email}`
         );
       } else {
-        await supabase
+        await db
           .from('users')
           .update({
             last_login_at: new Date().toISOString(),

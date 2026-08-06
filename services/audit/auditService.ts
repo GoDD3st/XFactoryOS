@@ -2,17 +2,25 @@ import { AuditLogEntry, UserRole } from '@/frontend/src/types';
 import { AuditRepository } from '@/database/repositories/auditRepository';
 
 export class AuditService {
-  static getAuditLogs(): AuditLogEntry[] {
+  /**
+   * Server-side (backend route): reads straight from Supabase (service-role client), the
+   * authoritative source. Browser-side: returns the cached list immediately for a fast paint,
+   * then refreshes the cache in the background — callers needing the live list from the browser
+   * should await AuditRepository.getAuditLogs() (or the /api/audit route) directly.
+   */
+  static getAuditLogs(): AuditLogEntry[] | Promise<AuditLogEntry[]> {
+    if (typeof window === 'undefined') {
+      return AuditRepository.getAuditLogs();
+    }
+
     AuditRepository.getAuditLogs().then((data) => {
-      if (typeof window !== 'undefined' && data.length > 0) {
+      if (data.length > 0) {
         localStorage.setItem('xfactory_audit_logs_v2', JSON.stringify(data));
       }
     });
 
-    if (typeof window !== 'undefined') {
-      const cached = localStorage.getItem('xfactory_audit_logs_v2');
-      if (cached) return JSON.parse(cached);
-    }
+    const cached = localStorage.getItem('xfactory_audit_logs_v2');
+    if (cached) return JSON.parse(cached);
     return [];
   }
 
@@ -40,7 +48,8 @@ export class AuditService {
     AuditRepository.logEvent(action, actorId, actorName, actorRole, targetResource, details, ipAddress);
 
     if (typeof window !== 'undefined') {
-      const current = this.getAuditLogs();
+      // Browser branch of getAuditLogs() always returns synchronously (never a Promise).
+      const current = this.getAuditLogs() as AuditLogEntry[];
       localStorage.setItem('xfactory_audit_logs_v2', JSON.stringify([entry, ...current.slice(0, 99)]));
       window.dispatchEvent(new CustomEvent('xfactory_audit_logged', { detail: entry }));
     }

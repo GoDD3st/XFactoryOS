@@ -1,7 +1,7 @@
 import { RealtimeSyncService } from '@/database/realtime';
 import { ReservationService } from '../reservations/reservationService';
 import { AuditRepository } from '@/database/repositories/auditRepository';
-import { NotificationRepository } from '@/database/repositories/notificationRepository';
+import { apiFetchNotifications } from '../api/notificationApi';
 
 const NOTIFICATIONS_CACHE_KEY = 'xfactory_notifications';
 const AUDIT_CACHE_KEY = 'xfactory_audit_logs_v2';
@@ -39,7 +39,7 @@ export class DataSyncService {
       window.dispatchEvent(new CustomEvent('xfactory_audit_logged'));
     }
 
-    const notifications = await NotificationRepository.getNotificationsForUser(userId);
+    const notifications = await apiFetchNotifications();
     if (notifications.length > 0) {
       localStorage.setItem(NOTIFICATIONS_CACHE_KEY, JSON.stringify(notifications));
       window.dispatchEvent(new CustomEvent('xfactory_notifications_changed', { detail: notifications }));

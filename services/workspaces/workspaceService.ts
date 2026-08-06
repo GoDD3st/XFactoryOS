@@ -2,6 +2,7 @@ import { Cluster, Workstation, SeatStatus } from '@/frontend/src/types';
 import { WorkstationRepository } from '@/database/repositories/workstationRepository';
 import { ReservationRepository } from '@/database/repositories/reservationRepository';
 import { Reservation } from '@/frontend/src/types';
+import { SupabaseClient } from '@supabase/supabase-js';
 
 export const INITIAL_CLUSTERS: Cluster[] = [
   { id: 'cl-a', code: 'CL-A', name: 'Cluster A — Innovation & R&D', description: 'Zone dédiée aux projets d\'innovation et R&D Safi', desk_count: 4, is_management_only: false, enabled: true, location_zone: 'Zone Ouest Level 1', workstations: [] },
@@ -157,16 +158,27 @@ export class WorkspaceService {
     return workstations;
   }
 
-  static async toggleManagementClusterLock(clusterId: string, unlocked: boolean, actorId?: string, actorName?: string): Promise<Record<string, Workstation[]>> {
-    const workstations = this.getSavedWorkstations();
+  static async toggleManagementClusterLock(
+    clusterId: string,
+    unlocked: boolean,
+    actorId?: string,
+    actorName?: string,
+    dbClient?: SupabaseClient
+  ): Promise<Record<string, Workstation[]>> {
+    // Fetch live from Supabase (not the localStorage cache / synthetic-ID fallback that
+    // getSavedWorkstations() can return) so the write below targets real workstation UUIDs.
+    const workstations = await WorkstationRepository.getWorkstations(dbClient);
     const clusterSeats = workstations[clusterId] || workstations[clusterId.toLowerCase()];
 
-    if (clusterSeats) {
+    if (clusterSeats && clusterSeats.length > 0) {
       for (const seat of clusterSeats) {
         const newStatus: SeatStatus = unlocked ? 'disponible' : 'management_reserved';
         seat.status = newStatus;
         seat.reservable = unlocked;
-        await WorkstationRepository.updateWorkstationStatus(seat.id, newStatus, unlocked);
+        const updated = await WorkstationRepository.updateWorkstationStatus(seat.id, newStatus, unlocked, dbClient);
+        if (!updated) {
+          throw new Error(`Échec de mise à jour du poste ${seat.code} — le déblocage du cluster n'a pas été persisté.`);
+        }
       }
 
       if (typeof window !== 'undefined') {

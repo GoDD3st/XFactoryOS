@@ -8,6 +8,7 @@ import { UserRepository } from '@/database/repositories/userRepository';
 import { NotificationService } from '../notifications/notificationService';
 import { supabase } from '@/database/client';
 import { apiCreateReservation, apiFetchReservations } from '../api/reservationApi';
+import { isDateLockedDown, isPublicHoliday, isWeekend, getHolidayName } from '@/frontend/src/shared/utils/dateValidation';
 
 const CACHE_KEY = 'xfactory_reservations_v2';
 
@@ -37,6 +38,14 @@ export class ReservationService {
   /**
    * Pull authoritative reservations from Supabase and refresh local cache.
    * On failure, keeps existing cache (prevents wiping reservations after a failed read).
+   *
+   * Deliberately does NOT dispatch 'xfactory_reservations_changed' — this is a pure read/refresh,
+   * and every current listener of that event (EndUserDashboard, ReservationsTable,
+   * MyReservationsView) reacts to it by calling this same method. Dispatching here created an
+   * unbounded feedback loop (event -> listener -> syncFromDatabase -> dispatch -> event -> ...)
+   * that hammered /api/reservations continuously and tripped the rate limiter. Only actual
+   * mutations (saveLocalReservations) and the realtime subscription / no-show ticker should
+   * announce the event — this method just answers "what's current" without re-announcing it.
    */
   static async syncFromDatabase(): Promise<Reservation[]> {
     try {
@@ -47,7 +56,6 @@ export class ReservationService {
 
       if (typeof window !== 'undefined') {
         localStorage.setItem(CACHE_KEY, JSON.stringify(data));
-        window.dispatchEvent(new CustomEvent('xfactory_reservations_changed'));
       }
       return data;
     } catch (err) {
@@ -96,6 +104,30 @@ export class ReservationService {
 
     const settings = await SettingsRepository.getSettings();
     const isBypassRole = !!userRole && settings.bypassRoles.includes(userRole);
+
+    // Workspace lockdown — always enforced (even for bypass roles: a physical closure isn't an
+    // access-control rule). This is the server-side twin of validateReservationConstraints()'s
+    // check, needed because the browser only calls that for live UI feedback — without this,
+    // a direct POST to the API could bypass a lockdown entirely.
+    if (payload.reservation_date) {
+      const lockdown = isDateLockedDown(payload.reservation_date, settings.closedDates);
+      if (lockdown) {
+        throw new Error(
+          `L'Open Space est fermé le ${new Date(payload.reservation_date + 'T00:00:00').toLocaleDateString('fr-FR')} (${lockdown.reason || 'fermeture exceptionnelle'}). Réservation impossible sur cette date.`
+        );
+      }
+    }
+
+    if (!isBypassRole && payload.reservation_date) {
+      if (!settings.allowWeekendBooking && isWeekend(payload.reservation_date)) {
+        throw new Error('Les réservations sont strictement interdites les week-ends (Samedi / Dimanche).');
+      }
+      if (!settings.allowHolidayBooking && isPublicHoliday(payload.reservation_date, settings.holidays)) {
+        throw new Error(
+          `La date sélectionnée est un jour férié OCP Safi (${getHolidayName(payload.reservation_date, settings.holidays)}). Réservation impossible.`
+        );
+      }
+    }
 
     if (payload.workstation_code && payload.reservation_date && payload.start_time && payload.end_time) {
       const conflict = await ReservationRepository.checkConflict(

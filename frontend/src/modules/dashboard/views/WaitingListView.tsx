@@ -1,19 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { WaitingListEntry } from '@/frontend/src/types';
-import { WaitingListService } from '@/services/waitinglist/waitingListService';
-import { useAuth } from '../../auth/context/AuthContext';
+import { apiFetchWaitingList, apiJoinWaitingList, apiCancelWaitingListEntry } from '@/services/api/waitingListApi';
 import { Clock, Layers, Plus, Trash2, CheckCircle, Users } from 'lucide-react';
 
 export const WaitingListView: React.FC = () => {
-  const { currentUser } = useAuth();
   const [list, setList] = useState<WaitingListEntry[]>([]);
   const [showAdd, setShowAdd] = useState(false);
   const [clusterPref, setClusterPref] = useState('CL-A');
   const [timeSlot, setTimeSlot] = useState('09:00 - 17:00');
   const [notes, setNotes] = useState('');
 
-  const loadList = () => {
-    setList(WaitingListService.getWaitingList());
+  const loadList = async () => {
+    setList(await apiFetchWaitingList());
   };
 
   useEffect(() => {
@@ -24,10 +22,7 @@ export const WaitingListView: React.FC = () => {
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
-    await WaitingListService.addToWaitingList({
-      user_id: currentUser?.id || 'usr-current',
-      user_name: currentUser?.full_name || 'Collaborateur Safi',
-      user_department: currentUser?.department || 'Digital Factory',
+    await apiJoinWaitingList({
       cluster_preference: clusterPref,
       reservation_date: new Date().toISOString().split('T')[0],
       time_slot: timeSlot,
@@ -39,7 +34,7 @@ export const WaitingListView: React.FC = () => {
   };
 
   const handleCancel = async (id: string) => {
-    await WaitingListService.cancelWaitingListEntry(id);
+    await apiCancelWaitingListEntry(id);
     loadList();
   };
 

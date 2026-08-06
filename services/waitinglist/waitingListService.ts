@@ -1,5 +1,6 @@
 import { WaitingListEntry } from '@/frontend/src/types';
 import { WaitingListRepository } from '@/database/repositories/waitingListRepository';
+import { sendNotification } from '../notifications/notificationService';
 
 export class WaitingListService {
   static getWaitingList(): WaitingListEntry[] {
@@ -38,13 +39,25 @@ export class WaitingListService {
     return success;
   }
 
-  static async processWaitingListFIFO(clusterCode: string, date: string): Promise<WaitingListEntry | null> {
+  static async processWaitingListFIFO(clusterCode: string, date: string, workstationId?: string): Promise<WaitingListEntry | null> {
     const list = await WaitingListRepository.getWaitingList();
     const match = list.find((e) => e.cluster_preference === clusterCode && e.status === 'waiting');
 
     if (match) {
       match.status = 'offered';
-      await WaitingListRepository.cancelEntry(match.id);
+      await WaitingListRepository.markOffered(match.id, workstationId);
+
+      await sendNotification(
+        match.user_id,
+        'Poste Disponible',
+        `Un poste vient de se libérer dans le cluster ${clusterCode} que vous attendiez. Réservez-le rapidement avant expiration de l'offre.`,
+        'info'
+      );
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('xfactory_waiting_list_changed'));
+      }
+
       return match;
     }
     return null;

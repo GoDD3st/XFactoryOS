@@ -1,20 +1,40 @@
-import React, { useState, useEffect } from 'react';
-import { INITIAL_CLUSTERS, WorkspaceService } from '@/services/workspaces/workspaceService';
+import React, { useState, useEffect, useCallback } from 'react';
+import { INITIAL_CLUSTERS } from '@/services/workspaces/workspaceService';
+import { apiFetchClusters, apiToggleClusterLock } from '@/services/api/workspaceApi';
 import { useAuth } from '../../auth/context/AuthContext';
 import { Lock, Unlock, Shield, Building, Sparkles } from 'lucide-react';
 
 export const ClustersAdminView: React.FC = () => {
   const { currentUser } = useAuth();
   const [clusters, setClusters] = useState(INITIAL_CLUSTERS);
-  const [unlockedState, setUnlockedState] = useState<Record<string, boolean>>({});
+  const [pending, setPending] = useState<string | null>(null);
+
+  const loadClusters = useCallback(async () => {
+    const data = await apiFetchClusters();
+    if (data.length > 0) setClusters(data);
+  }, []);
+
+  useEffect(() => {
+    loadClusters();
+  }, [loadClusters]);
+
+  // A management cluster is "unlocked" once at least one of its seats is reservable again.
+  const isClusterUnlocked = (cl: (typeof clusters)[number]) =>
+    cl.workstations.length > 0 && cl.workstations.some((w) => w.status !== 'management_reserved');
 
   const toggleClusterLock = async (clusterId: string) => {
-    const nextState = !unlockedState[clusterId];
-    setUnlockedState((prev) => ({
-      ...prev,
-      [clusterId]: nextState,
-    }));
-    await WorkspaceService.toggleManagementClusterLock(clusterId, nextState, currentUser?.id, currentUser?.full_name);
+    const cl = clusters.find((c) => c.id === clusterId);
+    if (!cl) return;
+    const nextState = !isClusterUnlocked(cl);
+    setPending(clusterId);
+    try {
+      await apiToggleClusterLock(clusterId, nextState);
+      await loadClusters();
+    } catch (err) {
+      console.error('Cluster lock toggle failed:', err);
+    } finally {
+      setPending(null);
+    }
   };
 
   return (
@@ -31,7 +51,7 @@ export const ClustersAdminView: React.FC = () => {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {clusters.map((cl) => {
-          const isUnlocked = unlockedState[cl.id] || false;
+          const isUnlocked = isClusterUnlocked(cl);
           return (
             <div key={cl.id} className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-3">
               <div className="flex items-start justify-between">
@@ -60,7 +80,10 @@ export const ClustersAdminView: React.FC = () => {
                   <span className="text-[10px] font-bold text-amber-700">Accès VIP Direction</span>
                   <button
                     onClick={() => toggleClusterLock(cl.id)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                    disabled={pending === cl.id}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
+                      pending === cl.id ? 'opacity-60 cursor-wait' : 'cursor-pointer'
+                    } ${
                       isUnlocked
                         ? 'bg-emerald-600 text-white hover:bg-emerald-500'
                         : 'bg-amber-500 text-white hover:bg-amber-600'

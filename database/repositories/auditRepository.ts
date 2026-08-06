@@ -1,10 +1,25 @@
+import { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '../client';
 import { AuditLogEntry, UserRole } from '@/frontend/src/types';
+
+// audit_logs read is restricted to SUPER_ADMIN/SECURITY/IT_ADMIN by RLS (p_audit_read), which
+// requires a real Supabase Auth session. Server-side callers (the /api/audit route, which
+// enforces its own broader RBAC) should bypass RLS via the service-role client instead of
+// silently getting an empty result back.
+async function resolveClient(): Promise<SupabaseClient> {
+  if (typeof window === 'undefined') {
+    const { getAdminClient } = await import('../serverClient');
+    const admin = getAdminClient();
+    if (admin) return admin;
+  }
+  return supabase;
+}
 
 export class AuditRepository {
   static async getAuditLogs(): Promise<AuditLogEntry[]> {
     try {
-      const { data, error } = await supabase
+      const db = await resolveClient();
+      const { data, error } = await db
         .from('audit_logs')
         .select('*')
         .order('created_at', { ascending: false });
@@ -38,7 +53,8 @@ export class AuditRepository {
     ipAddress: string = '10.120.4.18'
   ): Promise<AuditLogEntry> {
     try {
-      await supabase.from('audit_logs').insert({
+      const db = await resolveClient();
+      await db.from('audit_logs').insert({
         action: action,
         entity_type: targetResource,
         before: { actor_name: actorName, actor_role: actorRole },

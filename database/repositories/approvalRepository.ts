@@ -1,5 +1,17 @@
+import { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '../client';
 import { ApprovalRequest } from '@/frontend/src/types';
+
+// approval_requests has no anon/authenticated INSERT policy (writes are meant to go through
+// the backend). Server-side callers must use the service-role client to bypass RLS.
+async function resolveClient(): Promise<SupabaseClient> {
+  if (typeof window === 'undefined') {
+    const { getAdminClient } = await import('../serverClient');
+    const admin = getAdminClient();
+    if (admin) return admin;
+  }
+  return supabase;
+}
 
 export class ApprovalRepository {
   private static LOCAL_KEY = 'xfactory_approvals_v2';
@@ -27,31 +39,42 @@ export class ApprovalRepository {
 
   static async getApprovals(): Promise<ApprovalRequest[]> {
     try {
-      const { data, error } = await supabase
+      const db = await resolveClient();
+      const { data, error } = await db
         .from('approval_requests')
-        .select('*')
+        .select(
+          '*, requester:users!approval_requests_requested_by_fkey(full_name, department), reservations(start_at, end_at, purpose, workstations(code))'
+        )
         .order('created_at', { ascending: false });
 
       if (!error && data && data.length > 0) {
-        const dbMapped: ApprovalRequest[] = data.map((a: any) => ({
-          id: a.id,
-          reservation_id: a.reservation_id || '',
-          requester_id: a.requested_by,
-          requester_name: a.requester_name || 'Collaborateur Safi',
-          user_department: a.user_department || 'OCP Safi Team',
-          approver_role: a.approver_role || 'director',
-          status: a.status.toLowerCase() as any,
-          reason: a.reason || 'Réservation longue durée (> 2 jours ouvrés)',
-          objective: a.objective || a.reason || 'Mission Safi Digital Factory',
-          decision_note: a.decision_reason,
-          created_at: a.created_at,
-          decided_at: a.decided_at,
-          reservation_date: a.reservation_date,
-          end_date: a.end_date,
-          duration_days: a.duration_days,
-          workstation_code: a.workstation_code,
-          cluster_name: a.cluster_name,
-        }));
+        const dbMapped: ApprovalRequest[] = data.map((a: any) => {
+          const startAt = a.reservations?.start_at;
+          const endAt = a.reservations?.end_at;
+          const durationDays = startAt && endAt
+            ? Math.max(1, Math.round((new Date(endAt).getTime() - new Date(startAt).getTime()) / 86400000))
+            : undefined;
+
+          return {
+            id: a.id,
+            reservation_id: a.reservation_id || '',
+            requester_id: a.requested_by,
+            requester_name: a.requester?.full_name || 'Collaborateur Safi',
+            user_department: a.requester?.department || 'OCP Safi Team',
+            approver_role: 'director',
+            status: a.status === 'INFO_REQUESTED' ? 'needs_info' : (a.status.toLowerCase() as any),
+            reason: a.objective || 'Réservation longue durée (> 2 jours ouvrés)',
+            objective: a.objective || a.reservations?.purpose || 'Mission Safi Digital Factory',
+            decision_note: a.decision_reason,
+            created_at: a.created_at,
+            decided_at: a.decided_at,
+            reservation_date: startAt ? new Date(startAt).toISOString().split('T')[0] : undefined,
+            end_date: endAt ? new Date(endAt).toISOString().split('T')[0] : undefined,
+            duration_days: durationDays,
+            workstation_code: a.reservations?.workstations?.code,
+            cluster_name: undefined,
+          };
+        });
         this.saveLocalApprovals(dbMapped);
         return dbMapped;
       }
@@ -83,20 +106,23 @@ export class ApprovalRepository {
       cluster_name: payload.cluster_name,
     };
 
-    try {
-      await supabase
-        .from('approval_requests')
-        .insert({
-          id: item.id,
-          approval_type: 'LONG_DURATION',
-          reservation_id: item.reservation_id,
-          requested_by: item.requester_id,
-          status: 'PENDING',
-          reason: item.reason,
-          objective: item.objective,
-        });
-    } catch (err) {
-      // Non-blocking fallback
+    const db = await resolveClient();
+    const { data, error } = await db
+      .from('approval_requests')
+      .insert({
+        approval_type: 'LONG_DURATION',
+        reservation_id: item.reservation_id || null,
+        requested_by: item.requester_id,
+        status: 'PENDING',
+        objective: item.objective,
+      })
+      .select('id')
+      .single();
+
+    if (error) {
+      console.error('createApproval insert failed:', error);
+    } else if (data?.id) {
+      item.id = data.id;
     }
 
     const current = this.getLocalApprovals();
@@ -112,10 +138,13 @@ export class ApprovalRepository {
     decisionNote: string,
     deciderId: string
   ): Promise<boolean> {
-    const dbStatus = status === 'approved' ? 'APPROVED' : status === 'needs_info' ? 'NEEDS_INFO' : 'REJECTED';
+    // DB enum approval_status is PENDING/APPROVED/REJECTED/INFO_REQUESTED — 'NEEDS_INFO' isn't
+    // a valid value and would fail the write with a Postgres enum error.
+    const dbStatus = status === 'approved' ? 'APPROVED' : status === 'needs_info' ? 'INFO_REQUESTED' : 'REJECTED';
 
     try {
-      await supabase
+      const db = await resolveClient();
+      await db
         .from('approval_requests')
         .update({
           status: dbStatus,

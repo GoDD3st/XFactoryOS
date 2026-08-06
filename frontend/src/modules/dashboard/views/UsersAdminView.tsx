@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { UserProfile } from '@/frontend/src/types';
-import { UserRepository } from '@/database/repositories/userRepository';
+import { apiFetchUsers } from '@/services/api/userApi';
 import { Search } from 'lucide-react';
 
 export const UsersAdminView: React.FC = () => {
@@ -11,7 +11,7 @@ export const UsersAdminView: React.FC = () => {
   const loadUsers = async () => {
     setLoading(true);
     try {
-      const data = await UserRepository.getUsers();
+      const data = await apiFetchUsers();
       setUsers(data);
     } catch (err) {
       console.error('Error fetching users:', err);

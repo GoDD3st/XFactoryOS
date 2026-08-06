@@ -2,7 +2,13 @@ import { Router } from 'express';
 import { WorkspaceService } from '@/services/workspaces/workspaceService';
 import { requireRole } from '../middleware/rbacMiddleware';
 import { validateBody } from '../middleware/validateBody';
-import { MaintenanceToggleSchema, VisibilityToggleSchema } from '../validators';
+import { MaintenanceToggleSchema, VisibilityToggleSchema, ManagementLockSchema } from '../validators';
+import { getServerWriteClient, extractBearerToken, hasAdminClient, requireAdminClient } from '@/database/serverClient';
+
+function getDbClient(req: { headers: { authorization?: string } }) {
+  if (hasAdminClient()) return requireAdminClient();
+  return getServerWriteClient(extractBearerToken(req.headers.authorization));
+}
 
 export const workspacesRouter = Router();
 
@@ -51,6 +57,29 @@ workspacesRouter.patch(
         req.params.clusterId,
         req.params.seatId,
         isMaintenance
+      );
+      res.json({ status: 'success' });
+    } catch (error: any) {
+      res.status(500).json({ status: 'error', message: error.message });
+    }
+  }
+);
+
+// PATCH /api/workspaces/clusters/:clusterId/management-lock — BR-09: GCI/Building Manager or Admins only
+workspacesRouter.patch(
+  '/clusters/:clusterId/management-lock',
+  requireRole('building_manager', 'gci_manager', 'admin', 'super_admin'),
+  validateBody(ManagementLockSchema),
+  async (req, res) => {
+    try {
+      const dbClient = getDbClient(req);
+      const { unlocked } = req.body;
+      await WorkspaceService.toggleManagementClusterLock(
+        req.params.clusterId,
+        unlocked,
+        req.user!.id,
+        req.user!.full_name,
+        dbClient
       );
       res.json({ status: 'success' });
     } catch (error: any) {

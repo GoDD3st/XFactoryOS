@@ -42,11 +42,11 @@ function getFirstValidBookingDate(bookingWindowDays: number): string {
 
 export const EndUserDashboard: React.FC = () => {
   const { currentUser, currentRole } = useAuth();
-  const [settings, setSettings] = useState<SystemSettings>(SettingsService.getSettings());
+  const [settings, setSettings] = useState<SystemSettings>(SettingsService.getSettings() as SystemSettings);
   const firstValidDate = getFirstValidBookingDate(settings.bookingWindowDays);
 
   useEffect(() => {
-    const handleSettingsChange = () => setSettings(SettingsService.getSettings());
+    const handleSettingsChange = () => setSettings(SettingsService.getSettings() as SystemSettings);
     window.addEventListener('xfactory_settings_changed', handleSettingsChange);
     return () => window.removeEventListener('xfactory_settings_changed', handleSettingsChange);
   }, []);

@@ -2,35 +2,44 @@ import { SystemSettings } from '@/frontend/src/types';
 import { SettingsRepository } from '@/database/repositories/settingsRepository';
 
 export class SettingsService {
-  static getSettings(): SystemSettings {
+  /**
+   * Server (backend/routes/settings.routes.ts): reads live from Supabase.
+   * Browser: returns the cached value immediately for a fast paint, then refreshes the cache
+   * in the background — callers needing the live value from the browser should await
+   * SettingsRepository.getSettings() (or the OTP-confirmed /api/settings flow) directly.
+   */
+  static getSettings(): SystemSettings | Promise<SystemSettings> {
+    if (typeof window === 'undefined') {
+      return SettingsRepository.getSettings();
+    }
+
     SettingsRepository.getSettings().then((data) => {
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('xfactory_settings_v2', JSON.stringify(data));
-      }
+      localStorage.setItem('xfactory_settings_v2', JSON.stringify(data));
     });
 
-    if (typeof window !== 'undefined') {
-      const cached = localStorage.getItem('xfactory_settings_v2');
-      if (cached) return JSON.parse(cached);
-    }
+    const cached = localStorage.getItem('xfactory_settings_v2');
+    if (cached) return JSON.parse(cached);
     return SettingsRepository.DEFAULT_SETTINGS;
   }
 
-  static updateSettings(partial: Partial<SystemSettings>): SystemSettings {
-    const updated = { ...this.getSettings(), ...partial };
-
-    SettingsRepository.updateSettings(partial);
-
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('xfactory_settings_v2', JSON.stringify(updated));
-      window.dispatchEvent(new CustomEvent('xfactory_settings_changed', { detail: updated }));
-    }
-
-    return updated;
+  /** Server-only direct write (bypasses OTP — used by the legacy PUT /api/settings route only;
+   * the Super Admin UI goes through the OTP-confirmed request/confirm flow below). */
+  static async updateSettings(partial: Partial<SystemSettings>): Promise<SystemSettings> {
+    return SettingsRepository.updateSettings(partial);
   }
 
-  static resetSettings(): SystemSettings {
-    return this.updateSettings(SettingsRepository.DEFAULT_SETTINGS);
+  /**
+   * Pure local helper for the Settings form's "Réinitialiser" button — resets the in-progress,
+   * unsaved form back to defaults. Deliberately does NOT write to the database: persisting a
+   * reset still has to go through the OTP-confirmed save flow like any other settings change.
+   */
+  static resetToDefaults(): SystemSettings {
+    return { ...SettingsRepository.DEFAULT_SETTINGS };
+  }
+
+  /** Server-only: actually resets and persists defaults (used by POST /api/settings/reset). */
+  static async resetSettings(): Promise<SystemSettings> {
+    return SettingsRepository.updateSettings(SettingsRepository.DEFAULT_SETTINGS);
   }
 
   static async getHistory() {

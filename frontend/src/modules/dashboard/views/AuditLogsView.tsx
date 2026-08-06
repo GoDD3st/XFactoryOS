@@ -1,11 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AuditLogEntry } from '@/frontend/src/types';
-import { AuditService } from '@/services/audit/auditService';
+import { apiFetchAuditLogs } from '@/services/api/auditApi';
 import { ShieldCheck, Download, Search, Filter } from 'lucide-react';
 
 export const AuditLogsView: React.FC = () => {
-  const [logs] = useState<AuditLogEntry[]>(AuditService.getAuditLogs());
+  const [logs, setLogs] = useState<AuditLogEntry[]>([]);
   const [search, setSearch] = useState('');
+
+  useEffect(() => {
+    apiFetchAuditLogs().then(setLogs);
+  }, []);
 
   const filtered = logs.filter(
     (l) =>

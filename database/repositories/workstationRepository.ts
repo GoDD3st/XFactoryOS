@@ -2,6 +2,20 @@ import { supabase } from '../client';
 import { Workstation, Cluster } from '@/frontend/src/types';
 import { SupabaseClient } from '@supabase/supabase-js';
 
+// Falls back to the service-role client on the server when the caller didn't pass one
+// explicitly — most callers (check-in/out, no-show release) update workstation status on
+// behalf of the acting user rather than as that user, and only admin/building/GCI-manager
+// roles have a direct write RLS policy on this table.
+async function resolveClient(explicit?: SupabaseClient): Promise<SupabaseClient> {
+  if (explicit) return explicit;
+  if (typeof window === 'undefined') {
+    const { getAdminClient } = await import('../serverClient');
+    const admin = getAdminClient();
+    if (admin) return admin;
+  }
+  return supabase;
+}
+
 export class WorkstationRepository {
   /**
    * Resolve a workstation UUID from id and/or code (required for Supabase FK inserts).
@@ -33,9 +47,9 @@ export class WorkstationRepository {
   /**
    * Fetch all active clusters from Supabase
    */
-  static async getClusters(): Promise<Cluster[]> {
+  static async getClusters(dbClient: SupabaseClient = supabase): Promise<Cluster[]> {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await dbClient
         .from('clusters')
         .select('*')
         .order('code', { ascending: true });
@@ -64,9 +78,9 @@ export class WorkstationRepository {
   /**
    * Fetch all workstations grouped by cluster from Supabase
    */
-  static async getWorkstations(): Promise<Record<string, Workstation[]>> {
+  static async getWorkstations(dbClient: SupabaseClient = supabase): Promise<Record<string, Workstation[]>> {
     try {
-      const { data: wsData, error: wsError } = await supabase
+      const { data: wsData, error: wsError } = await dbClient
         .from('workstations')
         .select('*')
         .order('code', { ascending: true });
@@ -125,27 +139,36 @@ export class WorkstationRepository {
   }
 
   /**
-   * Update seat status in Supabase
+   * Update seat status in Supabase. Matches by UUID `id` first, falling back to `code`
+   * (some callers pass a workstation code instead of its UUID). Returns false — instead of
+   * silently reporting success — when neither match updates a row, so callers can surface
+   * a real failure rather than assuming the write landed.
    */
-  static async updateWorkstationStatus(id: string, status: string, reservable: boolean): Promise<boolean> {
+  static async updateWorkstationStatus(id: string, status: string, reservable: boolean, dbClient?: SupabaseClient): Promise<boolean> {
     try {
+      const db = await resolveClient(dbClient);
       const dbStatus = this.mapDomainStatusToDb(status);
-      const { error } = await supabase
-        .from('workstations')
-        .update({
-          status: dbStatus,
-          reservable: reservable,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', id);
+      const updatePayload = { status: dbStatus, reservable, updated_at: new Date().toISOString() };
 
-      if (error) {
-        await supabase
-          .from('workstations')
-          .update({ status: dbStatus, reservable })
-          .eq('code', id);
+      const { data, error } = await db
+        .from('workstations')
+        .update(updatePayload)
+        .eq('id', id)
+        .select('id');
+
+      if (!error && data && data.length > 0) return true;
+
+      const { data: dataByCode, error: errorByCode } = await db
+        .from('workstations')
+        .update(updatePayload)
+        .eq('code', id)
+        .select('id');
+
+      if (errorByCode) {
+        console.error('Error updating workstation status:', errorByCode);
+        return false;
       }
-      return true;
+      return !!dataByCode && dataByCode.length > 0;
     } catch (err) {
       console.error('Error updating workstation status:', err);
       return false;

@@ -103,7 +103,7 @@ export interface WaitingListEntry {
   time_slot: string;
   notes?: string;
   created_at: string;
-  status: 'waiting' | 'offered' | 'expired' | 'fulfilled';
+  status: 'waiting' | 'offered' | 'expired' | 'fulfilled' | 'cancelled';
 }
 
 export interface AuditLogEntry {
@@ -189,6 +189,17 @@ export interface ReservationSearchQuery {
   dateTo?: string;
 }
 
+export interface HolidayEntry {
+  date: string; // 'YYYY-MM-DD'
+  label: string; // e.g. 'Aïd Al Fitr'
+}
+
+export interface ClosedDateEntry {
+  date: string; // 'YYYY-MM-DD' — start of the closure
+  endDate?: string; // optional — last day of the closure (inclusive), defaults to `date`
+  reason?: string; // e.g. 'Maintenance électrique bâtiment'
+}
+
 export interface SystemSettings {
   id?: string;
   bookingWindowDays: number; // e.g. 2 days delay window
@@ -203,6 +214,8 @@ export interface SystemSettings {
   bypassRoles: UserRole[]; // e.g. ['admin', 'super_admin', 'director', 'executive_assistant']
   allowWeekendBooking: boolean;
   allowHolidayBooking: boolean;
+  holidays: HolidayEntry[]; // Super Admin-managed public holidays (dates shift yearly, e.g. Islamic calendar)
+  closedDates: ClosedDateEntry[]; // Super Admin "lockdown" days — blocks new reservations only, rest of the site keeps working
   noShowDelayMinutes: number;
   extensionSeatsVisibleByDefault: boolean;
   managementClustersEnabled: boolean;

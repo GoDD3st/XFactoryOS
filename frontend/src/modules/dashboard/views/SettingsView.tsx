@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { SystemSettings } from '@/frontend/src/types';
+import { SystemSettings, HolidayEntry, ClosedDateEntry } from '@/frontend/src/types';
 import { SettingsService } from '@/services/settings/settingsService';
 import { useAuth } from '../../auth/context/AuthContext';
-import { Settings, Save, RotateCcw, CheckCircle, Clock, CalendarDays, BarChart3, Building2, ShieldCheck, Tag, KeyRound, History, X, AlertCircle } from 'lucide-react';
+import { Settings, Save, RotateCcw, CheckCircle, Clock, CalendarDays, BarChart3, Building2, ShieldCheck, Tag, KeyRound, History, X, AlertCircle, Plus, Trash2, Lock } from 'lucide-react';
 
 /* ──────────────────────────────────────────────────────────────────
    Reusable: section card wrapper
@@ -278,9 +278,182 @@ const SettingsHistoryTable: React.FC<{ refreshKey: number }> = ({ refreshKey }) 
   );
 };
 
+/* ──────────────────────────────────────────────────────────────────
+   Jours Fériés — editable list (Islamic holidays shift date every year,
+   so this can't be a hardcoded calendar; Super Admin keeps it current)
+   ────────────────────────────────────────────────────────────────── */
+const HolidaysEditor: React.FC<{
+  holidays: HolidayEntry[];
+  onChange: (next: HolidayEntry[]) => void;
+}> = ({ holidays, onChange }) => {
+  const [date, setDate] = useState('');
+  const [label, setLabel] = useState('');
+
+  const sorted = [...holidays].sort((a, b) => a.date.localeCompare(b.date));
+
+  const handleAdd = () => {
+    if (!date || !label.trim()) return;
+    if (holidays.some((h) => h.date === date)) return; // avoid duplicate dates
+    onChange([...holidays, { date, label: label.trim() }]);
+    setDate('');
+    setLabel('');
+  };
+
+  const handleRemove = (targetDate: string) => {
+    onChange(holidays.filter((h) => h.date !== targetDate));
+  };
+
+  return (
+    <div className="md:col-span-2 space-y-3">
+      <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+        {sorted.length === 0 && (
+          <p className="text-xs text-slate-400">Aucun jour férié configuré.</p>
+        )}
+        {sorted.map((h) => (
+          <div key={h.date} className="flex items-center justify-between gap-3 p-2.5 bg-slate-50 rounded-xl border border-slate-100">
+            <div className="flex items-center gap-3 min-w-0">
+              <span className="text-[10px] font-mono font-bold text-slate-500 bg-white border border-slate-200 rounded-lg px-2 py-1 shrink-0">
+                {new Date(h.date + 'T00:00:00').toLocaleDateString('fr-FR')}
+              </span>
+              <span className="text-xs font-semibold text-slate-700 truncate">{h.label}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleRemove(h.date)}
+              className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg shrink-0"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex flex-col sm:flex-row gap-2 pt-2 border-t border-slate-100">
+        <input
+          type="date"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+          className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 transition-all"
+        />
+        <input
+          type="text"
+          placeholder="Nom du jour férié (ex: Aïd Al Fitr)"
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          className="flex-1 p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 transition-all"
+        />
+        <button
+          type="button"
+          onClick={handleAdd}
+          disabled={!date || !label.trim()}
+          className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-slate-800 hover:bg-slate-900 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-xs rounded-xl transition-all shrink-0"
+        >
+          <Plus className="w-3.5 h-3.5" /> Ajouter
+        </button>
+      </div>
+      <p className="text-[10px] text-slate-400">
+        Les dates des fêtes religieuses (Aïd Al Fitr, Aïd Al Adha, 1er Moharram, Aïd Al Mawlid) avancent d'environ 11 jours chaque année du calendrier grégorien — mettez cette liste à jour annuellement.
+      </p>
+    </div>
+  );
+};
+
+/* ──────────────────────────────────────────────────────────────────
+   Fermeture Exceptionnelle (Lockdown) — blocks NEW reservations on the
+   given date(s) only; the rest of the app keeps functioning normally.
+   ────────────────────────────────────────────────────────────────── */
+const ClosedDatesEditor: React.FC<{
+  closedDates: ClosedDateEntry[];
+  onChange: (next: ClosedDateEntry[]) => void;
+}> = ({ closedDates, onChange }) => {
+  const [date, setDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [reason, setReason] = useState('');
+
+  const sorted = [...closedDates].sort((a, b) => a.date.localeCompare(b.date));
+
+  const handleAdd = () => {
+    if (!date) return;
+    if (endDate && endDate < date) return;
+    onChange([...closedDates, { date, endDate: endDate || undefined, reason: reason.trim() || undefined }]);
+    setDate('');
+    setEndDate('');
+    setReason('');
+  };
+
+  const handleRemove = (target: ClosedDateEntry) => {
+    onChange(closedDates.filter((c) => c !== target));
+  };
+
+  return (
+    <div className="md:col-span-2 space-y-3">
+      <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-800 flex items-start gap-2">
+        <Lock className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+        <span>Une date verrouillée bloque uniquement la <strong>création de nouvelles réservations</strong> ce jour-là. Le reste du site (consultation, check-in sur réservations existantes, dashboards, administration) continue de fonctionner normalement.</span>
+      </div>
+
+      <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+        {sorted.length === 0 && (
+          <p className="text-xs text-slate-400">Aucune fermeture exceptionnelle programmée.</p>
+        )}
+        {sorted.map((c, idx) => (
+          <div key={`${c.date}-${idx}`} className="flex items-center justify-between gap-3 p-2.5 bg-slate-50 rounded-xl border border-slate-100">
+            <div className="flex items-center gap-3 min-w-0">
+              <span className="text-[10px] font-mono font-bold text-white bg-amber-500 rounded-lg px-2 py-1 shrink-0">
+                {new Date(c.date + 'T00:00:00').toLocaleDateString('fr-FR')}
+                {c.endDate && c.endDate !== c.date ? ` → ${new Date(c.endDate + 'T00:00:00').toLocaleDateString('fr-FR')}` : ''}
+              </span>
+              <span className="text-xs font-semibold text-slate-700 truncate">{c.reason || 'Fermeture exceptionnelle'}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleRemove(c)}
+              className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg shrink-0"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-[auto_auto_1fr_auto] gap-2 pt-2 border-t border-slate-100">
+        <input
+          type="date"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+          className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-200 focus:border-amber-400 transition-all"
+        />
+        <input
+          type="date"
+          value={endDate}
+          min={date || undefined}
+          onChange={(e) => setEndDate(e.target.value)}
+          title="Date de fin (optionnel, pour une fermeture de plusieurs jours)"
+          className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-200 focus:border-amber-400 transition-all"
+        />
+        <input
+          type="text"
+          placeholder="Motif (ex: Maintenance électrique)"
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-200 focus:border-amber-400 transition-all"
+        />
+        <button
+          type="button"
+          onClick={handleAdd}
+          disabled={!date}
+          className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-xs rounded-xl transition-all shrink-0"
+        >
+          <Lock className="w-3.5 h-3.5" /> Verrouiller
+        </button>
+      </div>
+    </div>
+  );
+};
+
 export const SettingsView: React.FC = () => {
   const { currentUser } = useAuth();
-  const [settings, setSettings] = useState<SystemSettings>(SettingsService.getSettings());
+  const [settings, setSettings] = useState<SystemSettings>(SettingsService.getSettings() as SystemSettings);
   const [savedMsg, setSavedMsg] = useState(false);
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
 
@@ -321,8 +494,9 @@ export const SettingsView: React.FC = () => {
   };
 
   const handleReset = () => {
-    const res = SettingsService.resetSettings();
-    setSettings(res);
+    // Local-only: resets the unsaved form back to defaults. Persisting still requires the
+    // OTP-confirmed save below — this button must never write to the database directly.
+    setSettings(SettingsService.resetToDefaults());
   };
 
   const update = (field: keyof SystemSettings, value: any) =>
@@ -486,6 +660,30 @@ export const SettingsView: React.FC = () => {
             hint="Permet aux utilisateurs de réserver des postes pendant les jours fériés."
             checked={settings.allowHolidayBooking}
             onChange={(v) => update('allowHolidayBooking', v)}
+          />
+        </SectionCard>
+
+        {/* ── Card 4b: Jours Fériés ────────────────────────────────── */}
+        <SectionCard
+          icon={<CalendarDays className="w-4 h-4" />}
+          title="Jours Fériés"
+          subtitle="Liste des jours fériés OCP Safi — modifiable car les fêtes religieuses n'ont pas de date fixe"
+        >
+          <HolidaysEditor
+            holidays={settings.holidays}
+            onChange={(next) => update('holidays', next)}
+          />
+        </SectionCard>
+
+        {/* ── Card 4c: Fermeture Exceptionnelle (Lockdown) ────────── */}
+        <SectionCard
+          icon={<Lock className="w-4 h-4" />}
+          title="Fermeture Exceptionnelle de l'Open Space"
+          subtitle="Verrouillez une date pour empêcher toute nouvelle réservation, sans affecter le reste du site"
+        >
+          <ClosedDatesEditor
+            closedDates={settings.closedDates}
+            onChange={(next) => update('closedDates', next)}
           />
         </SectionCard>
 

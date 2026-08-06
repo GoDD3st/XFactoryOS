@@ -1,3 +1,4 @@
+import { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '../client';
 import { UserNotification } from '@/frontend/src/types';
 
@@ -8,10 +9,24 @@ const TYPE_TO_EVENT: Record<string, string> = {
   alert: 'ALERT',
 };
 
+// notifications has no anon/authenticated INSERT policy by design (a notification is routinely
+// created by the system on behalf of a DIFFERENT user than the caller, e.g. an approver's
+// decision notifying the requester — a self-scoped `user_id = auth.uid()` policy can't allow
+// that). Server-side callers must use the service-role client to bypass RLS for writes.
+async function resolveClient(): Promise<SupabaseClient> {
+  if (typeof window === 'undefined') {
+    const { getAdminClient } = await import('../serverClient');
+    const admin = getAdminClient();
+    if (admin) return admin;
+  }
+  return supabase;
+}
+
 export class NotificationRepository {
   static async getNotificationsForUser(userId?: string): Promise<UserNotification[]> {
     try {
-      let query = supabase
+      const db = await resolveClient();
+      let query = db
         .from('notifications')
         .select('*')
         .order('created_at', { ascending: false })
@@ -47,7 +62,8 @@ export class NotificationRepository {
     reservationId?: string
   ): Promise<UserNotification | null> {
     try {
-      const { data, error } = await supabase
+      const db = await resolveClient();
+      const { data, error } = await db
         .from('notifications')
         .insert({
           user_id: userId,
@@ -81,7 +97,8 @@ export class NotificationRepository {
 
   static async markAsRead(id: string): Promise<boolean> {
     try {
-      const { error } = await supabase
+      const db = await resolveClient();
+      const { error } = await db
         .from('notifications')
         .update({ read_at: new Date().toISOString(), status: 'READ' })
         .eq('id', id);

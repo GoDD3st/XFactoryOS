@@ -9,9 +9,9 @@ import { SystemSettingsUpdateSchema, ConfirmSettingsUpdateSchema } from '../vali
 export const settingsRouter = Router();
 
 // GET /api/settings — Authenticated users
-settingsRouter.get('/', (req, res) => {
+settingsRouter.get('/', async (req, res) => {
   try {
-    const settings = SettingsService.getSettings();
+    const settings = await SettingsService.getSettings();
     res.json(settings);
   } catch (error) {
     res.status(500).json({ error: 'Échec de la récupération des paramètres' });
@@ -19,22 +19,22 @@ settingsRouter.get('/', (req, res) => {
 });
 
 // PUT /api/settings — Admin & Super Admin only (Zod validated)
-settingsRouter.put('/', requireRole('admin', 'super_admin'), validateBody(SystemSettingsUpdateSchema), (req, res) => {
+settingsRouter.put('/', requireRole('admin', 'super_admin'), validateBody(SystemSettingsUpdateSchema), async (req, res) => {
   try {
-    const settings = SettingsService.updateSettings(req.body);
+    const settings = await SettingsService.updateSettings(req.body);
     res.json(settings);
-  } catch (error) {
-    res.status(500).json({ error: 'Échec de la mise à jour des paramètres' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Échec de la mise à jour des paramètres' });
   }
 });
 
 // POST /api/settings/reset — Super Admin only
-settingsRouter.post('/reset', requireRole('super_admin'), (req, res) => {
+settingsRouter.post('/reset', requireRole('super_admin'), async (req, res) => {
   try {
-    const settings = SettingsService.resetSettings();
+    const settings = await SettingsService.resetSettings();
     res.json(settings);
-  } catch (error) {
-    res.status(500).json({ error: 'Échec de la réinitialisation des paramètres' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Échec de la réinitialisation des paramètres' });
   }
 });
 

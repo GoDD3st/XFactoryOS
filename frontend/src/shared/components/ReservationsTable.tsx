@@ -36,11 +36,11 @@ export const ReservationsTable: React.FC<ReservationsTableProps> = ({
   userOnly = false
 }) => {
   const { currentUser, currentRole } = useAuth();
-  const [settings, setSettings] = useState<SystemSettings>(SettingsService.getSettings());
+  const [settings, setSettings] = useState<SystemSettings>(SettingsService.getSettings() as SystemSettings);
   const [formError, setFormError] = useState<string | undefined>();
 
   useEffect(() => {
-    const handleSettingsChange = () => setSettings(SettingsService.getSettings());
+    const handleSettingsChange = () => setSettings(SettingsService.getSettings() as SystemSettings);
     window.addEventListener('xfactory_settings_changed', handleSettingsChange);
     return () => window.removeEventListener('xfactory_settings_changed', handleSettingsChange);
   }, []);

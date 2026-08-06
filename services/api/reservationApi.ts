@@ -1,5 +1,6 @@
 import { Reservation, UserRole } from '@/frontend/src/types';
 import { supabase } from '@/database/client';
+import { isDemoMode } from '@/frontend/src/modules/auth/utils/demoMode';
 
 /** Fields allowed by POST /api/reservations (CreateReservationSchema.strict). */
 function buildReservationRequestBody(payload: Partial<Reservation>) {
@@ -20,19 +21,24 @@ export async function apiCreateReservation(
   payload: Partial<Reservation>,
   _userRole?: UserRole
 ): Promise<Reservation> {
-  const { data: sessionData } = await supabase.auth.getSession();
-  const token = sessionData.session?.access_token;
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
 
-  if (!token) {
-    throw new Error('Vous devez être connecté pour réserver un poste.');
+  if (!isDemoMode()) {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+
+    if (!token) {
+      throw new Error('Vous devez être connecté pour réserver un poste.');
+    }
+
+    headers.Authorization = `Bearer ${token}`;
   }
+  // Demo mode: no Authorization header — AuthContext's global fetch interceptor
+  // injects X-Demo-Role, which authMiddleware.ts's DEMO_MODE branch honors.
 
   const response = await fetch('/api/reservations', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
+    headers,
     body: JSON.stringify(buildReservationRequestBody(payload)),
   });
 
@@ -50,14 +56,18 @@ export async function apiCreateReservation(
 }
 
 export async function apiFetchReservations(): Promise<Reservation[]> {
-  const { data: sessionData } = await supabase.auth.getSession();
-  const token = sessionData.session?.access_token;
+  const headers: Record<string, string> = {};
 
-  if (!token) return [];
+  if (!isDemoMode()) {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
 
-  const response = await fetch('/api/reservations', {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+    if (!token) return [];
+
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  const response = await fetch('/api/reservations', { headers });
 
   if (!response.ok) return [];
 

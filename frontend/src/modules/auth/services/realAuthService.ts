@@ -61,18 +61,17 @@ export async function fetchRealUserProfile(authUser: {
       role = normalizeRoleCode(rawCode);
     }
   } catch (err) {
-    // If no user_roles row by ID, attempt lookup by email in users table
+    // If no user_roles row by ID, attempt lookup by email in users table.
+    // Note: `role` is NOT a column on public.users — roles only live in
+    // user_roles -> roles, so this fallback can only recover the name/department.
     if (authUser.email) {
       try {
         const { data: userByEmail } = await supabase
           .from('users')
-          .select('role, full_name, department')
+          .select('full_name, department')
           .eq('email', authUser.email)
           .single();
 
-        if (userByEmail?.role) {
-          role = normalizeRoleCode(userByEmail.role);
-        }
         if (userByEmail?.full_name) full_name = userByEmail.full_name;
         if (userByEmail?.department) department = userByEmail.department;
       } catch (e) {
@@ -82,18 +81,17 @@ export async function fetchRealUserProfile(authUser: {
   }
 
   // 2. Query Supabase DB users profile table for full_name and department
+  // (role is deliberately excluded — it's not a column on this table, and
+  // selecting it errors the whole query, silently dropping full_name/department too)
   try {
     const { data: profileData } = await supabase
       .from('users')
-      .select('full_name, department, role')
+      .select('full_name, department')
       .eq('id', authUser.id)
       .single();
 
     if (profileData?.full_name) full_name = profileData.full_name;
     if (profileData?.department) department = profileData.department;
-    if (profileData?.role && role === 'collaborator') {
-      role = normalizeRoleCode(profileData.role);
-    }
   } catch (err) {
     // Keep resolved profile
   }

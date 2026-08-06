@@ -35,7 +35,8 @@ export class NoShowService {
           // Trigger FIFO waiting list auto-fulfillment for the released cluster
           const waitingMatch = await WaitingListService.processWaitingListFIFO(
             res.cluster_id || res.cluster_name,
-            res.reservation_date
+            res.reservation_date,
+            res.workstation_id
           );
 
           if (waitingMatch) {

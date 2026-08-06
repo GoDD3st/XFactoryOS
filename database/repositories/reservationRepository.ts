@@ -55,7 +55,10 @@ export class ReservationRepository {
       }
 
       const { data, error } = await query;
-      if (error || !data) return false;
+      if (error) {
+        throw new DatabaseError('reservations', 'select', error.message || 'Impossible de vérifier les conflits de réservation', error);
+      }
+      if (!data) return false;
 
       const newStart = new Date(startAt).getTime();
       const newEnd = new Date(endAt).getTime();
@@ -66,8 +69,9 @@ export class ReservationRepository {
         return newStart < rEnd && newEnd > rStart;
       });
     } catch (err) {
-      console.warn('Conflict check warning:', err);
-      return false;
+      if (err instanceof DatabaseError) throw err;
+      // Fail closed: an unreadable conflict check must never be treated as "no conflict".
+      throw new DatabaseError('reservations', 'select', 'Impossible de vérifier la disponibilité du poste', err);
     }
   }
 
@@ -85,18 +89,32 @@ export class ReservationRepository {
         .not('status', 'in', '(CANCELLED,NO_SHOW,REJECTED)')
         .order('start_at', { ascending: false });
 
-      if (error || !data) return [];
+      if (error) {
+        throw new DatabaseError('reservations', 'select', error.message || "Impossible de lire les réservations de l'utilisateur", error);
+      }
+      if (!data) return [];
 
       return data.map((r: any) => this.mapRowToReservation(r));
     } catch (err) {
-      console.warn('getUserReservations fallback:', err);
-      return [];
+      if (err instanceof DatabaseError) throw err;
+      // Fail closed: an unreadable reservation count must never be treated as "zero usage"
+      // for quota enforcement (BR-04/BR-05, FR-30).
+      throw new DatabaseError('reservations', 'select', "Impossible de vérifier le quota de réservations", err);
     }
   }
 
   /**
    * Fetch all reservations from Supabase (throws on query error — never silently wipe cache)
    */
+
+  private static deriveReservationType(date?: string, startTime?: string, endTime?: string): string {
+    if (!date || !startTime || !endTime) return 'FULL_DAY';
+      const [sh] = startTime.split(':').map(Number);
+      const [eh] = endTime.split(':').map(Number);
+    if (eh - sh <= 4) return sh < 13 ? 'HALF_DAY_AM' : 'HALF_DAY_PM';
+      return 'FULL_DAY';
+  }
+
   static async getAllReservations(dbClient: SupabaseClient = supabase): Promise<Reservation[]> {
     const { data, error } = await dbClient
       .from('reservations')
@@ -139,10 +157,11 @@ export class ReservationRepository {
     const endAt = new Date(`${payload.reservation_date}T${payload.end_time}`).toISOString();
     const dbStatus = this.mapDomainStatusToDb(payload.status || 'confirmée');
 
+    
     const dbPayload = {
       workstation_id: workstationId,
       user_id: payload.user_id,
-      type: 'STANDARD',
+      type: this.deriveReservationType(payload.reservation_date, payload.start_time, payload.end_time),
       start_at: startAt,
       end_at: endAt,
       status: dbStatus,
@@ -160,7 +179,7 @@ export class ReservationRepository {
     await AuditRepository.logEvent(
       'RESERVATION_CREATED',
       createdReservation.user_id,
-      createdReservation.user_name,
+      createdReservation.user_name || 'Utilisateur', 'collaborator',
       'collaborator',
       createdReservation.workstation_code,
       `Création réservation #${createdReservation.id.substring(0, 8)} pour ${createdReservation.user_name} sur poste ${createdReservation.workstation_code} le ${createdReservation.reservation_date}`

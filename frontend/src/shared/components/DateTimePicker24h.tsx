@@ -161,7 +161,7 @@ export const DateTimePicker24h: React.FC<DateTimePicker24hProps> = ({
     setShowPresets(false);
   };
 
-  const startHolidayName = getHolidayName(startDate);
+  const startHolidayName = getHolidayName(startDate, settings.holidays);
   const startIsWeekend = isWeekend(startDate);
 
   return (

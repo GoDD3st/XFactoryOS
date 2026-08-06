@@ -69,12 +69,12 @@ export class CheckInOutService {
       await WorkstationRepository.updateWorkstationStatus(reservation.workstation_id, 'disponible', true);
     }
 
-    await CheckEventRepository.logEvent(reservationId, 'CHECK_OUT', userId, {
+    await CheckEventRepository.logEvent(reservationId, 'CHECK_OUT_MANUAL', userId, {
       workstation_code: reservation.workstation_code,
     });
 
     const todayDate = new Date().toISOString().split('T')[0];
-    await processWaitingListFIFO(reservation.cluster_id, todayDate);
+    await processWaitingListFIFO(reservation.cluster_id, todayDate, reservation.workstation_id);
 
     logAuditEvent(
       'CHECK_OUT_PERFORMED',
@@ -107,11 +107,11 @@ export class CheckInOutService {
             await WorkstationRepository.updateWorkstationStatus(res.workstation_id, 'disponible', true);
           }
 
-          await CheckEventRepository.logEvent(res.id, 'AUTO_CHECK_OUT', res.user_id, {
+          await CheckEventRepository.logEvent(res.id, 'CHECK_OUT_AUTO', res.user_id, {
             workstation_code: res.workstation_code,
           });
 
-          await processWaitingListFIFO(res.cluster_id, todayDate);
+          await processWaitingListFIFO(res.cluster_id, todayDate, res.workstation_id);
           checkedOut++;
         }
       }

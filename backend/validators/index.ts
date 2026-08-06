@@ -102,13 +102,20 @@ export const VisibilityToggleSchema = z
   })
   .strict();
 
+// 9b. Cluster Management Lock Toggle Schema (BR-09 — CL-F/CL-G unlock)
+export const ManagementLockSchema = z
+  .object({
+    unlocked: z.boolean(),
+  })
+  .strict();
+
 // 10. Waiting List Entry Schema
 export const CreateWaitingListEntrySchema = z
   .object({
-    space_id: z.string().optional(),
-    preferred_cluster_id: z.string().optional(),
-    requested_start_at: z.string(),
-    requested_end_at: z.string(),
+    cluster_preference: z.string().optional(),
+    reservation_date: z.string().min(1, 'Date requise'),
+    time_slot: z.string().optional(),
+    notes: z.string().max(500).optional(),
   })
   .strict();
 
@@ -126,6 +133,19 @@ export const SystemSettingsUpdateSchema = z
     bypassRoles: z.array(z.string()).optional(),
     allowWeekendBooking: z.boolean().optional(),
     allowHolidayBooking: z.boolean().optional(),
+    holidays: z.array(
+      z.object({
+        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date invalide (AAAA-MM-JJ)'),
+        label: z.string().min(1).max(120),
+      })
+    ).optional(),
+    closedDates: z.array(
+      z.object({
+        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date invalide (AAAA-MM-JJ)'),
+        endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        reason: z.string().max(500).optional(),
+      })
+    ).optional(),
     noShowDelayMinutes: z.number().min(5).max(120).optional(),
     extensionSeatsVisibleByDefault: z.boolean().optional(),
     managementClustersEnabled: z.boolean().optional(),

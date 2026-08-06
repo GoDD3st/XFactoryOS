@@ -2,25 +2,28 @@
  * Date & 24h Time Validation Utility for OCP SA Safi XFactory OS
  */
 
-import { SystemSettings, UserRole } from '@/frontend/src/types';
+import { ClosedDateEntry, HolidayEntry, SystemSettings, UserRole } from '@/frontend/src/types';
 
-// Moroccan & OCP Official Public Holidays (YYYY-MM-DD)
-export const OCP_SAFI_PUBLIC_HOLIDAYS_2026 = [
-  '2026-01-01', // Jour de l'An
-  '2026-01-11', // Manifeste de l'Indépendance
-  '2026-03-20', // Aïd Al Fitr (estimé)
-  '2026-03-21', // Aïd Al Fitr 2 (estimé)
-  '2026-05-01', // Fête du Travail
-  '2026-05-27', // Aïd Al Adha (estimé)
-  '2026-05-28', // Aïd Al Adha 2 (estimé)
-  '2026-07-14', // 1er Moharram (estimé)
-  '2026-07-30', // Fête du Trône
-  '2026-08-14', // Allégat Oued Eddahab
-  '2026-08-20', // Révolution du Roi et du Peuple
-  '2026-08-21', // Fête de la Jeunesse
-  '2026-09-23', // Aid Al Mawlid (estimé)
-  '2026-11-06', // Marche Verte
-  '2026-11-18', // Fête de l'Indépendance
+// Fallback seed only — used when settings.holidays hasn't been configured yet. Islamic holidays
+// (Aïd Al Fitr, Aïd Al Adha, 1er Moharram, Aïd Al Mawlid) shift ~11 days earlier every Gregorian
+// year, so these dates are NOT reliable beyond 2026 — the Super Admin should keep this list
+// current via Paramètres > Jours Fériés rather than relying on this hardcoded fallback.
+export const OCP_SAFI_PUBLIC_HOLIDAYS_2026: HolidayEntry[] = [
+  { date: '2026-01-01', label: "Jour de l'An" },
+  { date: '2026-01-11', label: "Manifeste de l'Indépendance" },
+  { date: '2026-03-20', label: 'Aïd Al Fitr (estimé)' },
+  { date: '2026-03-21', label: 'Aïd Al Fitr 2 (estimé)' },
+  { date: '2026-05-01', label: 'Fête du Travail' },
+  { date: '2026-05-27', label: 'Aïd Al Adha (estimé)' },
+  { date: '2026-05-28', label: 'Aïd Al Adha 2 (estimé)' },
+  { date: '2026-07-14', label: '1er Moharram (estimé)' },
+  { date: '2026-07-30', label: 'Fête du Trône' },
+  { date: '2026-08-14', label: 'Allégeance Oued Eddahab' },
+  { date: '2026-08-20', label: 'Révolution du Roi et du Peuple' },
+  { date: '2026-08-21', label: 'Fête de la Jeunesse' },
+  { date: '2026-09-23', label: 'Aïd Al Mawlid (estimé)' },
+  { date: '2026-11-06', label: 'Marche Verte' },
+  { date: '2026-11-18', label: "Fête de l'Indépendance" },
 ];
 
 /**
@@ -51,37 +54,42 @@ export function isWeekend(dateStr: string): boolean {
 }
 
 /**
- * Check if a date string (YYYY-MM-DD) is an official public holiday
+ * Check if a date string (YYYY-MM-DD) is an official public holiday.
+ * Prefers the Super Admin-managed `holidays` list (settings.holidays); falls back to the
+ * hardcoded 2026 seed only when no list is supplied (e.g. legacy callers).
  */
-export function isPublicHoliday(dateStr: string): boolean {
-  return OCP_SAFI_PUBLIC_HOLIDAYS_2026.includes(dateStr);
+export function isPublicHoliday(dateStr: string, holidays: HolidayEntry[] = OCP_SAFI_PUBLIC_HOLIDAYS_2026): boolean {
+  return holidays.some((h) => h.date === dateStr);
 }
 
 /**
  * Check if a date string is non-working (weekend or holiday)
  */
-export function isNonWorkingDay(dateStr: string): boolean {
-  return isWeekend(dateStr) || isPublicHoliday(dateStr);
+export function isNonWorkingDay(dateStr: string, holidays?: HolidayEntry[]): boolean {
+  return isWeekend(dateStr) || isPublicHoliday(dateStr, holidays);
 }
 
 /**
  * Get holiday name if applicable
  */
-export function getHolidayName(dateStr: string): string | null {
-  switch (dateStr) {
-    case '2026-01-01': return 'Jour de l\'An';
-    case '2026-01-11': return 'Manifeste de l\'Indépendance';
-    case '2026-05-01': return 'Fête du Travail';
-    case '2026-07-30': return 'Fête du Trône';
-    case '2026-08-14': return 'Oued Eddahab';
-    case '2026-08-20': return 'Révolution du Roi et du Peuple';
-    case '2026-08-21': return 'Fête de la Jeunesse';
-    case '2026-11-06': return 'Marche Verte';
-    case '2026-11-18': return 'Fête de l\'Indépendance';
-    default:
-      if (isPublicHoliday(dateStr)) return 'Jours Férié OCP Safi';
-      return null;
-  }
+export function getHolidayName(dateStr: string, holidays: HolidayEntry[] = OCP_SAFI_PUBLIC_HOLIDAYS_2026): string | null {
+  return holidays.find((h) => h.date === dateStr)?.label || null;
+}
+
+/**
+ * Check if a date string falls within a Super Admin "lockdown" closure (settings.closedDates) —
+ * the workspace is closed that day, so no new reservation may be created for it, but the rest
+ * of the app (browsing, check-in on already-confirmed bookings, admin, etc.) keeps working.
+ */
+export function isDateLockedDown(dateStr: string, closedDates: ClosedDateEntry[] = []): ClosedDateEntry | null {
+  const target = new Date(dateStr + 'T00:00:00').getTime();
+  return (
+    closedDates.find((c) => {
+      const start = new Date(c.date + 'T00:00:00').getTime();
+      const end = new Date((c.endDate || c.date) + 'T00:00:00').getTime();
+      return target >= start && target <= end;
+    }) || null
+  );
 }
 
 /**
@@ -99,7 +107,8 @@ export function calculateBusinessDays(
   startDateStr: string,
   endDateStr: string,
   startTimeStr: string = '08:00',
-  endTimeStr: string = '18:00'
+  endTimeStr: string = '18:00',
+  holidays?: HolidayEntry[]
 ): number {
   if (!startDateStr || !endDateStr) return 1;
 
@@ -117,7 +126,7 @@ export function calculateBusinessDays(
     const day = String(current.getDate()).padStart(2, '0');
     const dateFormatted = `${year}-${month}-${day}`;
 
-    if (!isNonWorkingDay(dateFormatted)) {
+    if (!isNonWorkingDay(dateFormatted, holidays)) {
       workingDays++;
     }
 
@@ -186,7 +195,33 @@ export function validateReservationConstraints(
     }
   }
 
-  // 1. Weekend / Holiday check (skippable via settings, or bypassed by role)
+  // 1. Workspace lockdown check — ALWAYS enforced, even for bypass roles (BR-level physical
+  // closure, not an access-control rule: if the building is closed, nobody can reserve a desk).
+  // The rest of the app keeps functioning; this only blocks NEW reservations on the closed date(s).
+  const lockdownStart = isDateLockedDown(startDateStr, settings.closedDates);
+  if (lockdownStart) {
+    return {
+      valid: false,
+      requiresExtensionApproval: false,
+      businessDays: 0,
+      durationMinutes: 0,
+      errorMessage: `L'Open Space est fermé le ${new Date(startDateStr + 'T00:00:00').toLocaleDateString('fr-FR')} (${lockdownStart.reason || 'fermeture exceptionnelle'}). Réservation impossible sur cette date.`
+    };
+  }
+  if (endDateStr) {
+    const lockdownEnd = isDateLockedDown(endDateStr, settings.closedDates);
+    if (lockdownEnd) {
+      return {
+        valid: false,
+        requiresExtensionApproval: false,
+        businessDays: 0,
+        durationMinutes: 0,
+        errorMessage: `L'Open Space est fermé le ${new Date(endDateStr + 'T00:00:00').toLocaleDateString('fr-FR')} (${lockdownEnd.reason || 'fermeture exceptionnelle'}). Réservation impossible sur cette date.`
+      };
+    }
+  }
+
+  // 2. Weekend / Holiday check (skippable via settings, or bypassed by role)
   if (!isBypassRole) {
     if (!settings.allowWeekendBooking && isWeekend(startDateStr)) {
       return {
@@ -197,13 +232,13 @@ export function validateReservationConstraints(
         errorMessage: 'Les réservations sont strictement interdites les week-ends (Samedi / Dimanche).'
       };
     }
-    if (!settings.allowHolidayBooking && isPublicHoliday(startDateStr)) {
+    if (!settings.allowHolidayBooking && isPublicHoliday(startDateStr, settings.holidays)) {
       return {
         valid: false,
         requiresExtensionApproval: false,
         businessDays: 0,
         durationMinutes: 0,
-        errorMessage: `La date sélectionnée est un jour férié OCP Safi (${getHolidayName(startDateStr)}). Réservation impossible.`
+        errorMessage: `La date sélectionnée est un jour férié OCP Safi (${getHolidayName(startDateStr, settings.holidays)}). Réservation impossible.`
       };
     }
     if (endDateStr) {
@@ -216,13 +251,13 @@ export function validateReservationConstraints(
           errorMessage: 'La date de fin tombe sur un week-end (Samedi / Dimanche).'
         };
       }
-      if (!settings.allowHolidayBooking && isPublicHoliday(endDateStr)) {
+      if (!settings.allowHolidayBooking && isPublicHoliday(endDateStr, settings.holidays)) {
         return {
           valid: false,
           requiresExtensionApproval: false,
           businessDays: 0,
           durationMinutes: 0,
-          errorMessage: `La date de fin tombe sur un jour férié OCP Safi (${getHolidayName(endDateStr)}).`
+          errorMessage: `La date de fin tombe sur un jour férié OCP Safi (${getHolidayName(endDateStr, settings.holidays)}).`
         };
       }
     }
@@ -284,7 +319,7 @@ export function validateReservationConstraints(
   }
 
   // 5. Business days count vs. the configured approval threshold
-  const businessDays = calculateBusinessDays(startDateStr, endDateStr || startDateStr, startTimeStr, endTimeStr);
+  const businessDays = calculateBusinessDays(startDateStr, endDateStr || startDateStr, startTimeStr, endTimeStr, settings.holidays);
   const requiresExtensionApproval = businessDays > settings.maxReservationDaysWithoutApproval;
 
   return {

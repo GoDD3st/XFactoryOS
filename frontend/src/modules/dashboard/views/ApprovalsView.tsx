@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Award, Check, X, Clock, HelpCircle, MessageSquare, AlertCircle, FileText } from 'lucide-react';
 import { DigitalTwin } from '../../../shared/components/DigitalTwin';
 import { ReservationsTable } from '../../../shared/components/ReservationsTable';
-import { ApprovalService } from '@/services/approval/approvalService';
+import { apiFetchPendingApprovals, apiDecideApproval } from '@/services/api/approvalApi';
 import { ApprovalRequest } from '../../../types';
 import { useAuth } from '../../../modules/auth/context/AuthContext';
 
@@ -17,7 +17,7 @@ export const ApprovalsView: React.FC = () => {
   const loadRequests = async () => {
     setLoading(true);
     try {
-      const list = await ApprovalService.getPendingApprovals();
+      const list = await apiFetchPendingApprovals();
       setPendingRequests(list);
     } catch (err) {
       console.error('Error loading pending approvals:', err);
@@ -47,11 +47,10 @@ export const ApprovalsView: React.FC = () => {
   const handleConfirmDecision = async () => {
     if (!activeDecisionId || !decisionType) return;
 
-    await ApprovalService.decideApproval(
+    await apiDecideApproval(
       activeDecisionId,
       decisionType,
-      decisionNote || 'Décision enregistrée par la Direction',
-      currentUser.id
+      decisionNote || 'Décision enregistrée par la Direction'
     );
 
     setActiveDecisionId(null);
