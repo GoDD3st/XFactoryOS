@@ -109,7 +109,7 @@ export class OTPSettingsService {
 
     // Log audit event for traceability & versioning
     await AuditRepository.logEvent(
-      'SYSTEM_SETTINGS_UPDATED',
+      'SETTINGS_CHANGE',
       adminId,
       'Super Admin',
       'super_admin',

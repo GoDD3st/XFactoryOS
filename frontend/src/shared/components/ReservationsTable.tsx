@@ -186,8 +186,14 @@ export const ReservationsTable: React.FC<ReservationsTableProps> = ({
         return <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-500 border border-amber-500/40">En attente</span>;
       case 'annulée':
         return <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-[#e05252]/20 text-[#e05252] border border-[#e05252]/40">Annulée</span>;
+      case 'rejetée':
+        return <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-rose-600/20 text-rose-500 border border-rose-600/40">Refusée</span>;
       case 'terminée':
         return <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-slate-500/20 text-slate-400 border border-slate-500/40">Terminée</span>;
+      case 'no-show':
+        return <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-orange-500/20 text-orange-500 border border-orange-500/40">No-Show</span>;
+      case 'check-out':
+        return <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-slate-500/20 text-slate-400 border border-slate-500/40">Check-out</span>;
     }
   };
 

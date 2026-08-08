@@ -177,11 +177,11 @@ export class ReservationRepository {
     const createdReservation = this.mapRowToReservation(data, payload);
 
     await AuditRepository.logEvent(
-      'RESERVATION_CREATED',
+      'CREATE',
       createdReservation.user_id,
-      createdReservation.user_name || 'Utilisateur', 'collaborator',
+      createdReservation.user_name || 'Utilisateur',
       'collaborator',
-      createdReservation.workstation_code,
+      createdReservation.id,
       `Création réservation #${createdReservation.id.substring(0, 8)} pour ${createdReservation.user_name} sur poste ${createdReservation.workstation_code} le ${createdReservation.reservation_date}`
     );
 
@@ -207,7 +207,7 @@ export class ReservationRepository {
       }
 
       await AuditRepository.logEvent(
-        `RESERVATION_${status.toUpperCase().replace('-', '_')}`,
+        'UPDATE',
         'system',
         'XFactory OS',
         'admin',
@@ -251,20 +251,26 @@ export class ReservationRepository {
     };
   }
 
+  // Must match the Postgres enum reservation_status exactly: DRAFT, PENDING_APPROVAL,
+  // CONFIRMED, CHECK_IN_PENDING, OCCUPIED, COMPLETED, CANCELLED, REJECTED, NO_SHOW,
+  // AVAILABLE_RELEASED. 'CHECKED_IN' is NOT a valid value — using it (as a previous version of
+  // this mapping did) makes every check-in write fail outright with an invalid-enum error.
   static mapDbStatusToDomain(dbStatus: string): ReservationStatus {
-    if (dbStatus === 'CHECKED_IN') return 'check-in';
+    if (dbStatus === 'OCCUPIED') return 'check-in';
     if (dbStatus === 'NO_SHOW') return 'no-show';
     if (dbStatus === 'PENDING_APPROVAL') return 'en attente';
     if (dbStatus === 'CANCELLED') return 'annulée';
+    if (dbStatus === 'REJECTED') return 'rejetée';
     if (dbStatus === 'COMPLETED') return 'terminée';
     return 'confirmée';
   }
 
   static mapDomainStatusToDb(domainStatus: string): string {
-    if (domainStatus === 'check-in') return 'CHECKED_IN';
+    if (domainStatus === 'check-in') return 'OCCUPIED';
     if (domainStatus === 'no-show') return 'NO_SHOW';
     if (domainStatus === 'en attente') return 'PENDING_APPROVAL';
     if (domainStatus === 'annulée') return 'CANCELLED';
+    if (domainStatus === 'rejetée') return 'REJECTED';
     if (domainStatus === 'terminée' || domainStatus === 'check-out') return 'COMPLETED';
     return 'CONFIRMED';
   }

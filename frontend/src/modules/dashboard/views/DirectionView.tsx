@@ -1,18 +1,31 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   TrendingUp,
   Award,
   Users,
   Building,
-  BarChart2,
-  PieChart,
-  Download,
-  Calendar
+  Download
 } from 'lucide-react';
 import { DigitalTwin } from '../../../shared/components/DigitalTwin';
 import { ReservationsTable } from '../../../shared/components/ReservationsTable';
+import { getRealTimeTelemetry, SiteTelemetrySummary } from '@/services/telemetry/telemetryService';
 
 export const DirectionView: React.FC = () => {
+  const [telemetry, setTelemetry] = useState<SiteTelemetrySummary | null>(null);
+
+  useEffect(() => {
+    getRealTimeTelemetry().then(setTelemetry);
+  }, []);
+
+  // Ratio présentiel = active occupancy / total desks (people physically checked in per desk).
+  const presenceRatio = telemetry && telemetry.totalCapacity > 0
+    ? (telemetry.activeOccupancy / telemetry.totalCapacity).toFixed(1)
+    : '—';
+
+  const availableDesks = telemetry
+    ? telemetry.totalCapacity - telemetry.activeOccupancy
+    : 0;
+
   return (
     <div className="space-y-6">
       {/* Header Banner */}
@@ -26,57 +39,62 @@ export const DirectionView: React.FC = () => {
           </div>
           <h1 className="text-xl font-bold mt-1">Tableau de Bord Exécutif & Métriques Stratégiques</h1>
           <p className="text-xs text-slate-400 mt-0.5">
-            KPIs de performance globale, taux d'utilisation des espaces de travail et optimisation immobilière.
+            KPIs de performance globale et taux d'utilisation de l'Open Space, calculés en temps réel.
           </p>
         </div>
 
         <button
-          onClick={() => alert('Rapport Stratégique Exécutif OCP Safi (PDF) généré !')}
+          onClick={() => window.print()}
           className="bg-rose-700 hover:bg-rose-800 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-md flex items-center space-x-2"
         >
           <Download className="w-4 h-4" />
-          <span>Synthèse Exécutive PDF</span>
+          <span>Synthèse Exécutive (PDF)</span>
         </button>
       </div>
 
-      {/* Strategic Metrics Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500">Taux Occupation Moyen Mois</span>
-            <TrendingUp className="w-4 h-4 text-emerald-600" />
-          </div>
-          <div className="text-2xl font-black text-slate-900">84.2%</div>
-          <p className="text-[11px] text-emerald-600 font-semibold">+12% vs mois dernier</p>
+      {!telemetry ? (
+        <div className="p-8 text-center text-xs text-slate-500 bg-white rounded-2xl border border-slate-200">
+          Chargement des métriques...
         </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500">Taux d'Occupation Live</span>
+              <TrendingUp className="w-4 h-4 text-emerald-600" />
+            </div>
+            <div className="text-2xl font-black text-slate-900">{telemetry.overallOccupancyRate}%</div>
+            <p className="text-[11px] text-slate-500">Capacité totale : {telemetry.totalCapacity} postes</p>
+          </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500">Projets Hébergés</span>
-            <Building className="w-4 h-4 text-blue-600" />
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500">Postes Disponibles</span>
+              <Building className="w-4 h-4 text-blue-600" />
+            </div>
+            <div className="text-2xl font-black text-slate-900">{availableDesks} Postes</div>
+            <p className="text-[11px] text-slate-500">Sur {telemetry.totalCapacity} postes Open Space</p>
           </div>
-          <div className="text-2xl font-black text-slate-900">14 Projets</div>
-          <p className="text-[11px] text-slate-500">Digital, Chimie & Ingestion</p>
-        </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500">Économie m² Flex-Office</span>
-            <Award className="w-4 h-4 text-purple-600" />
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500">Heures de Pointe</span>
+              <Award className="w-4 h-4 text-purple-600" />
+            </div>
+            <div className="text-2xl font-black text-purple-900">{telemetry.peakHourWindow}</div>
+            <p className="text-[11px] text-purple-700 font-semibold">Fenêtre d'affluence maximale (7j)</p>
           </div>
-          <div className="text-2xl font-black text-purple-900">+280 m²</div>
-          <p className="text-[11px] text-purple-700 font-semibold">Gains d’espace optimisé</p>
-        </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500">Ratiomètre Présentiel</span>
-            <Users className="w-4 h-4 text-amber-600" />
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500">Ratiomètre Présentiel</span>
+              <Users className="w-4 h-4 text-amber-600" />
+            </div>
+            <div className="text-2xl font-black text-slate-900">{presenceRatio} pers/poste</div>
+            <p className="text-[11px] text-slate-500">Occupations actives / capacité totale</p>
           </div>
-          <div className="text-2xl font-black text-slate-900">1.4 pers/poste</div>
-          <p className="text-[11px] text-slate-500">Flex-Office Efficace</p>
         </div>
-      </div>
+      )}
 
       <DigitalTwin />
       <ReservationsTable />

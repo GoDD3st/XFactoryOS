@@ -58,6 +58,13 @@ export class WorkstationRepository {
         return [];
       }
 
+      const { data: vipRows } = await dbClient.from('cluster_vip_members').select('cluster_id, user_id');
+      const vipByCluster = new Map<string, string[]>();
+      (vipRows || []).forEach((r: any) => {
+        if (!vipByCluster.has(r.cluster_id)) vipByCluster.set(r.cluster_id, []);
+        vipByCluster.get(r.cluster_id)!.push(r.user_id);
+      });
+
       return data.map((c) => ({
         id: c.id,
         code: c.code,
@@ -68,6 +75,7 @@ export class WorkstationRepository {
         enabled: c.enabled !== false,
         location_zone: 'Zone Central Safi Level 1',
         workstations: [],
+        vipMemberIds: vipByCluster.get(c.id) || [],
       }));
     } catch (err) {
       console.warn('⚠️ Fetching clusters fallback:', err);
@@ -106,7 +114,7 @@ export class WorkstationRepository {
           status: this.mapDbStatusToDomain(w.status, w.reservable),
           reservable: w.reservable !== false,
           is_extension: seatNum > 4,
-          visibleToUsers: w.visibleToUsers ?? true,
+          visibleToUsers: w.metadata?.visibleToUsers ?? true,
           metadata: {
             near_window: w.metadata?.near_window ?? (seatNum === 1),
             is_pmr: w.metadata?.is_pmr ?? (seatNum === 1),
@@ -175,6 +183,48 @@ export class WorkstationRepository {
     }
   }
 
+  /**
+   * Update status/reservable and merge metadata (visibility, amenities, notes) in one write.
+   * Used by the admin edit modal, which needs to persist fields updateWorkstationStatus
+   * doesn't touch. Merges against the current row's metadata since Supabase update() replaces
+   * the jsonb column wholesale rather than patching individual keys.
+   */
+  static async updateWorkstation(
+    id: string,
+    updates: { status?: string; reservable?: boolean; metadataPatch?: Record<string, unknown> },
+    dbClient?: SupabaseClient
+  ): Promise<boolean> {
+    try {
+      const db = await resolveClient(dbClient);
+      const payload: Record<string, unknown> = { updated_at: new Date().toISOString() };
+      if (updates.status !== undefined) payload.status = this.mapDomainStatusToDb(updates.status);
+      if (updates.reservable !== undefined) payload.reservable = updates.reservable;
+
+      if (updates.metadataPatch) {
+        const { data: current } = await db.from('workstations').select('metadata').eq('id', id).maybeSingle();
+        payload.metadata = { ...(current?.metadata || {}), ...updates.metadataPatch };
+      }
+
+      const { data, error } = await db.from('workstations').update(payload).eq('id', id).select('id');
+      if (!error && data && data.length > 0) return true;
+
+      const { data: dataByCode, error: errorByCode } = await db
+        .from('workstations')
+        .update(payload)
+        .eq('code', id)
+        .select('id');
+
+      if (errorByCode) {
+        console.error('Error updating workstation:', errorByCode);
+        return false;
+      }
+      return !!dataByCode && dataByCode.length > 0;
+    } catch (err) {
+      console.error('Error updating workstation:', err);
+      return false;
+    }
+  }
+
   private static mapDbStatusToDomain(dbStatus: string, reservable: boolean): any {
     if (dbStatus === 'MAINTENANCE') return 'maintenance';
     if (dbStatus === 'MANAGEMENT_RESERVED' || !reservable) return 'management_reserved';
@@ -185,7 +235,9 @@ export class WorkstationRepository {
 
   private static mapDomainStatusToDb(domainStatus: string): string {
     if (domainStatus === 'maintenance') return 'MAINTENANCE';
-    if (domainStatus === 'management_reserved') return 'MANAGEMENT_RESERVED';
+    // 'MANAGEMENT_RESERVED' is not a workstation_status enum value — callers also set
+    // `reservable: false` alongside this, which mapDbStatusToDomain reads back correctly.
+    if (domainStatus === 'management_reserved') return 'AVAILABLE';
     if (domainStatus === 'occupé' || domainStatus === 'check-in') return 'OCCUPIED';
     if (domainStatus === 'réservé' || domainStatus === 'confirmée') return 'RESERVED';
     return 'AVAILABLE';

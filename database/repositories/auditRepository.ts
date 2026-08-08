@@ -54,7 +54,12 @@ export class AuditRepository {
   ): Promise<AuditLogEntry> {
     try {
       const db = await resolveClient();
+      const { isValidUuid } = await import('../utils/uuid');
       await db.from('audit_logs').insert({
+        // actor_id is a uuid FK to users.id — callers sometimes pass placeholder strings like
+        // 'system' or 'admin-current' (not real user ids), which fail the FK/type constraint
+        // outright if inserted as-is. Fall back to null for those instead of failing the write.
+        actor_id: isValidUuid(actorId) ? actorId : null,
         action: action,
         entity_type: targetResource,
         before: { actor_name: actorName, actor_role: actorRole },

@@ -466,10 +466,15 @@ export const SettingsView: React.FC = () => {
     setRequestError(undefined);
     setRequesting(true);
     try {
+      // Server-managed metadata (id/configVersion/updated_at/updated_by) isn't part of the
+      // editable payload — SystemSettingsUpdateSchema is a strict Zod schema and rejects any
+      // unrecognized key with a 400, so submitting the full `settings` state object as-is
+      // (which always carries these once loaded from the DB) made every save fail outright.
+      const { id, configVersion, updated_at, updated_by, ...editablePayload } = settings;
       const result = await SettingsService.requestUpdate(
         currentUser.id,
         currentUser.full_name,
-        settings
+        editablePayload
       );
       setOtpChallenge({
         challengeId: result.challengeId,

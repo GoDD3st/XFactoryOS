@@ -5,12 +5,57 @@ import { SettingsRepository } from '@/database/repositories/settingsRepository';
 import { ApprovalRepository } from '@/database/repositories/approvalRepository';
 import { AuditRepository } from '@/database/repositories/auditRepository';
 import { UserRepository } from '@/database/repositories/userRepository';
+import { WorkstationRepository } from '@/database/repositories/workstationRepository';
 import { NotificationService } from '../notifications/notificationService';
 import { supabase } from '@/database/client';
 import { apiCreateReservation, apiFetchReservations } from '../api/reservationApi';
 import { isDateLockedDown, isPublicHoliday, isWeekend, getHolidayName } from '@/frontend/src/shared/utils/dateValidation';
 
 const CACHE_KEY = 'xfactory_reservations_v2';
+
+/**
+ * BPMN D1 "GWAV NON -> Proposer alternatives (postes proches ou liste d'attente)" — carries
+ * up-to-3 other available desks in the same cluster/slot so the caller can offer them instead
+ * of a flat rejection.
+ */
+export class ReservationConflictError extends Error {
+  alternatives: { code: string; cluster_name: string }[];
+  constructor(message: string, alternatives: { code: string; cluster_name: string }[]) {
+    super(message);
+    this.name = 'ReservationConflictError';
+    this.alternatives = alternatives;
+  }
+}
+
+async function findAlternativeDesks(
+  clusterName: string | undefined,
+  excludeWorkstationCode: string | undefined,
+  date: string,
+  startTime: string,
+  endTime: string,
+  dbClient?: SupabaseClient
+): Promise<{ code: string; cluster_name: string }[]> {
+  if (!clusterName) return [];
+
+  const [wsMap, clusters] = await Promise.all([
+    WorkstationRepository.getWorkstations(dbClient),
+    WorkstationRepository.getClusters(dbClient),
+  ]);
+  const cluster = clusters.find((c) => c.name === clusterName || c.code === clusterName);
+  if (!cluster) return [];
+
+  const candidates = (wsMap[cluster.id] || []).filter(
+    (w) => w.code !== excludeWorkstationCode && w.reservable && w.status !== 'maintenance' && w.status !== 'management_reserved'
+  );
+
+  const alternatives: { code: string; cluster_name: string }[] = [];
+  for (const seat of candidates) {
+    if (alternatives.length >= 3) break;
+    const conflict = await ReservationRepository.checkConflict(seat.code, date, startTime, endTime, undefined, dbClient).catch(() => true);
+    if (!conflict) alternatives.push({ code: seat.code, cluster_name: cluster.name });
+  }
+  return alternatives;
+}
 
 export class ReservationService {
   static readCachedReservations(): Reservation[] {
@@ -140,9 +185,51 @@ export class ReservationService {
       );
 
       if (conflict) {
-        throw new Error(
-          `Conflit de réservation : Le poste ${payload.workstation_code} est déjà réservé sur ce créneau.`
+        const alternatives = await findAlternativeDesks(
+          payload.cluster_name,
+          payload.workstation_code,
+          payload.reservation_date,
+          payload.start_time,
+          payload.end_time,
+          dbClient
         );
+        throw new ReservationConflictError(
+          `Conflit de réservation : Le poste ${payload.workstation_code} est déjà réservé sur ce créneau.`,
+          alternatives
+        );
+      }
+    }
+
+    // BR-07: block booking a VIP/management-locked seat unless the requester holds one of the
+    // roles that cluster is reserved for, or has been individually assigned to it. Previously
+    // this was only enforced client-side (the seat button was disabled) — a direct POST here
+    // had no server-side check at all.
+    if (payload.workstation_code) {
+      const client = dbClient || supabase;
+      const { data: wsRow } = await client
+        .from('workstations')
+        .select('reservable, cluster_id')
+        .eq('code', payload.workstation_code)
+        .maybeSingle();
+
+      if (wsRow && !wsRow.reservable) {
+        const hasRoleBypass =
+          !!userRole && ['director', 'executive_assistant', 'admin', 'super_admin'].includes(userRole);
+        let isVipMember = false;
+        if (!hasRoleBypass && payload.user_id && wsRow.cluster_id) {
+          const { data: member } = await client
+            .from('cluster_vip_members')
+            .select('id')
+            .eq('cluster_id', wsRow.cluster_id)
+            .eq('user_id', payload.user_id)
+            .maybeSingle();
+          isVipMember = !!member;
+        }
+        if (!hasRoleBypass && !isVipMember) {
+          throw new Error(
+            `Le poste ${payload.workstation_code} est réservé à un accès Direction/VIP. Vous n'êtes pas autorisé à réserver ce poste.`
+          );
+        }
       }
     }
 

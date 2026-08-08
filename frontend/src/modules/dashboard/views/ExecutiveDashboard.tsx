@@ -1,15 +1,19 @@
 import React, { useEffect, useState } from 'react';
-import { getRealTimeTelemetry, SiteTelemetrySummary } from '@/services/telemetry/telemetryService';
-import { NoShowService } from '@/services/noshow/noShowService';
-import { BarChart3, TrendingUp, Clock, AlertTriangle, Download, Sparkles, Building, Layers } from 'lucide-react';
+import * as XLSX from 'xlsx';
+import { getRealTimeTelemetry, SiteTelemetrySummary, DailyReservationTrend } from '@/services/telemetry/telemetryService';
+import { apiFetchNoShowStats } from '@/services/api/noShowApi';
+import { apiFetchReservationTrends } from '@/services/api/telemetryApi';
+import { BarChart3, TrendingUp, Clock, AlertTriangle, Download, Sparkles, Building, Layers, FileSpreadsheet, Printer, LineChart } from 'lucide-react';
 
 export const ExecutiveDashboard: React.FC = () => {
   const [telemetry, setTelemetry] = useState<SiteTelemetrySummary | null>(null);
   const [noShowStats, setNoShowStats] = useState<{ today: number; thisWeek: number }>({ today: 0, thisWeek: 0 });
+  const [trends, setTrends] = useState<DailyReservationTrend[]>([]);
 
   useEffect(() => {
     getRealTimeTelemetry().then(setTelemetry);
-    setNoShowStats(NoShowService.getNoShowStats());
+    apiFetchNoShowStats().then(setNoShowStats);
+    apiFetchReservationTrends(14).then(setTrends);
   }, []);
 
   if (!telemetry) {
@@ -30,6 +34,38 @@ export const ExecutiveDashboard: React.FC = () => {
     a.click();
   };
 
+  // FR-87 "Export Excel des données agrégées"
+  const exportReportExcel = () => {
+    const clusterSheet = telemetry.clusters.map((c) => ({
+      Cluster: c.clusterName,
+      Code: c.clusterCode,
+      Total: c.totalDesks,
+      Occupés: c.occupiedDesks,
+      Réservés: c.reservedDesks,
+      Disponibles: c.availableDesks,
+      Maintenance: c.maintenanceDesks,
+      'Taux Occup. %': c.occupancyRate,
+    }));
+    const trendSheet = trends.map((t) => ({
+      Date: t.date,
+      Réservations: t.count,
+      'No-Shows': t.noShows,
+    }));
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(clusterSheet), 'Clusters');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(trendSheet), 'Tendances 14j');
+    XLSX.writeFile(wb, `Report_XFactory_Telemetry_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
+  // FR-87 "Export PDF du dashboard" — print-to-PDF via the browser (no server-side PDF
+  // renderer in this stack); user picks "Enregistrer en PDF" in the print dialog.
+  const exportReportPDF = () => {
+    window.print();
+  };
+
+  const maxTrendCount = Math.max(1, ...trends.map((t) => t.count));
+
   return (
     <div className="space-y-6">
       {/* Top Banner */}
@@ -44,13 +80,29 @@ export const ExecutiveDashboard: React.FC = () => {
           <p className="text-xs text-slate-400 mt-1">Supervision globale de l'occupation des 7 clusters Open Space</p>
         </div>
 
-        <button
-          onClick={exportReportCSV}
-          className="flex items-center gap-2 px-4 py-2 bg-[#008751] hover:bg-emerald-600 text-white text-xs font-bold rounded-xl transition-all shadow-md cursor-pointer"
-        >
-          <Download className="w-4 h-4 text-amber-300" />
-          <span>Exporter Rapport CSV</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={exportReportExcel}
+            className="flex items-center gap-2 px-3.5 py-2 bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold rounded-xl transition-all shadow-md cursor-pointer"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-amber-300" />
+            <span>Excel</span>
+          </button>
+          <button
+            onClick={exportReportPDF}
+            className="flex items-center gap-2 px-3.5 py-2 bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold rounded-xl transition-all shadow-md cursor-pointer"
+          >
+            <Printer className="w-4 h-4 text-amber-300" />
+            <span>PDF</span>
+          </button>
+          <button
+            onClick={exportReportCSV}
+            className="flex items-center gap-2 px-3.5 py-2 bg-[#008751] hover:bg-emerald-600 text-white text-xs font-bold rounded-xl transition-all shadow-md cursor-pointer"
+          >
+            <Download className="w-4 h-4 text-amber-300" />
+            <span>CSV</span>
+          </button>
+        </div>
       </div>
 
       {/* KPI Cards Grid */}
@@ -97,6 +149,49 @@ export const ExecutiveDashboard: React.FC = () => {
           </div>
           <div className="text-2xl font-black text-slate-900">{noShowStats.today} aujourd'hui</div>
           <p className="text-[10px] text-slate-400 font-medium">{noShowStats.thisWeek} cette semaine</p>
+        </div>
+      </div>
+
+      {/* Reservation Trends (FR-86) */}
+      <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-4">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div className="flex items-center space-x-2">
+            <LineChart className="w-5 h-5 text-[#008751]" />
+            <h3 className="font-bold text-sm text-slate-800">Tendance des Réservations (14 derniers jours)</h3>
+          </div>
+        </div>
+
+        {trends.length === 0 ? (
+          <p className="text-xs text-slate-400 text-center py-6">Données insuffisantes pour établir une tendance.</p>
+        ) : (
+          <div className="flex items-end gap-1.5 h-32">
+            {trends.map((t) => (
+              <div key={t.date} className="flex-1 flex flex-col items-center justify-end gap-1 group relative">
+                <div className="text-[9px] font-bold text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity absolute -top-4">
+                  {t.count}
+                </div>
+                <div className="w-full flex flex-col justify-end" style={{ height: '100px' }}>
+                  {t.noShows > 0 && (
+                    <div
+                      className="w-full bg-red-400 rounded-t"
+                      style={{ height: `${(t.noShows / maxTrendCount) * 100}px` }}
+                    />
+                  )}
+                  <div
+                    className="w-full bg-[#008751]"
+                    style={{ height: `${((t.count - t.noShows) / maxTrendCount) * 100}px` }}
+                  />
+                </div>
+                <div className="text-[8px] text-slate-400 font-medium">
+                  {new Date(t.date + 'T00:00:00').toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="flex items-center gap-4 text-[10px] text-slate-500 pt-1">
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-[#008751] inline-block" /> Réservations</span>
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-red-400 inline-block" /> No-shows</span>
         </div>
       </div>
 

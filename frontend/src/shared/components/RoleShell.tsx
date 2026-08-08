@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   UserRole,
-  RoleConfig
+  RoleConfig,
+  UserNotification
 } from '../../types';
+import { apiFetchNotifications, apiMarkNotificationRead } from '@/services/api/notificationApi';
 import { useAuth, ROLE_CONFIGS } from '../../modules/auth/context/AuthContext';
 import { EndUserDashboard } from '../../modules/dashboard/components/EndUserDashboard';
 import { ReceptionView } from '../../modules/dashboard/views/ReceptionView';
@@ -94,11 +96,13 @@ const ROLE_TABS: Record<UserRole, TabDef[]> = {
     { key: 'dashboard-exec', label: 'Dashboard', icon: <BarChart3 className="w-3.5 h-3.5" /> },
     { key: 'reservations', label: 'Réservations', icon: <Calendar className="w-3.5 h-3.5" /> },
     { key: 'approvals', label: 'Longue Durée', icon: <Clock className="w-3.5 h-3.5" /> },
+    { key: 'clusters', label: 'Clusters VIP', icon: <Layers className="w-3.5 h-3.5" /> },
   ],
   director: [
     { key: 'home', label: 'Direction', icon: <Sparkles className="w-3.5 h-3.5" /> },
     { key: 'dashboard-exec', label: 'Dashboard', icon: <BarChart3 className="w-3.5 h-3.5" /> },
     { key: 'approvals', label: 'Approbations', icon: <CheckCircle2 className="w-3.5 h-3.5" /> },
+    { key: 'clusters', label: 'Clusters VIP', icon: <Layers className="w-3.5 h-3.5" /> },
     { key: 'audit', label: 'Audit', icon: <FileText className="w-3.5 h-3.5" /> },
   ],
   admin: [
@@ -138,11 +142,37 @@ export const RoleShell: React.FC = () => {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isAIOpen, setIsAIOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>('home');
+  const [notifications, setNotifications] = useState<UserNotification[]>([]);
 
   // Reset tab when role changes
   React.useEffect(() => {
     setActiveTab('home');
   }, [currentRole]);
+
+  const loadNotifications = () => {
+    apiFetchNotifications().then(setNotifications).catch(() => {});
+  };
+
+  useEffect(() => {
+    loadNotifications();
+    window.addEventListener('xfactory_notifications_changed', loadNotifications);
+    const interval = setInterval(loadNotifications, 60000);
+    return () => {
+      window.removeEventListener('xfactory_notifications_changed', loadNotifications);
+      clearInterval(interval);
+    };
+  }, [currentUser.id]);
+
+  const unreadCount = notifications.filter((n) => !n.read).length;
+
+  const handleOpenNotifications = () => {
+    setIsNotificationsOpen((open) => !open);
+  };
+
+  const handleMarkRead = (n: UserNotification) => {
+    if (n.read) return;
+    apiMarkNotificationRead(n.id).then(loadNotifications);
+  };
 
   const renderHomeView = () => {
     switch (currentRole) {
@@ -318,31 +348,44 @@ export const RoleShell: React.FC = () => {
             {/* Notifications Button */}
             <div className="relative">
               <button
-                onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
+                onClick={handleOpenNotifications}
                 className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-600 transition-colors relative"
               >
                 <Bell className="w-4 h-4" />
-                <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-                <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-500" />
+                {unreadCount > 0 && (
+                  <>
+                    <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                    <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-500" />
+                  </>
+                )}
               </button>
 
               {isNotificationsOpen && (
-                <div className="absolute right-0 mt-2 w-72 bg-white border border-slate-200 rounded-2xl shadow-xl p-4 z-50 text-xs space-y-3">
+                <div className="absolute right-0 mt-2 w-80 bg-white border border-slate-200 rounded-2xl shadow-xl p-4 z-50 text-xs space-y-3">
                   <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                    <span className="font-bold text-slate-800">Notifications Système</span>
-                    <span className="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded font-bold border border-emerald-200">OCP Safi</span>
+                    <span className="font-bold text-slate-800">Notifications</span>
+                    <span className="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded font-bold border border-emerald-200">
+                      {unreadCount} non lue{unreadCount > 1 ? 's' : ''}
+                    </span>
                   </div>
 
-                  <div className="space-y-2 text-slate-600">
-                    <div className="p-2 bg-slate-50 rounded-xl border border-slate-200">
-                      <p className="font-semibold text-slate-900">Digital Twin Synchronisé</p>
-                      <p className="text-[10px] text-slate-500 mt-0.5">56 postes actifs sur les 7 clusters OCP.</p>
-                    </div>
-
-                    <div className="p-2 bg-slate-50 rounded-xl border border-slate-200">
-                      <p className="font-semibold text-slate-900">Supabase PostgreSQL</p>
-                      <p className="text-[10px] text-slate-500 mt-0.5">Base connectée avec fallback local hybride.</p>
-                    </div>
+                  <div className="space-y-2 text-slate-600 max-h-80 overflow-y-auto">
+                    {notifications.length === 0 && (
+                      <p className="text-center text-slate-400 py-4">Aucune notification.</p>
+                    )}
+                    {notifications.map((n) => (
+                      <button
+                        key={n.id}
+                        onClick={() => handleMarkRead(n)}
+                        className={`w-full text-left p-2 rounded-xl border transition-colors ${
+                          n.read ? 'bg-white border-slate-100' : 'bg-emerald-50/60 border-emerald-200'
+                        }`}
+                      >
+                        <p className="font-semibold text-slate-900">{n.title}</p>
+                        <p className="text-[10px] text-slate-500 mt-0.5">{n.message}</p>
+                        <p className="text-[9px] text-slate-400 mt-1">{new Date(n.created_at).toLocaleString('fr-FR')}</p>
+                      </button>
+                    ))}
                   </div>
                 </div>
               )}

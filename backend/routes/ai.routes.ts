@@ -6,8 +6,12 @@ import { AIQuerySchema } from '../validators';
 
 export const aiRouter = Router();
 
-// Allowed roles for AI Assistant (Managers & Admins)
+// SRS §22.2: Employee is an explicit actor ("Recommandation de poste", "Apprentissage habitudes"),
+// not just managers — the assistant itself isn't role-gated, only the DATA it can see is
+// (buildAIContext() withholds nominative reservation detail from non-privileged roles).
 const AI_ALLOWED_ROLES = [
+  'collaborator',
+  'receptionist',
   'building_manager',
   'gci_manager',
   'executive_assistant',

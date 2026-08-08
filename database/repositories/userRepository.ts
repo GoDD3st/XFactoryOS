@@ -1,8 +1,22 @@
 import { supabase } from '../client';
 import { getAdminClient } from '../serverClient';
-import { UserProfile } from '@/frontend/src/types';
+import { UserProfile, UserRole } from '@/frontend/src/types';
 import { normalizeRoleCode } from '@/frontend/src/modules/auth/utils/normalizeRole';
 import { AuditRepository } from './auditRepository';
+
+// App-facing UserRole -> real public.roles.code (uppercase, matches the seeded roles table).
+const ROLE_TO_DB_CODE: Record<UserRole, string> = {
+  collaborator: 'EMPLOYEE',
+  receptionist: 'RECEPTIONIST',
+  building_manager: 'BUILDING_MANAGER',
+  gci_manager: 'GCI_MANAGER',
+  executive_assistant: 'EXECUTIVE_ASSISTANT',
+  director: 'DIRECTOR',
+  admin: 'ADMIN',
+  super_admin: 'SUPER_ADMIN',
+  it_admin: 'IT_ADMIN',
+  security_guard: 'SECURITY',
+};
 
 export class UserRepository {
   static async getUsers(): Promise<UserProfile[]> {
@@ -53,6 +67,135 @@ export class UserRepository {
     } catch (err) {
       return false;
     }
+  }
+
+  /**
+   * FR-11 "Le système doit gérer les utilisateurs internes" / §28.10 (Super Admin/Admin create
+   * accounts). Creates a real Supabase Auth user via the admin API (requires the service-role
+   * client — this only runs server-side), then corrects the department/role that
+   * handle_new_auth_user() seeds by default (it always assigns EMPLOYEE).
+   */
+  static async createUser(payload: {
+    email: string;
+    full_name: string;
+    department: string;
+    role: UserRole;
+  }): Promise<{ id: string; tempPassword: string }> {
+    const admin = getAdminClient();
+    if (!admin) {
+      throw new Error('Création de compte indisponible : SUPABASE_SERVICE_ROLE_KEY manquant côté serveur.');
+    }
+
+    const tempPassword = `Xf${Math.random().toString(36).slice(2, 10)}!${Math.floor(Math.random() * 100)}`;
+
+    const { data, error } = await admin.auth.admin.createUser({
+      email: payload.email,
+      password: tempPassword,
+      email_confirm: true,
+      user_metadata: { full_name: payload.full_name },
+    });
+
+    if (error || !data.user) {
+      throw new Error(error?.message || 'Échec de la création du compte utilisateur.');
+    }
+
+    const userId = data.user.id;
+
+    // handle_new_auth_user() already inserted public.users + a default EMPLOYEE user_roles row —
+    // fix the department, and swap the role if something other than the default was requested.
+    await admin.from('users').update({ department: payload.department }).eq('id', userId);
+
+    const dbCode = ROLE_TO_DB_CODE[payload.role];
+    if (dbCode && dbCode !== 'EMPLOYEE') {
+      const { data: roleRow } = await admin.from('roles').select('id').eq('code', dbCode).maybeSingle();
+      if (roleRow?.id) {
+        await admin.from('user_roles').delete().eq('user_id', userId);
+        await admin.from('user_roles').insert({ user_id: userId, role_id: roleRow.id });
+      }
+    }
+
+    await AuditRepository.logEvent(
+      'CREATE',
+      userId,
+      payload.full_name,
+      payload.role,
+      userId,
+      `Compte créé par un administrateur pour ${payload.email} (rôle: ${payload.role})`
+    );
+
+    return { id: userId, tempPassword };
+  }
+
+  /**
+   * FR-11: Super Admin/Admin edits an existing account's name/department/role.
+   */
+  static async updateUser(
+    userId: string,
+    payload: { full_name?: string; department?: string; role?: UserRole },
+    actorId?: string
+  ): Promise<void> {
+    const admin = getAdminClient();
+    if (!admin) {
+      throw new Error('Modification indisponible : SUPABASE_SERVICE_ROLE_KEY manquant côté serveur.');
+    }
+
+    const profileUpdate: Record<string, string> = {};
+    if (payload.full_name) profileUpdate.full_name = payload.full_name;
+    if (payload.department) profileUpdate.department = payload.department;
+
+    if (Object.keys(profileUpdate).length > 0) {
+      const { error } = await admin.from('users').update(profileUpdate).eq('id', userId);
+      if (error) throw new Error(`Échec de la mise à jour du profil : ${error.message}`);
+    }
+
+    if (payload.role) {
+      const dbCode = ROLE_TO_DB_CODE[payload.role];
+      const { data: roleRow, error: roleError } = await admin.from('roles').select('id').eq('code', dbCode).maybeSingle();
+      if (roleError || !roleRow?.id) {
+        throw new Error(`Rôle introuvable : ${payload.role}`);
+      }
+      await admin.from('user_roles').delete().eq('user_id', userId);
+      const { error: insertError } = await admin.from('user_roles').insert({ user_id: userId, role_id: roleRow.id });
+      if (insertError) throw new Error(`Échec de l'affectation du rôle : ${insertError.message}`);
+    }
+
+    await AuditRepository.logEvent(
+      'UPDATE',
+      actorId || userId,
+      payload.full_name || 'Administrateur',
+      payload.role || 'admin',
+      userId,
+      `Profil utilisateur ${userId} modifié (${Object.keys(payload).join(', ')})`
+    );
+  }
+
+  /**
+   * FR-14/§25.1: admin-initiated password reset. Uses the Supabase Auth admin API — GoTrue
+   * hashes the password (bcrypt) server-side; the plaintext is only ever held in memory here
+   * long enough to generate/return it once, never persisted in our own tables.
+   */
+  static async resetPassword(userId: string, actorId?: string): Promise<{ tempPassword: string }> {
+    const admin = getAdminClient();
+    if (!admin) {
+      throw new Error('Réinitialisation indisponible : SUPABASE_SERVICE_ROLE_KEY manquant côté serveur.');
+    }
+
+    const tempPassword = `Xf${Math.random().toString(36).slice(2, 10)}!${Math.floor(Math.random() * 100)}`;
+    const { error } = await admin.auth.admin.updateUserById(userId, { password: tempPassword });
+    if (error) {
+      throw new Error(`Échec de la réinitialisation du mot de passe : ${error.message}`);
+    }
+
+    await AuditRepository.logEvent(
+      'UPDATE',
+      actorId || userId,
+      'Administrateur',
+      'admin',
+      userId,
+      `Mot de passe réinitialisé par un administrateur pour l'utilisateur ${userId}`
+    );
+
+    return { tempPassword };
   }
 
   /**
@@ -107,7 +250,7 @@ export class UserRepository {
         }
 
         await AuditRepository.logEvent(
-          'USER_CREATED',
+          'CREATE',
           authUser.id,
           fullName,
           'collaborator',

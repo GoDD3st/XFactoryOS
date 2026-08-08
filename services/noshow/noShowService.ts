@@ -56,7 +56,7 @@ export class NoShowService {
           );
 
           await AuditRepository.logEvent(
-            'NO_SHOW_DETECTED',
+            'NO_SHOW',
             'system',
             'Système XFactory',
             'admin',
@@ -75,8 +75,14 @@ export class NoShowService {
     return detectedCount;
   }
 
-  public static getNoShowStats() {
-    const reservations = ReservationRepository.getAllReservations();
+  /**
+   * FR-67 "alimenter le KPI no-show" — was previously synchronous and, on the server
+   * (GET /api/noshow/stats), always returned zeros: it read `ReservationRepository
+   * .getAllReservations()` without awaiting it, then computed from `localStorage`, which
+   * doesn't exist server-side. Now a proper async live query, usable from both contexts.
+   */
+  public static async getNoShowStats(): Promise<{ today: number; thisWeek: number; perCluster: Record<string, number> }> {
+    const reservations = await ReservationRepository.getAllReservations();
     const now = new Date();
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const dayOfWeek = now.getDay();
@@ -86,22 +92,15 @@ export class NoShowService {
     let thisWeek = 0;
     const perCluster: Record<string, number> = {};
 
-    // Synchronous stats calculation from cache if async pending
-    if (typeof window !== 'undefined') {
-      const cached = localStorage.getItem('xfactory_reservations_v2');
-      if (cached) {
-        const list: Reservation[] = JSON.parse(cached);
-        list.forEach((res) => {
-          if (res.status === 'no-show') {
-            const resDate = new Date(res.reservation_date);
-            if (resDate >= startOfDay) today++;
-            if (resDate >= startOfWeek) thisWeek++;
+    reservations.forEach((res) => {
+      if (res.status === 'no-show') {
+        const resDate = new Date(res.reservation_date);
+        if (resDate >= startOfDay) today++;
+        if (resDate >= startOfWeek) thisWeek++;
 
-            perCluster[res.cluster_id] = (perCluster[res.cluster_id] || 0) + 1;
-          }
-        });
+        perCluster[res.cluster_id] = (perCluster[res.cluster_id] || 0) + 1;
       }
-    }
+    });
 
     return { today, thisWeek, perCluster };
   }

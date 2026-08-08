@@ -23,12 +23,15 @@ import {
   UserCheck
 } from 'lucide-react';
 import { Cluster, Workstation, QuickFilters, SeatStatus } from '../../types';
-import {
-  fetchClustersWithOverlays,
-  toggleExtensionSeatVisibility,
-  setSeatMaintenanceStatus
-} from '@/services/workspaces/workspaceService';
+import { fetchClustersWithOverlays } from '@/services/workspaces/workspaceService';
+import { apiToggleSeatVisibility, apiToggleSeatMaintenance } from '@/services/api/workspaceApi';
 import { useAuth } from '../../modules/auth/context/AuthContext';
+import { BuildingFloorPlan } from './BuildingFloorPlan';
+
+/** Maps each Open Space zone in the floor plan to the cluster codes it contains. */
+const OPEN_SPACE_ZONE_CLUSTER_CODES: Record<string, string[]> = {
+  'open-space': ['CL-A', 'CL-B', 'CL-C', 'CL-D', 'CL-E', 'CL-F', 'CL-G'],
+};
 
 interface DigitalTwinProps {
   onSelectSeat?: (workstation: Workstation, cluster: Cluster) => void;
@@ -51,7 +54,7 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
   selectedSeatCode,
   readOnly = false
 }) => {
-  const { canView8Postes, isAdminOrSuperAdmin } = useAuth();
+  const { canView8Postes, isAdminOrSuperAdmin, canAccessManagementClusters, currentUser } = useAuth();
 
   const [clusters, setClusters] = useState<Cluster[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -153,13 +156,13 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
   }, [clusters, activeClusterId, show8Postes, searchQuery, filters]);
 
   const handleAdminToggleVisibility = async (clusterId: string, seatId: string, currentVal: boolean) => {
-    await toggleExtensionSeatVisibility(clusterId, seatId, !currentVal);
+    await apiToggleSeatVisibility(clusterId, seatId, !currentVal);
     loadData();
   };
 
   const handleAdminToggleMaintenance = async (clusterId: string, seatId: string, currentStatus: SeatStatus) => {
     const isMaint = currentStatus === 'maintenance';
-    await setSeatMaintenanceStatus(clusterId, seatId, !isMaint);
+    await apiToggleSeatMaintenance(clusterId, seatId, !isMaint);
     loadData();
   };
 
@@ -206,6 +209,120 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
     });
     return { free, reserved, occupied, maint, ext, total: free + reserved + occupied + maint + ext };
   }, [clusters, show8Postes]);
+
+  const renderClusterCard = (cluster: Cluster) => {
+    const IconComponent = ICON_MAP[cluster.icon_name || 'Building'] || Building;
+
+    return (
+      <div
+        key={cluster.id}
+        className={`bg-slate-50/80 rounded-2xl border p-4 transition-all duration-200 ${
+          cluster.is_management_only
+            ? 'border-purple-200 bg-purple-50/40'
+            : 'border-slate-200 hover:bg-white hover:shadow-sm hover:border-slate-300'
+        }`}
+      >
+        {/* Cluster Header */}
+        <div className="flex items-start justify-between mb-3 border-b border-slate-200/80 pb-2.5">
+          <div className="flex items-center space-x-2.5">
+            <div className={`p-2 rounded-xl ${cluster.is_management_only ? 'bg-purple-100 text-purple-700 border border-purple-200' : 'bg-emerald-100 text-emerald-800 border border-emerald-200'}`}>
+              <IconComponent className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="font-bold text-sm text-slate-900">{cluster.code}</span>
+                <span className="text-xs font-semibold text-slate-700">{cluster.name}</span>
+              </div>
+              <p className="text-[11px] text-slate-500 line-clamp-1">{cluster.description}</p>
+            </div>
+          </div>
+
+          {cluster.is_management_only && (
+            <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded bg-purple-100 text-purple-800 border border-purple-200 font-bold shrink-0">
+              Restreint VIP
+            </span>
+          )}
+        </div>
+
+        {/* Workstations Seats Grid (8 positions) */}
+        {cluster.workstations.length === 0 ? (
+          <p className="text-xs text-slate-400 italic py-4 text-center">Aucun poste ne correspond aux filtres.</p>
+        ) : (
+          <div className="grid grid-cols-4 gap-2 py-1">
+            {cluster.workstations.map((ws) => {
+              const isSelected = selectedSeatCode === ws.code;
+              const statusColor = getStatusColorClass(ws.status);
+              // BR-07: management-reserved seats are directly selectable by
+              // Director/EA/Admin/SuperAdmin — they're the roles those clusters are
+              // reserved FOR, they don't need the GCI/Building Manager unlock step.
+              // Individually-assigned VIP members (cluster.vipMemberIds) can also book,
+              // even without one of those roles. Non-management unavailability
+              // (occupied/reserved/maintenance) is never bypassable — that would allow
+              // double-booking a real desk.
+              const isVipMember = !!cluster.vipMemberIds?.includes(currentUser.id);
+              const isSelectable =
+                ws.status === 'disponible' ||
+                (ws.status === 'management_reserved' && (canAccessManagementClusters || isVipMember));
+
+              return (
+                <div key={ws.id} className="relative group">
+                  {/* Seat Pill Button */}
+                  <button
+                    disabled={readOnly || !isSelectable}
+                    onClick={() => {
+                      if (onSelectSeat && isSelectable) {
+                        onSelectSeat(ws, cluster);
+                      }
+                      setActiveHoverSeat({ workstation: ws, cluster });
+                    }}
+                    onMouseEnter={() => setActiveHoverSeat({ workstation: ws, cluster })}
+                    className={`w-full py-2.5 px-1 rounded-xl text-center flex flex-col items-center justify-center transition-all border font-bold text-xs seat-pill shadow-xs ${statusColor} ${
+                      isSelected ? 'ring-4 ring-emerald-500 ring-offset-2 ring-offset-white scale-105 z-10' : ''
+                    } ${!isSelectable ? 'cursor-not-allowed opacity-90' : 'cursor-pointer'}`}
+                  >
+                    <span className="text-[10px] tracking-tight opacity-90">{ws.code.split('-')[2]}</span>
+                    <span className="text-[11px] truncate w-full font-extrabold">{ws.code}</span>
+
+                    {/* Badge indicator for features */}
+                    <div className="flex items-center justify-center space-x-1 mt-1 text-[9px] opacity-90">
+                      {ws.metadata.near_window && <span>🪟</span>}
+                      {ws.metadata.is_pmr && <span>♿</span>}
+                    </div>
+                  </button>
+
+                  {/* Admin Quick Action Controls Overlay on Hover */}
+                  {isAdminOrSuperAdmin && ws.is_extension && (
+                    <div className="absolute top-1 right-1 flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900 text-white p-1 rounded-lg shadow-md z-20">
+                      <button
+                        title={ws.visibleToUsers ? 'Masquer aux collaborateurs' : 'Rendre visible aux collaborateurs'}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleAdminToggleVisibility(cluster.id, ws.id, ws.visibleToUsers || false);
+                        }}
+                        className="p-1 hover:bg-slate-800 rounded"
+                      >
+                        {ws.visibleToUsers ? <Eye className="w-3 h-3 text-emerald-400" /> : <EyeOff className="w-3 h-3 text-slate-400" />}
+                      </button>
+                      <button
+                        title={ws.status === 'maintenance' ? 'Rétablir statut libre' : 'Mettre en maintenance'}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleAdminToggleMaintenance(cluster.id, ws.id, ws.status);
+                        }}
+                        className="p-1 hover:bg-slate-800 text-amber-300 rounded"
+                      >
+                        <Wrench className="w-3 h-3" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="w-full bg-white text-slate-900 rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-6 space-y-5 overflow-hidden">
@@ -385,117 +502,29 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
         </div>
       </div>
 
-      {/* 2D Interactive Digital Twin Layout Grid */}
+      {/* 2D Interactive Digital Twin Layout */}
       {loading ? (
         <div className="py-20 flex flex-col items-center justify-center space-y-3">
           <RefreshCw className="w-8 h-8 text-emerald-600 animate-spin" />
           <p className="text-sm text-slate-500 font-medium">Chargement du Digital Twin OCP Safi...</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-          {filteredClusters.map((cluster) => {
-            const IconComponent = ICON_MAP[cluster.icon_name || 'Building'] || Building;
-
-            return (
-              <div
-                key={cluster.id}
-                className={`bg-slate-50/80 rounded-2xl border p-4 transition-all duration-200 ${
-                  cluster.is_management_only
-                    ? 'border-purple-200 bg-purple-50/40'
-                    : 'border-slate-200 hover:bg-white hover:shadow-sm hover:border-slate-300'
-                }`}
-              >
-                {/* Cluster Header */}
-                <div className="flex items-start justify-between mb-3 border-b border-slate-200/80 pb-2.5">
-                  <div className="flex items-center space-x-2.5">
-                    <div className={`p-2 rounded-xl ${cluster.is_management_only ? 'bg-purple-100 text-purple-700 border border-purple-200' : 'bg-emerald-100 text-emerald-800 border border-emerald-200'}`}>
-                      <IconComponent className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-bold text-sm text-slate-900">{cluster.code}</span>
-                        <span className="text-xs font-semibold text-slate-700">{cluster.name}</span>
-                      </div>
-                      <p className="text-[11px] text-slate-500 line-clamp-1">{cluster.description}</p>
-                    </div>
-                  </div>
-
-                  {cluster.is_management_only && (
-                    <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded bg-purple-100 text-purple-800 border border-purple-200 font-bold shrink-0">
-                      Restreint VIP
-                    </span>
-                  )}
-                </div>
-
-                {/* Workstations Seats Grid (8 positions) */}
-                {cluster.workstations.length === 0 ? (
-                  <p className="text-xs text-slate-400 italic py-4 text-center">Aucun poste ne correspond aux filtres.</p>
-                ) : (
-                  <div className="grid grid-cols-4 gap-2 py-1">
-                    {cluster.workstations.map((ws) => {
-                      const isSelected = selectedSeatCode === ws.code;
-                      const statusColor = getStatusColorClass(ws.status);
-
-                      return (
-                        <div key={ws.id} className="relative group">
-                          {/* Seat Pill Button */}
-                          <button
-                            disabled={readOnly || (ws.status !== 'disponible' && !isAdminOrSuperAdmin)}
-                            onClick={() => {
-                              if (onSelectSeat && ws.status === 'disponible') {
-                                onSelectSeat(ws, cluster);
-                              }
-                              setActiveHoverSeat({ workstation: ws, cluster });
-                            }}
-                            onMouseEnter={() => setActiveHoverSeat({ workstation: ws, cluster })}
-                            className={`w-full py-2.5 px-1 rounded-xl text-center flex flex-col items-center justify-center transition-all border font-bold text-xs seat-pill shadow-xs ${statusColor} ${
-                              isSelected ? 'ring-4 ring-emerald-500 ring-offset-2 ring-offset-white scale-105 z-10' : ''
-                            } ${ws.status !== 'disponible' && !isAdminOrSuperAdmin ? 'cursor-not-allowed opacity-90' : 'cursor-pointer'}`}
-                          >
-                            <span className="text-[10px] tracking-tight opacity-90">{ws.code.split('-')[2]}</span>
-                            <span className="text-[11px] truncate w-full font-extrabold">{ws.code}</span>
-
-                            {/* Badge indicator for features */}
-                            <div className="flex items-center justify-center space-x-1 mt-1 text-[9px] opacity-90">
-                              {ws.metadata.near_window && <span>🪟</span>}
-                              {ws.metadata.is_pmr && <span>♿</span>}
-                            </div>
-                          </button>
-
-                          {/* Admin Quick Action Controls Overlay on Hover */}
-                          {isAdminOrSuperAdmin && ws.is_extension && (
-                            <div className="absolute top-1 right-1 flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900 text-white p-1 rounded-lg shadow-md z-20">
-                              <button
-                                title={ws.visibleToUsers ? 'Masquer aux collaborateurs' : 'Rendre visible aux collaborateurs'}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleAdminToggleVisibility(cluster.id, ws.id, ws.visibleToUsers || false);
-                                }}
-                                className="p-1 hover:bg-slate-800 rounded"
-                              >
-                                {ws.visibleToUsers ? <Eye className="w-3 h-3 text-emerald-400" /> : <EyeOff className="w-3 h-3 text-slate-400" />}
-                              </button>
-                              <button
-                                title={ws.status === 'maintenance' ? 'Rétablir statut libre' : 'Mettre en maintenance'}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleAdminToggleMaintenance(cluster.id, ws.id, ws.status);
-                                }}
-                                className="p-1 hover:bg-slate-800 text-amber-300 rounded"
-                              >
-                                <Wrench className="w-3 h-3" />
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+        <BuildingFloorPlan
+          getOpenSpaceSummary={(zoneId) => {
+            const codes = OPEN_SPACE_ZONE_CLUSTER_CODES[zoneId] || [];
+            const zoneClusters = filteredClusters.filter((c) => codes.includes(c.code));
+            const seatCount = zoneClusters.reduce((sum, c) => sum + c.workstations.length, 0);
+            return { clusterCount: zoneClusters.length, seatCount };
+          }}
+          renderOpenSpaceDetail={(zoneId) => {
+            const codes = OPEN_SPACE_ZONE_CLUSTER_CODES[zoneId] || [];
+            const zoneClusters = filteredClusters.filter((c) => codes.includes(c.code));
+            if (zoneClusters.length === 0) {
+              return <p className="text-xs text-slate-400 italic px-1">Aucun cluster ne correspond aux filtres.</p>;
+            }
+            return <div className="grid grid-cols-1 md:grid-cols-2 gap-4">{zoneClusters.map(renderClusterCard)}</div>;
+          }}
+        />
       )}
 
       {/* Selected/Hovered Seat Detail Drawer / Modal */}
@@ -535,7 +564,11 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
           </div>
 
           <div className="flex items-center space-x-3 w-full md:w-auto justify-end">
-            {onSelectSeat && activeHoverSeat.workstation.status === 'disponible' && !readOnly && (
+            {onSelectSeat && !readOnly && (
+              activeHoverSeat.workstation.status === 'disponible' ||
+              (activeHoverSeat.workstation.status === 'management_reserved' &&
+                (canAccessManagementClusters || activeHoverSeat.cluster.vipMemberIds?.includes(currentUser.id)))
+            ) && (
               <button
                 onClick={() => onSelectSeat(activeHoverSeat.workstation, activeHoverSeat.cluster)}
                 className="bg-[#00b050] hover:bg-[#009040] text-white px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 shadow-md"

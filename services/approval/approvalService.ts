@@ -50,7 +50,9 @@ export class ApprovalService {
         if (decision === 'approved') {
           await ReservationRepository.updateReservationStatus(target.reservation_id, 'confirmée');
         } else if (decision === 'rejected') {
-          await ReservationRepository.updateReservationStatus(target.reservation_id, 'annulée');
+          // D7: REJECTED is a distinct terminal state from CANCELLED (a refused approval is not
+          // the same audit/analytics event as a user-initiated cancellation).
+          await ReservationRepository.updateReservationStatus(target.reservation_id, 'rejetée');
         }
       }
 
@@ -76,7 +78,7 @@ export class ApprovalService {
       }
 
       await AuditRepository.logEvent(
-        `APPROVAL_${decision.toUpperCase()}`,
+        decision === 'approved' ? 'APPROVE' : decision === 'rejected' ? 'REJECT' : 'UPDATE',
         deciderId,
         'Approbateur Direction Safi',
         target?.approver_role || 'director',

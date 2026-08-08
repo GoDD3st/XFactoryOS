@@ -72,6 +72,36 @@ export const LoginSchema = z
   })
   .strict();
 
+// 6b. Admin-created user (FR-11: Super Admin/Admin create/manage users)
+export const CreateUserByAdminSchema = z
+  .object({
+    email: z.string().email('Adresse email OCP invalide').regex(/@ocpgroup\.ma$/, 'Doit être une adresse @ocpgroup.ma'),
+    full_name: z.string().min(2, 'Nom complet requis'),
+    department: z.string().min(2, 'Département requis'),
+    role: z.enum([
+      'collaborator', 'receptionist', 'building_manager', 'gci_manager',
+      'executive_assistant', 'director', 'admin', 'super_admin', 'it_admin', 'security_guard',
+    ]),
+  })
+  .strict();
+
+export const UpdateUserStatusSchema = z
+  .object({
+    status: z.enum(['active', 'inactive']),
+  })
+  .strict();
+
+export const UpdateUserSchema = z
+  .object({
+    full_name: z.string().min(2).optional(),
+    department: z.string().min(2).optional(),
+    role: z.enum([
+      'collaborator', 'receptionist', 'building_manager', 'gci_manager',
+      'executive_assistant', 'director', 'admin', 'super_admin', 'it_admin', 'security_guard',
+    ]).optional(),
+  })
+  .strict();
+
 // 7. User Registration Schema
 export const RegisterSchema = z
   .object({
@@ -124,6 +154,7 @@ export const SystemSettingsUpdateSchema = z
   .object({
     bookingWindowDays: z.number().min(0).max(30).optional(),
     minReservationMinutes: z.number().min(5).max(480).optional(),
+    maxReservationMinutes: z.number().min(30).max(1440).optional(),
     maxReservationDaysWithoutApproval: z.number().min(1).max(30).optional(),
     maxReservationsPerUserPerDay: z.number().min(1).max(20).optional(),
     maxReservationsPerUserPerWeek: z.number().min(1).max(50).optional(),
@@ -182,5 +213,37 @@ export const CreateNotificationSchema = z
 export const HardwareResetSchema = z
   .object({
     workstation_code: z.string().min(1),
+  })
+  .strict();
+
+// 15. Cluster VIP Status Toggle Schema
+export const ClusterVipToggleSchema = z
+  .object({
+    isVip: z.boolean(),
+  })
+  .strict();
+
+// 16. Cluster VIP Member Assignment Schema
+export const ClusterVipMemberSchema = z
+  .object({
+    userId: z.string().min(1, 'ID utilisateur requis'),
+  })
+  .strict();
+
+// 17. Full Workstation Update Schema (admin edit modal)
+export const WorkstationUpdateSchema = z
+  .object({
+    status: z.enum(['disponible', 'maintenance', 'management_reserved', 'occupé', 'réservé']).optional(),
+    reservable: z.boolean().optional(),
+    metadataPatch: z
+      .object({
+        visibleToUsers: z.boolean().optional(),
+        near_window: z.boolean().optional(),
+        is_pmr: z.boolean().optional(),
+        is_quiet_zone: z.boolean().optional(),
+        notes: z.string().max(500).optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();

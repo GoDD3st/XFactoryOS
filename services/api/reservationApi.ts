@@ -2,6 +2,16 @@ import { Reservation, UserRole } from '@/frontend/src/types';
 import { supabase } from '@/database/client';
 import { isDemoMode } from '@/frontend/src/modules/auth/utils/demoMode';
 
+/** BPMN D1 ALT path — thrown on a 409 conflict, carries alternative desks the caller can offer. */
+export class ReservationConflictError extends Error {
+  alternatives: { code: string; cluster_name: string }[];
+  constructor(message: string, alternatives: { code: string; cluster_name: string }[]) {
+    super(message);
+    this.name = 'ReservationConflictError';
+    this.alternatives = alternatives;
+  }
+}
+
 /** Fields allowed by POST /api/reservations (CreateReservationSchema.strict). */
 function buildReservationRequestBody(payload: Partial<Reservation>) {
   return {
@@ -49,7 +59,12 @@ export async function apiCreateReservation(
       Array.isArray(result.errors) && result.errors.length > 0
         ? result.errors.map((e: { field: string; message: string }) => `${e.field}: ${e.message}`).join(' · ')
         : null;
-    throw new Error(validationDetail || result.message || result.error || 'Échec de la création de la réservation.');
+    const message = validationDetail || result.message || result.error || 'Échec de la création de la réservation.';
+
+    if (response.status === 409 && Array.isArray(result.alternatives)) {
+      throw new ReservationConflictError(message, result.alternatives);
+    }
+    throw new Error(message);
   }
 
   return result.data as Reservation;

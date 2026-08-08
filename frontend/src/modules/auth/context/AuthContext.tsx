@@ -14,6 +14,9 @@ interface AuthContextType {
   switchRole: (role: UserRole) => void;
   isAdminOrSuperAdmin: boolean;
   canView8Postes: boolean;
+  /** BR-07: management-reserved clusters (CL-F/CL-G) are reserved FOR these roles — they can
+   * select seats there directly without needing the GCI/Building Manager unlock step. */
+  canAccessManagementClusters: boolean;
   /** true when running with the QA Role Switcher (VITE_DEMO_MODE=true), false when gated by real Supabase Auth */
   isDemoMode: boolean;
   /** false while the initial Supabase session check is still in flight (real mode only) */
@@ -84,6 +87,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (session?.user) {
         const { profile } = await fetchRealUserProfile(session.user);
         if (!cancelled) setRealUser(profile);
+
+        // SRS FR-05 / §26.1 "Connexion utilisateur" — journaliser chaque connexion.
+        // Only on an actual sign-in, not every TOKEN_REFRESHED/USER_UPDATED event.
+        if (_event === 'SIGNED_IN') {
+          const { AuditRepository } = await import('@/database/repositories/auditRepository');
+          AuditRepository.logEvent(
+            'LOGIN',
+            profile.id,
+            profile.full_name,
+            profile.role,
+            profile.id,
+            `Connexion réussie de ${profile.email}`
+          ).catch(() => {});
+        }
       } else {
         if (!cancelled) setRealUser(null);
       }
@@ -130,6 +147,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const isAdminOrSuperAdmin = currentRole === 'admin' || currentRole === 'super_admin';
   const canView8Postes = isAdminOrSuperAdmin;
+  const canAccessManagementClusters =
+    currentRole === 'director' ||
+    currentRole === 'executive_assistant' ||
+    currentRole === 'admin' ||
+    currentRole === 'super_admin';
 
   return (
     <AuthContext.Provider
@@ -140,6 +162,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         switchRole,
         isAdminOrSuperAdmin,
         canView8Postes,
+        canAccessManagementClusters,
         isDemoMode: demo,
         authLoading: demo ? false : authLoading,
         isAuthenticated,

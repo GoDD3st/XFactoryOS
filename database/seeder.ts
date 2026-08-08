@@ -6,13 +6,13 @@ function db() {
 }
 
 export const INITIAL_CLUSTERS_SEED = [
-  { code: 'CL-A', name: 'Cluster A — Innovation & R&D', management_reserved: false, enabled: true, desk_count: 4 },
-  { code: 'CL-B', name: 'Cluster B — Digital Factory & Tech', management_reserved: false, enabled: true, desk_count: 4 },
-  { code: 'CL-C', name: 'Cluster C — Facility Management & Operations', management_reserved: false, enabled: true, desk_count: 4 },
-  { code: 'CL-D', name: 'Cluster D — Security & Infrastructure', management_reserved: false, enabled: true, desk_count: 4 },
-  { code: 'CL-E', name: 'Cluster E — GCI Governance', management_reserved: false, enabled: true, desk_count: 4 },
-  { code: 'CL-F', name: 'Cluster F — Executive Direction', management_reserved: true, enabled: true, desk_count: 4 },
-  { code: 'CL-G', name: 'Cluster G — VIP Boardroom Annex', management_reserved: true, enabled: true, desk_count: 4 },
+  { code: 'CL-A', name: 'Cluster A', management_reserved: false, enabled: true, desk_count: 4 },
+  { code: 'CL-B', name: 'Cluster B', management_reserved: false, enabled: true, desk_count: 4 },
+  { code: 'CL-C', name: 'Cluster C', management_reserved: false, enabled: true, desk_count: 4 },
+  { code: 'CL-D', name: 'Cluster D', management_reserved: false, enabled: true, desk_count: 4 },
+  { code: 'CL-E', name: 'Cluster E', management_reserved: false, enabled: true, desk_count: 4 },
+  { code: 'CL-F', name: 'Cluster F', management_reserved: true, enabled: true, desk_count: 4 },
+  { code: 'CL-G', name: 'Cluster G', management_reserved: true, enabled: true, desk_count: 4 },
 ];
 
 export async function seedDatabaseIfEmpty(): Promise<void> {
@@ -78,7 +78,10 @@ export async function seedDatabaseIfEmpty(): Promise<void> {
                   await db().from('workstations').insert({
                     cluster_id: cluster.id,
                     code: wsCode,
-                    status: clSeed.management_reserved ? 'MANAGEMENT_RESERVED' : 'AVAILABLE',
+                    // 'MANAGEMENT_RESERVED' is not a workstation_status enum value — the lock
+                    // is expressed via `reservable: false` alone (see WorkstationRepository
+                    // .mapDbStatusToDomain, which already treats !reservable as management-reserved).
+                    status: 'AVAILABLE',
                     reservable: !clSeed.management_reserved,
                     svg_position: { x: 50 + seat * 100, y: 100 },
                     metadata: {

@@ -53,9 +53,11 @@ export interface Cluster {
   location_zone?: string;
   icon_name?: string;
   workstations: Workstation[];
+  /** User ids individually assigned to this VIP cluster (BR-07 allowlist), populated when management_reserved */
+  vipMemberIds?: string[];
 }
 
-export type ReservationStatus = 'confirmée' | 'check-in' | 'en attente' | 'annulée' | 'terminée' | 'no-show' | 'check-out';
+export type ReservationStatus = 'confirmée' | 'check-in' | 'en attente' | 'annulée' | 'rejetée' | 'terminée' | 'no-show' | 'check-out';
 
 export interface Reservation {
   id: string;
@@ -104,6 +106,9 @@ export interface WaitingListEntry {
   notes?: string;
   created_at: string;
   status: 'waiting' | 'offered' | 'expired' | 'fulfilled' | 'cancelled';
+  offered_workstation_id?: string;
+  offered_workstation_code?: string;
+  offer_expires_at?: string;
 }
 
 export interface AuditLogEntry {

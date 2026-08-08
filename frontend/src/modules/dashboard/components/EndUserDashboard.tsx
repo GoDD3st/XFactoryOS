@@ -23,6 +23,7 @@ import { DateTimePicker24h } from '../../../shared/components/DateTimePicker24h'
 import { ExtensionRequestModal } from '../../../shared/components/ExtensionRequestModal';
 import { Workstation, Cluster, Reservation, ApprovalRequest, SystemSettings } from '../../../types';
 import { createReservation, syncReservationsFromDb } from '@/services/reservations/reservationService';
+import { ReservationConflictError } from '@/services/api/reservationApi';
 import { ApprovalService } from '@/services/approval/approvalService';
 import { SettingsService } from '@/services/settings/settingsService';
 import { useAuth } from '../../../modules/auth/context/AuthContext';
@@ -61,6 +62,7 @@ export const EndUserDashboard: React.FC = () => {
   const [businessDaysCount, setBusinessDaysCount] = useState<number>(1);
   const [requiresExtension, setRequiresExtension] = useState<boolean>(false);
   const [validationError, setValidationError] = useState<string | undefined>();
+  const [conflictAlternatives, setConflictAlternatives] = useState<{ code: string; cluster_name: string }[]>([]);
   const [reason, setReason] = useState<string>('');
 
   // Extension Modal State
@@ -157,6 +159,7 @@ export const EndUserDashboard: React.FC = () => {
 
     setIsSubmitting(true);
     setValidationError(undefined);
+    setConflictAlternatives([]);
 
     const resStatus = requiresExtension ? 'en attente' : 'confirmée';
 
@@ -184,6 +187,9 @@ export const EndUserDashboard: React.FC = () => {
       // Surfaces conflict / booking-window / daily-weekly quota rejections from
       // ReservationService instead of failing silently.
       setValidationError(err?.message || 'Erreur lors de la création de la réservation.');
+      if (err instanceof ReservationConflictError) {
+        setConflictAlternatives(err.alternatives);
+      }
       setIsSubmitting(false);
       return;
     }
@@ -379,6 +385,19 @@ export const EndUserDashboard: React.FC = () => {
                     <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                     {validationError}
                   </p>
+                )}
+                {conflictAlternatives.length > 0 && (
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                    <span className="text-[11px] text-slate-300">Postes disponibles sur ce créneau :</span>
+                    {conflictAlternatives.map((alt) => (
+                      <span
+                        key={alt.code}
+                        className="px-2 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 text-[10px] font-bold"
+                      >
+                        {alt.code} ({alt.cluster_name})
+                      </span>
+                    ))}
+                  </div>
                 )}
               </div>
             </div>

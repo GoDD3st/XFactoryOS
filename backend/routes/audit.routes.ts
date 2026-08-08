@@ -4,8 +4,10 @@ import { requireRole } from '../middleware/rbacMiddleware';
 
 export const auditRouter = Router();
 
-// GET /api/audit — Restricted to Governance Managers & Admins
-auditRouter.get('/', requireRole('gci_manager', 'admin', 'super_admin'), async (req, res) => {
+// GET /api/audit — SRS §13 matrix "Audit logs": R = Super Admin, Admin, Building Manager,
+// GCI Manager, Director, IT Admin, Security. (Was missing building_manager/director/security_guard
+// entirely — their Audit tab silently rendered empty, not an error, so it looked "broken".)
+auditRouter.get('/', requireRole('super_admin', 'admin', 'building_manager', 'gci_manager', 'director', 'it_admin', 'security_guard'), async (req, res) => {
   try {
     const data = await AuditService.getAuditLogs();
     res.json({ success: true, data });

@@ -25,7 +25,11 @@ noShowRouter.post('/scan', requireRole('building_manager', 'admin', 'super_admin
 });
 
 // GET /api/noshow/stats — Building Manager & Admin roles only
-noShowRouter.get('/stats', requireRole('building_manager', 'admin', 'super_admin'), (req, res) => {
-  const stats = NoShowService.getNoShowStats();
-  res.json(stats);
+noShowRouter.get('/stats', requireRole('building_manager', 'admin', 'super_admin'), async (req, res) => {
+  try {
+    const stats = await NoShowService.getNoShowStats();
+    res.json(stats);
+  } catch (error: any) {
+    res.status(500).json({ status: 'error', message: error.message });
+  }
 });

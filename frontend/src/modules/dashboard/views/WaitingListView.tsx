@@ -1,7 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { WaitingListEntry } from '@/frontend/src/types';
-import { apiFetchWaitingList, apiJoinWaitingList, apiCancelWaitingListEntry } from '@/services/api/waitingListApi';
-import { Clock, Layers, Plus, Trash2, CheckCircle, Users } from 'lucide-react';
+import {
+  apiFetchWaitingList,
+  apiJoinWaitingList,
+  apiCancelWaitingListEntry,
+  apiAcceptWaitingListOffer,
+  apiDeclineWaitingListOffer,
+} from '@/services/api/waitingListApi';
+import { Clock, Layers, Plus, Trash2, CheckCircle, Users, Check, X } from 'lucide-react';
 
 export const WaitingListView: React.FC = () => {
   const [list, setList] = useState<WaitingListEntry[]>([]);
@@ -36,6 +42,37 @@ export const WaitingListView: React.FC = () => {
   const handleCancel = async (id: string) => {
     await apiCancelWaitingListEntry(id);
     loadList();
+  };
+
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const handleAccept = async (id: string) => {
+    setActionError(null);
+    try {
+      await apiAcceptWaitingListOffer(id);
+      loadList();
+    } catch (err: any) {
+      setActionError(err.message);
+    }
+  };
+
+  const handleDecline = async (id: string) => {
+    setActionError(null);
+    try {
+      await apiDeclineWaitingListOffer(id);
+      loadList();
+    } catch (err: any) {
+      setActionError(err.message);
+    }
+  };
+
+  const formatCountdown = (expiresAt?: string): string | null => {
+    if (!expiresAt) return null;
+    const ms = new Date(expiresAt).getTime() - Date.now();
+    if (ms <= 0) return 'expirée';
+    const minutes = Math.floor(ms / 60000);
+    const seconds = Math.floor((ms % 60000) / 1000);
+    return `${minutes}m ${String(seconds).padStart(2, '0')}s`;
   };
 
   return (
@@ -105,6 +142,12 @@ export const WaitingListView: React.FC = () => {
         </form>
       )}
 
+      {actionError && (
+        <div className="p-3 rounded-xl bg-red-50 text-red-800 border border-red-200 text-xs">
+          {actionError}
+        </div>
+      )}
+
       {/* Queue List */}
       <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-3">
         <div className="flex items-center justify-between border-b border-slate-100 pb-3">
@@ -113,36 +156,67 @@ export const WaitingListView: React.FC = () => {
         </div>
 
         <div className="space-y-2">
-          {list.map((item, idx) => (
-            <div
-              key={item.id}
-              className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs"
-            >
-              <div className="flex items-center space-x-3">
-                <div className="w-7 h-7 rounded-full bg-slate-200 font-black text-slate-700 flex items-center justify-center text-xs">
-                  #{idx + 1}
-                </div>
-                <div>
-                  <div className="font-bold text-slate-800">{item.user_name} ({item.user_department})</div>
-                  <div className="text-[10px] text-slate-500">
-                    Cluster: <span className="font-semibold text-[#008751]">{item.cluster_preference}</span> • Créneau: {item.time_slot}
+          {list.map((item, idx) => {
+            const isOffered = item.status === 'offered';
+            const countdown = isOffered ? formatCountdown(item.offer_expires_at) : null;
+
+            return (
+              <div
+                key={item.id}
+                className={`flex items-center justify-between p-3 rounded-xl border text-xs ${
+                  isOffered ? 'bg-emerald-50 border-emerald-300' : 'bg-slate-50 border-slate-200'
+                }`}
+              >
+                <div className="flex items-center space-x-3">
+                  <div className="w-7 h-7 rounded-full bg-slate-200 font-black text-slate-700 flex items-center justify-center text-xs shrink-0">
+                    #{idx + 1}
+                  </div>
+                  <div>
+                    <div className="font-bold text-slate-800">{item.user_name} ({item.user_department})</div>
+                    <div className="text-[10px] text-slate-500">
+                      Cluster: <span className="font-semibold text-[#008751]">{item.cluster_preference}</span> • Créneau: {item.time_slot}
+                    </div>
+                    {isOffered && (
+                      <div className="text-[10px] text-emerald-700 font-bold mt-0.5">
+                        Poste proposé{item.offered_workstation_code ? ` : ${item.offered_workstation_code}` : ''} — expire dans {countdown}
+                      </div>
+                    )}
                   </div>
                 </div>
-              </div>
 
-              <div className="flex items-center space-x-2">
-                <span className="px-2 py-0.5 rounded font-bold text-[10px] bg-amber-100 text-amber-800 uppercase">
-                  {item.status}
-                </span>
-                <button
-                  onClick={() => handleCancel(item.id)}
-                  className="p-1 text-slate-400 hover:text-red-600 rounded"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                <div className="flex items-center space-x-2 shrink-0">
+                  {isOffered ? (
+                    <>
+                      <button
+                        onClick={() => handleAccept(item.id)}
+                        className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] rounded-lg"
+                      >
+                        <Check className="w-3.5 h-3.5" /> Accepter
+                      </button>
+                      <button
+                        onClick={() => handleDecline(item.id)}
+                        className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-[10px] rounded-lg"
+                      >
+                        <X className="w-3.5 h-3.5" /> Refuser
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="px-2 py-0.5 rounded font-bold text-[10px] bg-amber-100 text-amber-800 uppercase">
+                        {item.status}
+                      </span>
+                      <button
+                        onClick={() => handleCancel(item.id)}
+                        className="p-1 text-slate-400 hover:text-red-600 rounded"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
 
           {list.length === 0 && (
             <div className="text-center py-6 text-xs text-slate-400">

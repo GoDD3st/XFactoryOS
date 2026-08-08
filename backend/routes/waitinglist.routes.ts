@@ -57,3 +57,39 @@ waitingListRouter.delete(
     }
   }
 );
+
+// POST /api/waiting-list/:id/accept — BPMN D5 GWRESP "ACCEPTE" (owner only)
+waitingListRouter.post(
+  '/:id/accept',
+  requireOwnerOrAdmin(async (req) => {
+    const list = await WaitingListRepository.getWaitingList();
+    const entry = list.find((e) => e.id === req.params.id);
+    return entry ? entry.user_id : null;
+  }),
+  async (req, res) => {
+    try {
+      const reservation = await WaitingListService.acceptOffer(req.params.id, req.user!.id);
+      res.json({ success: true, data: reservation });
+    } catch (err: any) {
+      res.status(400).json({ success: false, error: err.message || "Échec de l'acceptation de l'offre" });
+    }
+  }
+);
+
+// POST /api/waiting-list/:id/decline — BPMN D5 GWRESP "REFUSE" (owner only)
+waitingListRouter.post(
+  '/:id/decline',
+  requireOwnerOrAdmin(async (req) => {
+    const list = await WaitingListRepository.getWaitingList();
+    const entry = list.find((e) => e.id === req.params.id);
+    return entry ? entry.user_id : null;
+  }),
+  async (req, res) => {
+    try {
+      await WaitingListService.declineOffer(req.params.id, req.user!.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(400).json({ success: false, error: err.message || "Échec du refus de l'offre" });
+    }
+  }
+);

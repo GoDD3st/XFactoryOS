@@ -21,3 +21,10 @@ export async function apiFetchNotifications(): Promise<UserNotification[]> {
   const body = await response.json();
   return body.data || [];
 }
+
+export async function apiMarkNotificationRead(id: string): Promise<void> {
+  await fetch(`/api/notifications/${id}/read`, {
+    method: 'PUT',
+    headers: await authHeaders(),
+  });
+}

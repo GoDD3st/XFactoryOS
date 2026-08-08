@@ -12,7 +12,7 @@ import {
   ShieldCheck
 } from 'lucide-react';
 import { Workstation, SeatStatus } from '../../types';
-import { WorkstationRepository } from '@/database/repositories/workstationRepository';
+import { apiUpdateWorkstation } from '@/services/api/workspaceApi';
 
 interface WorkstationEditModalProps {
   workstation: Workstation;
@@ -44,12 +44,25 @@ export const WorkstationEditModal: React.FC<WorkstationEditModalProps> = ({
     e.preventDefault();
     setIsSaving(true);
 
-    // Save to Supabase repository
-    await WorkstationRepository.updateWorkstationStatus(
-      workstation.id,
-      status,
-      reservable
-    );
+    // Save via the backend (uses the service-role client server-side — a direct browser write
+    // would silently no-op under RLS unless the session is a real authenticated admin).
+    try {
+      await apiUpdateWorkstation(workstation.id, {
+        status,
+        reservable,
+        metadataPatch: {
+          visibleToUsers,
+          near_window: nearWindow,
+          is_pmr: isPmr,
+          is_quiet_zone: isQuietZone,
+          notes,
+        },
+      });
+    } catch (err: any) {
+      setIsSaving(false);
+      alert(err.message || "Échec de l'enregistrement du poste.");
+      return;
+    }
 
     // Dispatch update event
     if (typeof window !== 'undefined') {

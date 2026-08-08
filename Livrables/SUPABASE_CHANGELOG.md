@@ -62,4 +62,24 @@ Running log of every schema/RLS/data change applied directly to the live Supabas
 
 ---
 
-## No data was deleted in any of the above — only policies, one view's security mode, function search_path settings, one grant revocation, and two new nullable/defaulted columns were added/edited.
+## 2026-08-07 — `backfill_missing_management_cluster_workstations`
+
+**Why:** `CL-F` and `CL-G` (the two management-reserved/VIP clusters — exactly what the previous session's "VIP cluster seat selection" feature targeted) had **zero workstation rows** in the database, for every day the app has existed. Root cause: `database/seeder.ts` wrote `status: 'MANAGEMENT_RESERVED'` for these clusters' 4 seats each, but `'MANAGEMENT_RESERVED'` was never a valid `workstation_status` enum value (the real values are `AVAILABLE, RESERVED, OCCUPIED, NO_SHOW, DISABLED, MAINTENANCE`) — so all 8 inserts failed silently on every seed run, and the seeder's `if (clusters.length === 0)` guard meant it never ran again once the other 5 clusters existed. The app appeared to work because the frontend's `generateDefaultWorkstations()` localStorage/client-side fallback synthesized placeholder CL-F/CL-G seats, masking the missing DB rows. Any real reservation attempt on those seats would have failed at `WorkstationRepository.resolveWorkstationId()` ("Poste introuvable dans Supabase").
+
+- **Data**: inserted the missing 8 workstation rows (`CL-F-W1..W4`, `CL-G-W1..W4`) with `status: 'AVAILABLE'`, `reservable: false`, matching the shape the seeder now produces.
+- Also fixed in code (not a DB change): [database/seeder.ts](../database/seeder.ts) and `WorkstationRepository.mapDomainStatusToDb()` in [database/repositories/workstationRepository.ts](../database/repositories/workstationRepository.ts) both wrote the invalid `'MANAGEMENT_RESERVED'` literal — changed to `'AVAILABLE'` (the `reservable: false` flag alone already round-trips correctly back to the domain `'management_reserved'` status via `mapDbStatusToDomain`).
+
+---
+
+## 2026-08-07 — `add_cluster_vip_members_and_extend_vip_roles`
+
+**Why:** New feature — Super Admin/Admin/Director/Executive Assistant can now mark *any* cluster VIP (not just the seeded CL-F/CL-G), assign specific users to a VIP-locked cluster, and add extension seats up to 8/cluster. Needed schema support that didn't exist: a VIP-member allowlist table, and Director/EA weren't in the write policies for `clusters`/`workstations` at all (only Building/GCI Manager and Admin were).
+
+- **Added table** `cluster_vip_members` (`cluster_id`, `user_id`, `assigned_by`, `assigned_at`, unique per cluster+user) — explicit per-user allowlist for a VIP-locked cluster. RLS: read = self or Super Admin/Admin/Director/EA/Building/GCI Manager; write = Super Admin/Admin/Director/EA only.
+- **Edited** `clusters` UPDATE policy (`p_clusters_admin_write`): added `DIRECTOR`, `EXECUTIVE_ASSISTANT` alongside the existing Super Admin/Admin/Building/GCI Manager.
+- **Edited** `workstations` INSERT policy (`p_workstations_admin_insert_delete`): added `DIRECTOR`, `EXECUTIVE_ASSISTANT` so they can add extension seats (DELETE stays Super Admin/Admin only).
+- Also fixed in code (not a DB change): the new `WorkspaceService.addClusterVipMember()` initially inserted `req.user.id` as `assigned_by` unguarded — in demo mode that's a human-readable placeholder like `'usr-dir-1'`, not a real UUID, which fails the `uuid` FK type check outright. Now guarded with the same `isValidUuid()` fallback-to-null pattern already used in `AuditRepository.logEvent()`.
+
+---
+
+## No data was deleted in any of the above — only policies, one view's security mode, function search_path settings, one grant revocation, two new nullable/defaulted columns, 8 backfilled workstation rows, and one new table were added/edited.

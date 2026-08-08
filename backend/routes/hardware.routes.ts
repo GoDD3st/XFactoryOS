@@ -9,7 +9,7 @@ export const hardwareRouter = Router();
 // GET /api/hardware/diagnostics — IT Admin & Admin roles only
 hardwareRouter.get('/diagnostics', requireRole('it_admin', 'admin', 'super_admin'), async (req, res) => {
   try {
-    const data = HardwareService.getHardwareDiagnostics();
+    const data = await HardwareService.getHardwareDiagnostics();
     res.json({ success: true, data });
   } catch (err) {
     res.status(500).json({ success: false, error: 'Échec de la récupération des diagnostics matériels' });

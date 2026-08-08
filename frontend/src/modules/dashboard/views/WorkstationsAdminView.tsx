@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Workstation } from '@/frontend/src/types';
 import { WorkspaceService } from '@/services/workspaces/workspaceService';
+import { apiToggleSeatMaintenance, apiToggleSeatVisibility } from '@/services/api/workspaceApi';
 import { Wrench, Monitor, Eye, EyeOff, CheckCircle2, AlertTriangle, Cpu, Edit3 } from 'lucide-react';
 import { WorkstationEditModal } from '../../../shared/components/WorkstationEditModal';
 
@@ -9,8 +10,13 @@ export const WorkstationsAdminView: React.FC = () => {
   const [editingWorkstation, setEditingWorkstation] = useState<Workstation | null>(null);
 
   const loadWorkstations = () => {
-    WorkspaceService.fetchClustersWithOverlays().then(() => {
-      setWsMap(WorkspaceService.getSavedWorkstations());
+    // Read the live-fetched result directly rather than WorkspaceService.getSavedWorkstations(),
+    // which returns its localStorage cache synchronously and only refreshes it in the
+    // background — that left this admin table permanently one fetch cycle stale.
+    WorkspaceService.fetchClustersWithOverlays().then((clusters) => {
+      const map: Record<string, Workstation[]> = {};
+      clusters.forEach((c) => { map[c.id] = c.workstations; });
+      setWsMap(map);
     });
   };
 
@@ -20,18 +26,22 @@ export const WorkstationsAdminView: React.FC = () => {
     return () => window.removeEventListener('xfactory_workstations_changed', loadWorkstations);
   }, []);
 
-  const handleToggleMaintenance = (clusterId: string, seatId: string, currentStatus: string) => {
+  const handleToggleMaintenance = async (clusterId: string, seatId: string, currentStatus: string) => {
     const isMaint = currentStatus === 'maintenance';
-    WorkspaceService.setSeatMaintenanceStatus(clusterId, seatId, !isMaint);
+    await apiToggleSeatMaintenance(clusterId, seatId, !isMaint);
     loadWorkstations();
   };
 
-  const handleToggleExtensionVisible = (clusterId: string, seatId: string, currentVisible?: boolean) => {
-    WorkspaceService.toggleExtensionSeatVisibility(clusterId, seatId, !currentVisible);
+  const handleToggleExtensionVisible = async (clusterId: string, seatId: string, currentVisible?: boolean) => {
+    await apiToggleSeatVisibility(clusterId, seatId, !currentVisible);
     loadWorkstations();
   };
 
-  const allWorkstations: Workstation[] = (Object.values(wsMap) as Workstation[][]).flat();
+  // wsMap keys each workstation under both its cluster UUID and cluster code (for lookup
+  // flexibility elsewhere), so a naive flatten double-counts every seat — dedupe by id.
+  const allWorkstations: Workstation[] = Array.from(
+    new Map((Object.values(wsMap) as Workstation[][]).flat().map((w) => [w.id, w])).values()
+  );
 
   const [isScanning, setIsScanning] = useState(false);
   const [scanResult, setScanResult] = useState<string | null>(null);

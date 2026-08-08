@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Bot, Send, X, Sparkles, MessageSquare, Shield, HelpCircle, RefreshCw } from 'lucide-react';
-import { askXFactoryAI } from '@/services/ai/aiAssistantService';
+import { apiAskXFactoryAI } from '@/services/api/aiApi';
 import { AIAssistantMessage } from '@/frontend/src/types';
 
 interface AIAssistantDrawerProps {
@@ -46,7 +46,7 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ isOpen, on
     setLoading(true);
 
     try {
-      const response = await askXFactoryAI(query, userRole, userId);
+      const response = await apiAskXFactoryAI(query);
       setMessages((prev) => [...prev, response]);
     } catch (err) {
       console.error('AI error:', err);

@@ -50,3 +50,25 @@ export async function apiCancelWaitingListEntry(id: string): Promise<boolean> {
   });
   return response.ok;
 }
+
+export async function apiAcceptWaitingListOffer(id: string): Promise<void> {
+  const response = await fetch(`/api/waiting-list/${id}/accept`, {
+    method: 'POST',
+    headers: await authHeaders(),
+  });
+  if (!response.ok) {
+    const result = await response.json().catch(() => ({}));
+    throw new Error(result.error || "Échec de l'acceptation de l'offre.");
+  }
+}
+
+export async function apiDeclineWaitingListOffer(id: string): Promise<void> {
+  const response = await fetch(`/api/waiting-list/${id}/decline`, {
+    method: 'POST',
+    headers: await authHeaders(),
+  });
+  if (!response.ok) {
+    const result = await response.json().catch(() => ({}));
+    throw new Error(result.error || "Échec du refus de l'offre.");
+  }
+}

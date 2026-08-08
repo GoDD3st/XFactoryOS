@@ -35,7 +35,7 @@ export function createExpressApp() {
   app.get('/api/health', (req, res) => {
     res.json({
       status: 'ok',
-      service: 'OCP SA XFactory OS Backend API (Zero-Trust Enforced)',
+      service: 'OCP SA XFactory OS Backend API',
       site: 'Safi Site Digital Twin',
       timestamp: new Date().toISOString(),
     });
@@ -111,6 +111,19 @@ async function startServer() {
       // non-blocking
     }
   }, 120000);
+
+  // Background Waiting List Offer Expiry Ticker (BPMN D5 GWRESP "expire" branch)
+  const { WaitingListService } = await import('../services/waitinglist/waitingListService');
+  setInterval(async () => {
+    try {
+      const expired = await WaitingListService.expireStaleOffers();
+      if (expired > 0) {
+        console.log(`[Waiting List Ticker] Expired ${expired} unanswered offer(s) and cascaded to next in FIFO.`);
+      }
+    } catch (err) {
+      // non-blocking
+    }
+  }, 60000);
 
   // Vite middleware or Static files handler
   if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {

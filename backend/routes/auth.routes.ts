@@ -84,7 +84,7 @@ authRouter.post('/register', validateBody(RegisterSchema), async (req, res) => {
       });
 
       await AuditRepository.logEvent(
-        'USER_REGISTERED',
+        'CREATE',
         data.user.id,
         full_name,
         'collaborator',

@@ -44,7 +44,7 @@ export class WaitingListRepository {
       const db = await resolveClient();
       const { data, error } = await db
         .from('waiting_list_entries')
-        .select('*, users(full_name, department), clusters(code)')
+        .select('*, users(full_name, department), clusters(code), workstations(code)')
         .order('fifo_rank', { ascending: true });
 
       if (error || !data) return [];
@@ -64,6 +64,9 @@ export class WaitingListRepository {
         status: e.status === 'OFFERED' ? 'offered' : e.status === 'EXPIRED' ? 'expired' : e.status === 'ACCEPTED' ? 'fulfilled' : e.status === 'CANCELLED' ? 'cancelled' : 'waiting',
         created_at: e.created_at,
         notes: e.notes,
+        offered_workstation_id: e.offered_workstation_id || undefined,
+        offered_workstation_code: e.workstations?.code || undefined,
+        offer_expires_at: e.offer_expires_at || undefined,
       }));
     } catch (err) {
       console.warn('Fetch waiting list fallback:', err);
@@ -124,6 +127,34 @@ export class WaitingListRepository {
           offered_workstation_id: workstationId || null,
           offer_expires_at: new Date(Date.now() + offerMinutes * 60000).toISOString(),
         })
+        .eq('id', id);
+      return !error;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  /** BPMN D5 GWRESP "ACCEPTE" branch — the offer was taken up and converted into a reservation. */
+  static async markAccepted(id: string): Promise<boolean> {
+    try {
+      const db = await resolveClient();
+      const { error } = await db
+        .from('waiting_list_entries')
+        .update({ status: 'ACCEPTED', resolved_at: new Date().toISOString() })
+        .eq('id', id);
+      return !error;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  /** BPMN D5 GWRESP "REFUSE ou expire" branch. */
+  static async markExpired(id: string): Promise<boolean> {
+    try {
+      const db = await resolveClient();
+      const { error } = await db
+        .from('waiting_list_entries')
+        .update({ status: 'EXPIRED', resolved_at: new Date().toISOString() })
         .eq('id', id);
       return !error;
     } catch (err) {

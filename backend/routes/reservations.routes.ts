@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { ReservationService } from '@/services/reservations/reservationService';
+import { ReservationService, ReservationConflictError } from '@/services/reservations/reservationService';
 import { validateBody } from '../middleware/validateBody';
 import { requireOwnerOrAdmin } from '../middleware/rbacMiddleware';
 import { reservationLimiter } from '../middleware/rateLimiter';
@@ -39,6 +39,12 @@ reservationsRouter.post('/', reservationLimiter, validateBody(CreateReservationS
     const reservation = await ReservationService.createReservation(payload, req.user!.role, dbClient);
     res.status(201).json({ status: 'success', data: reservation });
   } catch (error: any) {
+    // BPMN D1 ALT path: surface alternative desks alongside the conflict so the client can
+    // offer them instead of a flat rejection.
+    if (error instanceof ReservationConflictError) {
+      res.status(409).json({ status: 'error', message: error.message, alternatives: error.alternatives });
+      return;
+    }
     res.status(400).json({ status: 'error', message: error.message });
   }
 });

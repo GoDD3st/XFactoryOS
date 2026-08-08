@@ -1,5 +1,22 @@
 import { SystemSettings } from '@/frontend/src/types';
 import { SettingsRepository } from '@/database/repositories/settingsRepository';
+import { supabase } from '@/database/client';
+import { isDemoMode } from '@/frontend/src/modules/auth/utils/demoMode';
+
+async function authHeaders(extra?: Record<string, string>): Promise<Record<string, string>> {
+  const headers: Record<string, string> = { ...extra };
+
+  if (!isDemoMode()) {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) throw new Error('Vous devez être connecté pour effectuer cette action.');
+    headers.Authorization = `Bearer ${token}`;
+  }
+  // Demo mode: no Authorization header — AuthContext's global fetch interceptor
+  // injects X-Demo-Role, which authMiddleware.ts's DEMO_MODE branch honors.
+
+  return headers;
+}
 
 export class SettingsService {
   /**
@@ -63,26 +80,18 @@ export class SettingsService {
     adminName: string,
     newSettings: Partial<SystemSettings>
   ): Promise<{ challengeId: string; expiresAt: number | string; otpCode?: string }> {
+    let res: Response;
     try {
-      const res = await fetch('/api/settings/request-update', {
+      res = await fetch('/api/settings/request-update', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(newSettings),
       });
-
-      if (res.ok) {
-        const data = await res.json();
-        return {
-          challengeId: data.challengeId,
-          expiresAt: data.expiresAt,
-          otpCode: data.otpCodeDemo || data.otpCode,
-        };
-      } else {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.message || 'Erreur lors de la demande OTP.');
-      }
-    } catch (err: any) {
-      // Client-side fallback if server endpoint is unreachable
+    } catch {
+      // Genuine network failure (server unreachable) — degrade to a client-only OTP so the
+      // flow still completes offline. Auth/validation errors return a real HTTP response and
+      // are handled below instead — they used to fall into this same branch, which silently
+      // masked every failed save (including "not authenticated") as if it had succeeded.
       const challengeId = `cfg_chg_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
       const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
       const expiresAt = Date.now() + 1 * 60 * 1000; // 1 MINUTE TTL
@@ -97,6 +106,18 @@ export class SettingsService {
 
       return { challengeId, expiresAt, otpCode };
     }
+
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      throw new Error(errorData.message || 'Erreur lors de la demande OTP.');
+    }
+
+    const data = await res.json();
+    return {
+      challengeId: data.challengeId,
+      expiresAt: data.expiresAt,
+      otpCode: data.otpCodeDemo || data.otpCode,
+    };
   }
 
   /**
@@ -107,27 +128,16 @@ export class SettingsService {
     otpCode: string,
     adminId: string
   ): Promise<SystemSettings> {
+    let res: Response;
     try {
-      const res = await fetch('/api/settings/confirm-update', {
+      res = await fetch('/api/settings/confirm-update', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ challengeId, otpCode }),
       });
-
-      if (res.ok) {
-        const json = await res.json();
-        const updated = json.data;
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('xfactory_settings_v2', JSON.stringify(updated));
-          window.dispatchEvent(new CustomEvent('xfactory_settings_changed', { detail: updated }));
-        }
-        return updated;
-      } else {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.message || 'Code OTP invalide ou expiré.');
-      }
-    } catch (err: any) {
-      // Session storage fallback
+    } catch (err) {
+      // Mirrors requestUpdate's network-failure fallback — only reached when the request never
+      // got a response at all (server unreachable), not on a real 400/401/403 from a live server.
       if (typeof window !== 'undefined') {
         const stored = sessionStorage.getItem(`otp_chg_${challengeId}`);
         if (stored) {
@@ -145,5 +155,18 @@ export class SettingsService {
       }
       throw err;
     }
+
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      throw new Error(errorData.message || 'Code OTP invalide ou expiré.');
+    }
+
+    const json = await res.json();
+    const updated = json.data;
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('xfactory_settings_v2', JSON.stringify(updated));
+      window.dispatchEvent(new CustomEvent('xfactory_settings_changed', { detail: updated }));
+    }
+    return updated;
   }
 }

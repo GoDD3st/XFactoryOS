@@ -1,6 +1,5 @@
 import { UserNotification } from '@/frontend/src/types';
 import { NotificationRepository } from '@/database/repositories/notificationRepository';
-import { AuditRepository } from '@/database/repositories/auditRepository';
 
 const STORAGE_KEY = 'xfactory_notifications';
 
@@ -59,14 +58,10 @@ export async function sendNotification(
     : [];
   saveNotifications([newNotif, ...current]);
 
-  await AuditRepository.logEvent(
-    'NOTIFICATION_SENT',
-    user_id,
-    'Système XFactory',
-    'admin',
-    user_id,
-    `Notification "${title}" envoyée à l'utilisateur ${user_id}`
-  );
+  // Not logged to audit_logs: SRS §26.1's audited-action list doesn't include routine
+  // notification delivery (it's already tracked with its own status/timestamps in
+  // `notifications`), and every reservation/approval/no-show event sends one, which would
+  // flood the audit trail with noise unrelated to governance/security traceability.
 
   return newNotif;
 }

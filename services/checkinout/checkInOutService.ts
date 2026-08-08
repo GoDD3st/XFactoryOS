@@ -39,7 +39,7 @@ export class CheckInOutService {
     );
 
     logAuditEvent(
-      'CHECK_IN_PERFORMED',
+      'CHECK_IN',
       userId,
       reservation.user_name || userId,
       'collaborator',
@@ -77,7 +77,7 @@ export class CheckInOutService {
     await processWaitingListFIFO(reservation.cluster_id, todayDate, reservation.workstation_id);
 
     logAuditEvent(
-      'CHECK_OUT_PERFORMED',
+      'CHECK_OUT',
       userId,
       reservation.user_name || userId,
       'collaborator',
