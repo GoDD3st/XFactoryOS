@@ -153,42 +153,15 @@ export const WorkstationEditModal: React.FC<WorkstationEditModalProps> = ({
               />
               <span className="text-xs font-bold text-slate-700">Visible sur le twin 2D</span>
             </label>
-
-            <label className="flex items-center space-x-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={nearWindow}
-                onChange={(e) => setNearWindow(e.target.checked)}
-                className="w-4 h-4 text-[#008751] rounded border-slate-300"
-              />
-              <span className="text-xs font-bold text-slate-700">Proximité Fenêtre</span>
-            </label>
-
-            <label className="flex items-center space-x-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={isPmr}
-                onChange={(e) => setIsPmr(e.target.checked)}
-                className="w-4 h-4 text-[#008751] rounded border-slate-300"
-              />
-              <span className="text-xs font-bold text-slate-700">Accès PMR</span>
-            </label>
-
-            <label className="flex items-center space-x-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={isQuietZone}
-                onChange={(e) => setIsQuietZone(e.target.checked)}
-                className="w-4 h-4 text-[#008751] rounded border-slate-300"
-              />
-              <span className="text-xs font-bold text-slate-700">Zone Silencieuse</span>
-            </label>
           </div>
+          {/* Fenêtre/PMR/Zone calme fields are not applicable to this Open Space (single room, no
+              amenity distinctions) — hidden from the UI, but nearWindow/isPmr/isQuietZone state
+              still round-trips the existing stored values unchanged rather than wiping them. */}
 
           {/* Notes / Equipment description */}
           <div className="space-y-1">
             <label className="text-xs font-bold text-slate-700 block">
-              Notes de maintenance & Équipements
+              Notes de maintenance
             </label>
             <textarea
               rows={2}

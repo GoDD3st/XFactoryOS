@@ -21,13 +21,18 @@ export interface UserProfile {
   status: 'active' | 'inactive' | 'suspended';
 }
 
-export type SeatStatus = 'disponible' | 'réservé' | 'maintenance' | 'occupé' | 'extension' | 'management_reserved';
+export type SeatStatus = 'disponible' | 'réservé' | 'maintenance' | 'occupé' | 'extension' | 'management_reserved' | 'disabled';
 
 export interface WorkstationMetadata {
   near_window?: boolean;
   is_pmr?: boolean;
   is_quiet_zone?: boolean;
   notes?: string;
+  // Set when a seat is added as temporary via the "Ajouter un poste" form — temp_end_at drives
+  // the backend expiry sweep (WorkspaceService.expireTemporarySeats) that auto-disables it.
+  is_temporary?: boolean;
+  temp_start_at?: string;
+  temp_end_at?: string;
 }
 
 export interface Workstation {
@@ -69,6 +74,7 @@ export interface Reservation {
   cluster_id: string;
   cluster_name: string;
   reservation_date: string; // YYYY-MM-DD
+  end_date?: string; // YYYY-MM-DD — last day of a multi-day booking; absent/equal to reservation_date for single-day
   start_time: string; // HH:mm
   end_time: string; // HH:mm
   status: ReservationStatus;
@@ -77,13 +83,6 @@ export interface Reservation {
   created_at?: string;
   notes?: string;
   purpose?: string;
-}
-
-export interface QuickFilters {
-  nearWindow: boolean;
-  pmr: boolean;
-  quietZone: boolean;
-  statusFreeOnly: boolean;
 }
 
 export interface RoleConfig {
@@ -111,6 +110,18 @@ export interface WaitingListEntry {
   offer_expires_at?: string;
 }
 
+export type AuditCategory =
+  | 'auth'
+  | 'reservation'
+  | 'checkinout'
+  | 'noshow'
+  | 'approval'
+  | 'role_change'
+  | 'settings'
+  | 'cluster_management'
+  | 'export'
+  | 'ai_query';
+
 export interface AuditLogEntry {
   id: string;
   timestamp: string;
@@ -121,6 +132,7 @@ export interface AuditLogEntry {
   target_resource: string;
   details: string;
   ip_address?: string;
+  category?: AuditCategory;
 }
 
 export interface UserNotification {

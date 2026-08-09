@@ -35,12 +35,13 @@ export class ReservationRepository {
     startTime: string,
     endTime: string,
     excludeReservationId?: string,
-    dbClient: SupabaseClient = supabase
+    dbClient: SupabaseClient = supabase,
+    endDate?: string
   ): Promise<boolean> {
     try {
       const workstationId = await WorkstationRepository.resolveWorkstationId(undefined, workstationCode, dbClient);
       const startAt = new Date(`${reservationDate}T${startTime}`).toISOString();
-      const endAt = new Date(`${reservationDate}T${endTime}`).toISOString();
+      const endAt = new Date(`${endDate || reservationDate}T${endTime}`).toISOString();
 
       let query = dbClient
         .from('reservations')
@@ -107,7 +108,8 @@ export class ReservationRepository {
    * Fetch all reservations from Supabase (throws on query error — never silently wipe cache)
    */
 
-  private static deriveReservationType(date?: string, startTime?: string, endTime?: string): string {
+  private static deriveReservationType(date?: string, startTime?: string, endTime?: string, endDate?: string): string {
+    if (endDate && date && endDate !== date) return 'MULTI_DAY';
     if (!date || !startTime || !endTime) return 'FULL_DAY';
       const [sh] = startTime.split(':').map(Number);
       const [eh] = endTime.split(':').map(Number);
@@ -154,14 +156,14 @@ export class ReservationRepository {
     );
 
     const startAt = new Date(`${payload.reservation_date}T${payload.start_time}`).toISOString();
-    const endAt = new Date(`${payload.reservation_date}T${payload.end_time}`).toISOString();
+    const endAt = new Date(`${payload.end_date || payload.reservation_date}T${payload.end_time}`).toISOString();
     const dbStatus = this.mapDomainStatusToDb(payload.status || 'confirmée');
 
-    
+
     const dbPayload = {
       workstation_id: workstationId,
       user_id: payload.user_id,
-      type: this.deriveReservationType(payload.reservation_date, payload.start_time, payload.end_time),
+      type: this.deriveReservationType(payload.reservation_date, payload.start_time, payload.end_time, payload.end_date),
       start_at: startAt,
       end_at: endAt,
       status: dbStatus,
@@ -182,7 +184,9 @@ export class ReservationRepository {
       createdReservation.user_name || 'Utilisateur',
       'collaborator',
       createdReservation.id,
-      `Création réservation #${createdReservation.id.substring(0, 8)} pour ${createdReservation.user_name} sur poste ${createdReservation.workstation_code} le ${createdReservation.reservation_date}`
+      `Création réservation #${createdReservation.id.substring(0, 8)} pour ${createdReservation.user_name} sur poste ${createdReservation.workstation_code} le ${createdReservation.reservation_date}`,
+      '10.120.4.18',
+      'reservation'
     );
 
     return createdReservation;
@@ -212,7 +216,9 @@ export class ReservationRepository {
         'XFactory OS',
         'admin',
         id,
-        `Mise à jour statut réservation #${id.substring(0, 8)} à : ${status}`
+        `Mise à jour statut réservation #${id.substring(0, 8)} à : ${status}`,
+        '10.120.4.18',
+        'reservation'
       );
 
       return true;
@@ -240,6 +246,9 @@ export class ReservationRepository {
       reservation_date: data.start_at
         ? new Date(data.start_at).toISOString().split('T')[0]
         : fallback?.reservation_date || new Date().toISOString().split('T')[0],
+      end_date: data.end_at
+        ? new Date(data.end_at).toISOString().split('T')[0]
+        : fallback?.end_date,
       start_time: data.start_at ? formatTime(data.start_at) : fallback?.start_time || '08:30',
       end_time: data.end_at ? formatTime(data.end_at) : fallback?.end_time || '17:30',
       status: this.mapDbStatusToDomain(data.status),

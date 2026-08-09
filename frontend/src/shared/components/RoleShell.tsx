@@ -76,6 +76,7 @@ const ROLE_TABS: Record<UserRole, TabDef[]> = {
     { key: 'reservations', label: 'Réservations', icon: <Calendar className="w-3.5 h-3.5" /> },
     { key: 'calendar', label: 'Calendrier', icon: <Clock className="w-3.5 h-3.5" /> },
     { key: 'waiting-list', label: 'Liste d\'Attente', icon: <ListOrdered className="w-3.5 h-3.5" /> },
+    { key: 'audit', label: 'Audit', icon: <FileText className="w-3.5 h-3.5" /> },
   ],
   building_manager: [
     { key: 'home', label: 'Bâtiment', icon: <Building className="w-3.5 h-3.5" /> },
@@ -138,7 +139,7 @@ const ROLE_TABS: Record<UserRole, TabDef[]> = {
 };
 
 export const RoleShell: React.FC = () => {
-  const { currentRole, currentUser, roleConfig, switchRole, canView8Postes, isDemoMode, signOut } = useAuth();
+  const { currentRole, currentUser, roleConfig, switchRole, canView8Postes, isDemoMode, signOut, sessionIdleWarning, idleSecondsLeft, extendSession } = useAuth();
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isAIOpen, setIsAIOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>('home');
@@ -236,6 +237,37 @@ export const RoleShell: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans antialiased">
+      {/* FR-04 idle session expiration warning */}
+      {sessionIdleWarning && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4">
+          <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-6 space-y-4 text-center">
+            <div className="w-12 h-12 mx-auto rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600">
+              <Clock className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="text-sm font-black text-slate-800 uppercase tracking-tight">Session inactive</h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Vous allez être déconnecté dans <strong className="text-amber-700">{idleSecondsLeft}s</strong> pour cause d'inactivité.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={signOut}
+                className="flex-1 px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 border border-slate-200"
+              >
+                Se déconnecter
+              </button>
+              <button
+                onClick={extendSession}
+                className="flex-1 px-4 py-2.5 rounded-xl text-xs font-bold bg-[#008751] hover:bg-[#007043] text-white shadow-md"
+              >
+                Rester connecté
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Top Enterprise Header Bar - Professional Polish Design Theme */}
       <header className="sticky top-0 z-40 h-14 bg-white border-b border-slate-200 flex items-center justify-between px-4 sm:px-6 shrink-0 shadow-sm">
         <div className="max-w-7xl mx-auto w-full flex items-center justify-between gap-4">

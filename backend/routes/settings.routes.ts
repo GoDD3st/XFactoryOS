@@ -48,11 +48,13 @@ settingsRouter.get('/history', requireRole('super_admin'), async (req, res) => {
   }
 });
 
-// POST /api/settings/request-update — Super Admin only. Step 1 of OTP flow (1-min TTL):
-// validates requested changes and issues a 6-digit OTP.
+// POST /api/settings/request-update — SRS §13 row "Paramètres réservation": CRUD for both Super
+// Admin and Admin. This was Super-Admin-only, so every Admin save attempt 403'd outright — the
+// Settings tab is shown to Admin (RoleShell) but every write path silently rejected them.
+// Step 1 of OTP flow (1-min TTL): validates requested changes and issues a 6-digit OTP.
 settingsRouter.post(
   '/request-update',
-  requireRole('super_admin'),
+  requireRole('admin', 'super_admin'),
   validateBody(SystemSettingsUpdateSchema),
   async (req, res) => {
     try {
@@ -67,18 +69,20 @@ settingsRouter.post(
   }
 );
 
-// POST /api/settings/confirm-update — Super Admin only. Step 2 of OTP flow:
+// POST /api/settings/confirm-update — same fix: Admin + Super Admin. Step 2 of OTP flow:
 // validates OTP code and, if correct, applies & persists change + logs audit diff.
 settingsRouter.post(
   '/confirm-update',
-  requireRole('super_admin'),
+  requireRole('admin', 'super_admin'),
   validateBody(ConfirmSettingsUpdateSchema),
   async (req, res) => {
     try {
       const result = await OTPSettingsService.confirmUpdate(
         req.body.challengeId,
         req.body.otpCode,
-        req.user!.id
+        req.user!.id,
+        req.user!.full_name,
+        req.user!.role
       );
 
       if (!result.success) {

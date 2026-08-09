@@ -136,10 +136,13 @@ export class SettingsRepository {
   }>> {
     try {
       const db = await resolveClient();
+      // 'SETTINGS_CHANGE' is the only value the audit_action enum actually has for this — the
+      // three values previously queried here don't exist in the enum, so this always returned
+      // empty even though OTPSettingsService.confirmUpdate was logging every change correctly.
       const { data, error } = await db
         .from('audit_logs')
         .select('*')
-        .in('action', ['SYSTEM_SETTINGS_UPDATED', 'SETTINGS_UPDATED', 'SETTINGS_UPDATE_REQUESTED'])
+        .eq('action', 'SETTINGS_CHANGE')
         .order('created_at', { ascending: false })
         .limit(limit);
 

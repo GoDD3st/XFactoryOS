@@ -1,11 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   Search,
-  Filter,
   Monitor,
   Maximize2,
   Minimize2,
-  CheckCircle2,
   Sparkles,
   Cpu,
   Building,
@@ -15,14 +13,13 @@ import {
   Award,
   RefreshCw,
   Info,
-  SlidersHorizontal,
   Eye,
   EyeOff,
   Wrench,
   Check,
   UserCheck
 } from 'lucide-react';
-import { Cluster, Workstation, QuickFilters, SeatStatus } from '../../types';
+import { Cluster, Workstation, SeatStatus } from '../../types';
 import { fetchClustersWithOverlays } from '@/services/workspaces/workspaceService';
 import { apiToggleSeatVisibility, apiToggleSeatMaintenance } from '@/services/api/workspaceApi';
 import { useAuth } from '../../modules/auth/context/AuthContext';
@@ -59,20 +56,13 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
   const [clusters, setClusters] = useState<Cluster[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>('');
-  
-  // Vue Admin (8 postes) toggle - initialized if user has admin privileges
-  const [show8Postes, setShow8Postes] = useState<boolean>(canView8Postes);
-  
+
+  // 8-postes visibility is a straight permission, not a toggle — admins/super-admins always see
+  // all 8 seats/cluster, everyone else always sees the standard 4. No manual ON/OFF anymore.
+  const show8Postes = canView8Postes;
+
   // Selected Cluster filter (null = all 7 clusters)
   const [activeClusterId, setActiveClusterId] = useState<string | null>(null);
-
-  // Quick filters
-  const [filters, setFilters] = useState<QuickFilters>({
-    nearWindow: false,
-    pmr: false,
-    quietZone: false,
-    statusFreeOnly: false
-  });
 
   // Selected seat detail view modal/tooltip
   const [activeHoverSeat, setActiveHoverSeat] = useState<{
@@ -107,13 +97,6 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
     };
   }, []);
 
-  // Sync admin mode toggle with permission changes
-  useEffect(() => {
-    if (!canView8Postes) {
-      setShow8Postes(false);
-    }
-  }, [canView8Postes]);
-
   // Filter logic
   const filteredClusters = useMemo(() => {
     return clusters.map((cluster) => {
@@ -139,12 +122,6 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
           if (!matchesCode && !matchesCluster) return false;
         }
 
-        // Quick filters
-        if (filters.nearWindow && !ws.metadata.near_window) return false;
-        if (filters.pmr && !ws.metadata.is_pmr) return false;
-        if (filters.quietZone && !ws.metadata.is_quiet_zone) return false;
-        if (filters.statusFreeOnly && ws.status !== 'disponible') return false;
-
         return true;
       });
 
@@ -153,7 +130,7 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
         workstations: filteredSeats
       };
     });
-  }, [clusters, activeClusterId, show8Postes, searchQuery, filters]);
+  }, [clusters, activeClusterId, show8Postes, searchQuery]);
 
   const handleAdminToggleVisibility = async (clusterId: string, seatId: string, currentVal: boolean) => {
     await apiToggleSeatVisibility(clusterId, seatId, !currentVal);
@@ -178,6 +155,8 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
         return 'bg-[#3b82f6] text-white border-[#2563eb] shadow-blue-200/50 hover:bg-[#2563eb]';
       case 'extension':
         return 'bg-[#6366f1] text-white border-[#4f46e5] shadow-indigo-200/50 hover:bg-[#4f46e5]';
+      case 'disabled':
+        return 'bg-slate-600 text-white border-slate-700 shadow-slate-300/50';
       default:
         return 'bg-slate-500 text-white';
     }
@@ -190,6 +169,7 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
       case 'maintenance': return 'Maintenance';
       case 'occupé': return 'Occupé';
       case 'extension': return 'Extension (Admin)';
+      case 'disabled': return 'Désactivé (période expirée)';
     }
   };
 
@@ -282,12 +262,6 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
                   >
                     <span className="text-[10px] tracking-tight opacity-90">{ws.code.split('-')[2]}</span>
                     <span className="text-[11px] truncate w-full font-extrabold">{ws.code}</span>
-
-                    {/* Badge indicator for features */}
-                    <div className="flex items-center justify-center space-x-1 mt-1 text-[9px] opacity-90">
-                      {ws.metadata.near_window && <span>🪟</span>}
-                      {ws.metadata.is_pmr && <span>♿</span>}
-                    </div>
                   </button>
 
                   {/* Admin Quick Action Controls Overlay on Hover */}
@@ -343,25 +317,9 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
           </p>
         </div>
 
-        {/* Legend & Admin 8-Post Toggle */}
+        {/* Legend */}
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-          {/* Vue Admin 8 Postes Toggle - Restricted strictly to Admin/SuperAdmin */}
-          {canView8Postes ? (
-            <button
-              onClick={() => setShow8Postes(!show8Postes)}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all border shadow-xs ${
-                show8Postes
-                  ? 'bg-indigo-50 text-indigo-700 border-indigo-200 ring-2 ring-indigo-500/20'
-                  : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
-              }`}
-            >
-              <SlidersHorizontal className="w-3.5 h-3.5 text-indigo-600" />
-              <span>Vue Admin (8 postes)</span>
-              <span className={`px-1.5 py-0.2 rounded text-[10px] uppercase font-bold ${show8Postes ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-600'}`}>
-                {show8Postes ? 'ON' : 'OFF'}
-              </span>
-            </button>
-          ) : (
+          {!canView8Postes && (
             <div className="flex items-center gap-1.5 text-xs text-slate-500 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
               <Info className="w-3.5 h-3.5 text-amber-500" />
               <span>Vue Standard (4 postes/cluster)</span>
@@ -402,7 +360,8 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
         </div>
       </div>
 
-      {/* Search & Quick Filters Bar */}
+      {/* Search & Cluster Filter Bar — the Open Space is a single room with no window/PMR/quiet-zone
+          distinctions, so there is nothing to filter by beyond seat code and cluster. */}
       <div className="space-y-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200">
         <div className="flex flex-col md:flex-row items-center gap-3">
           {/* Search box */}
@@ -432,73 +391,6 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
               ))}
             </select>
           </div>
-        </div>
-
-        {/* Filter Badges */}
-        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-200/60">
-          <span className="text-xs text-slate-500 flex items-center gap-1 font-semibold mr-1">
-            <Filter className="w-3 h-3 text-emerald-600" /> Filtres :
-          </span>
-
-          <button
-            onClick={() => setFilters((f) => ({ ...f, nearWindow: !f.nearWindow }))}
-            className={`text-xs px-2.5 py-1 rounded-lg border transition-all flex items-center gap-1.5 ${
-              filters.nearWindow
-                ? 'bg-emerald-50 text-emerald-700 border-emerald-300 font-bold'
-                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
-            }`}
-          >
-            🪟 Proximité Fenêtre
-          </button>
-
-          <button
-            onClick={() => setFilters((f) => ({ ...f, pmr: !f.pmr }))}
-            className={`text-xs px-2.5 py-1 rounded-lg border transition-all flex items-center gap-1.5 ${
-              filters.pmr
-                ? 'bg-emerald-50 text-emerald-700 border-emerald-300 font-bold'
-                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
-            }`}
-          >
-            ♿ Accès PMR
-          </button>
-
-          <button
-            onClick={() => setFilters((f) => ({ ...f, quietZone: !f.quietZone }))}
-            className={`text-xs px-2.5 py-1 rounded-lg border transition-all flex items-center gap-1.5 ${
-              filters.quietZone
-                ? 'bg-emerald-50 text-emerald-700 border-emerald-300 font-bold'
-                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
-            }`}
-          >
-            🤫 Zone Silencieuse
-          </button>
-
-          <button
-            onClick={() => setFilters((f) => ({ ...f, statusFreeOnly: !f.statusFreeOnly }))}
-            className={`text-xs px-2.5 py-1 rounded-lg border transition-all flex items-center gap-1.5 ${
-              filters.statusFreeOnly
-                ? 'bg-emerald-50 text-emerald-700 border-emerald-300 font-bold'
-                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
-            }`}
-          >
-            <CheckCircle2 className="w-3 h-3 text-[#00b050]" /> Libres uniquement
-          </button>
-
-          {(filters.nearWindow || filters.pmr || filters.quietZone || filters.statusFreeOnly) && (
-            <button
-              onClick={() =>
-                setFilters({
-                  nearWindow: false,
-                  pmr: false,
-                  quietZone: false,
-                  statusFreeOnly: false
-                })
-              }
-              className="text-xs text-rose-600 font-bold underline hover:text-rose-700 ml-auto"
-            >
-              Réinitialiser les filtres
-            </button>
-          )}
         </div>
       </div>
 
@@ -554,12 +446,7 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
                   Cluster: {activeHoverSeat.cluster.name} ({activeHoverSeat.cluster.code})
                 </span>
               </div>
-              <p className="text-xs text-slate-300 mt-1">
-                Poste {activeHoverSeat.workstation.seat_number}
-                {activeHoverSeat.workstation.metadata.is_pmr ? ' • Accès PMR' : ''}
-                {activeHoverSeat.workstation.metadata.near_window ? ' • Proximité fenêtre' : ''}
-                {activeHoverSeat.workstation.metadata.is_quiet_zone ? ' • Zone calme' : ''}
-              </p>
+              <p className="text-xs text-slate-300 mt-1">Poste {activeHoverSeat.workstation.seat_number}</p>
             </div>
           </div>
 

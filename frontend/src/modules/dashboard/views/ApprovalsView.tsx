@@ -13,6 +13,7 @@ export const ApprovalsView: React.FC = () => {
   const [activeDecisionId, setActiveDecisionId] = useState<string | null>(null);
   const [decisionType, setDecisionType] = useState<'approved' | 'rejected' | 'needs_info' | null>(null);
   const [decisionNote, setDecisionNote] = useState<string>('');
+  const [decisionError, setDecisionError] = useState<string | null>(null);
 
   const loadRequests = async () => {
     setLoading(true);
@@ -47,11 +48,19 @@ export const ApprovalsView: React.FC = () => {
   const handleConfirmDecision = async () => {
     if (!activeDecisionId || !decisionType) return;
 
-    await apiDecideApproval(
-      activeDecisionId,
-      decisionType,
-      decisionNote || 'Décision enregistrée par la Direction'
-    );
+    setDecisionError(null);
+    try {
+      await apiDecideApproval(
+        activeDecisionId,
+        decisionType,
+        decisionNote || 'Décision enregistrée par la Direction'
+      );
+    } catch (err: any) {
+      // Some pending requests are routed to a specific approver role (Director vs Executive
+      // Assistant) — a decider outside that role gets rejected server-side rather than silently.
+      setDecisionError(err?.message || 'Échec de la décision.');
+      return;
+    }
 
     setActiveDecisionId(null);
     setDecisionType(null);
@@ -200,11 +209,19 @@ export const ApprovalsView: React.FC = () => {
               />
             </div>
 
+            {decisionError && (
+              <div className="flex items-start space-x-2 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{decisionError}</span>
+              </div>
+            )}
+
             <div className="flex items-center justify-end space-x-2 pt-2 border-t border-slate-100">
               <button
                 onClick={() => {
                   setActiveDecisionId(null);
                   setDecisionType(null);
+                  setDecisionError(null);
                 }}
                 className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl"
               >

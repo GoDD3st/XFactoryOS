@@ -89,7 +89,9 @@ authRouter.post('/register', validateBody(RegisterSchema), async (req, res) => {
         full_name,
         'collaborator',
         data.user.id,
-        `Nouveau compte créé : ${email} (${department || 'Digital Factory'})`
+        `Nouveau compte créé : ${email} (${department || 'Digital Factory'})`,
+        '10.120.4.18',
+        'auth'
       );
     }
 

@@ -120,7 +120,9 @@ export class UserRepository {
       payload.full_name,
       payload.role,
       userId,
-      `Compte créé par un administrateur pour ${payload.email} (rôle: ${payload.role})`
+      `Compte créé par un administrateur pour ${payload.email} (rôle: ${payload.role})`,
+      '10.120.4.18',
+      'role_change'
     );
 
     return { id: userId, tempPassword };
@@ -160,12 +162,16 @@ export class UserRepository {
     }
 
     await AuditRepository.logEvent(
-      'UPDATE',
+      payload.role ? 'ROLE_CHANGE' : 'UPDATE',
       actorId || userId,
       payload.full_name || 'Administrateur',
       payload.role || 'admin',
       userId,
-      `Profil utilisateur ${userId} modifié (${Object.keys(payload).join(', ')})`
+      payload.role
+        ? `Rôle de l'utilisateur ${userId} changé en ${payload.role}`
+        : `Profil utilisateur ${userId} modifié (${Object.keys(payload).join(', ')})`,
+      '10.120.4.18',
+      'role_change'
     );
   }
 
@@ -192,7 +198,9 @@ export class UserRepository {
       'Administrateur',
       'admin',
       userId,
-      `Mot de passe réinitialisé par un administrateur pour l'utilisateur ${userId}`
+      `Mot de passe réinitialisé par un administrateur pour l'utilisateur ${userId}`,
+      '10.120.4.18',
+      'role_change'
     );
 
     return { tempPassword };
@@ -255,7 +263,9 @@ export class UserRepository {
           fullName,
           'collaborator',
           authUser.id,
-          `Profil utilisateur créé pour ${authUser.email}`
+          `Profil utilisateur créé pour ${authUser.email}`,
+          '10.120.4.18',
+          'auth'
         );
       } else {
         await db

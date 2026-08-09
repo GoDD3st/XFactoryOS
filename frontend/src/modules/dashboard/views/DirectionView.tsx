@@ -14,7 +14,18 @@ export const DirectionView: React.FC = () => {
   const [telemetry, setTelemetry] = useState<SiteTelemetrySummary | null>(null);
 
   useEffect(() => {
-    getRealTimeTelemetry().then(setTelemetry);
+    const refresh = () => getRealTimeTelemetry().then(setTelemetry);
+    refresh();
+
+    // Same fix as ExecutiveDashboard: this was a load-once snapshot that went stale until a
+    // manual reload. Wire it to the same live events the Digital Twin already reacts to.
+    window.addEventListener('xfactory_reservations_changed', refresh);
+    window.addEventListener('xfactory_workstations_changed', refresh);
+
+    return () => {
+      window.removeEventListener('xfactory_reservations_changed', refresh);
+      window.removeEventListener('xfactory_workstations_changed', refresh);
+    };
   }, []);
 
   // Ratio présentiel = active occupancy / total desks (people physically checked in per desk).

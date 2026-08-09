@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 import { getRealTimeTelemetry, SiteTelemetrySummary, DailyReservationTrend } from '@/services/telemetry/telemetryService';
 import { apiFetchNoShowStats } from '@/services/api/noShowApi';
 import { apiFetchReservationTrends } from '@/services/api/telemetryApi';
+import { apiLogExport } from '@/services/api/auditApi';
 import { BarChart3, TrendingUp, Clock, AlertTriangle, Download, Sparkles, Building, Layers, FileSpreadsheet, Printer, LineChart } from 'lucide-react';
 
 export const ExecutiveDashboard: React.FC = () => {
@@ -11,9 +12,24 @@ export const ExecutiveDashboard: React.FC = () => {
   const [trends, setTrends] = useState<DailyReservationTrend[]>([]);
 
   useEffect(() => {
-    getRealTimeTelemetry().then(setTelemetry);
-    apiFetchNoShowStats().then(setNoShowStats);
-    apiFetchReservationTrends(14).then(setTrends);
+    const refresh = () => {
+      getRealTimeTelemetry().then(setTelemetry);
+      apiFetchNoShowStats().then(setNoShowStats);
+      apiFetchReservationTrends(14).then(setTrends);
+    };
+
+    refresh();
+
+    // Occupancy/no-show KPIs previously only loaded once on mount and went stale until a manual
+    // page reload — everywhere else (Digital Twin) already reacts live to these same events via
+    // Supabase Realtime (database/realtime.ts), so wire the executive KPIs to them too.
+    window.addEventListener('xfactory_reservations_changed', refresh);
+    window.addEventListener('xfactory_workstations_changed', refresh);
+
+    return () => {
+      window.removeEventListener('xfactory_reservations_changed', refresh);
+      window.removeEventListener('xfactory_workstations_changed', refresh);
+    };
   }, []);
 
   if (!telemetry) {
@@ -32,6 +48,8 @@ export const ExecutiveDashboard: React.FC = () => {
     a.href = url;
     a.download = `Report_XFactory_Telemetry_${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
+
+    apiLogExport('dashboard-telemetry.csv', 'Export CSV du dashboard exécutif (télémétrie clusters).');
   };
 
   // FR-87 "Export Excel des données agrégées"
@@ -56,6 +74,8 @@ export const ExecutiveDashboard: React.FC = () => {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(clusterSheet), 'Clusters');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(trendSheet), 'Tendances 14j');
     XLSX.writeFile(wb, `Report_XFactory_Telemetry_${new Date().toISOString().split('T')[0]}.xlsx`);
+
+    apiLogExport('dashboard-telemetry.xlsx', 'Export Excel du dashboard exécutif (clusters + tendances 14j).');
   };
 
   // FR-87 "Export PDF du dashboard" — print-to-PDF via the browser (no server-side PDF

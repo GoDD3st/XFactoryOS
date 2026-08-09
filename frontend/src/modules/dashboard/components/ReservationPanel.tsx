@@ -92,20 +92,6 @@ export const ReservationPanel: React.FC<ReservationPanelProps> = ({
           </button>
         </div>
 
-        {/* Zone attributes (Module 1 — no equipment/accessories per SRS) */}
-        <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-wrap gap-2 text-xs">
-          {workstation.metadata.is_pmr && (
-            <span className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold">
-              PMR Accessible
-            </span>
-          )}
-          {workstation.metadata.is_quiet_zone && (
-            <span className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-amber-50 text-amber-700 border border-amber-200 font-semibold">
-              Zone Calme
-            </span>
-          )}
-        </div>
-
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="flex-1 p-5 space-y-4 overflow-y-auto">
           {message && (

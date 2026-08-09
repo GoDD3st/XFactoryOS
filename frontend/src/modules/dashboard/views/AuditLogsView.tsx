@@ -1,15 +1,37 @@
 import React, { useState, useEffect } from 'react';
 import { AuditLogEntry } from '@/frontend/src/types';
-import { apiFetchAuditLogs } from '@/services/api/auditApi';
-import { ShieldCheck, Download, Search, Filter } from 'lucide-react';
+import { apiFetchAuditLogs, apiLogExport } from '@/services/api/auditApi';
+import { ShieldCheck, Download, Search, Info, Eye, EyeOff } from 'lucide-react';
+import { useAuth } from '../../auth/context/AuthContext';
+
+// Mirrors backend/routes/audit.routes.ts's AUDIT_CATEGORY_VISIBILITY — display labels only,
+// the actual filtering happens server-side (never trust the client to hide sensitive log rows).
+const CATEGORY_LABELS: Record<string, string> = {
+  auth: 'Connexion',
+  reservation: 'Réservation',
+  checkinout: 'Check-in/out',
+  noshow: 'No-show',
+  approval: 'Approbation',
+  role_change: 'Rôle',
+  settings: 'Paramètres',
+  cluster_management: 'Cluster/Poste',
+  export: 'Export',
+  ai_query: 'IA',
+};
 
 export const AuditLogsView: React.FC = () => {
+  const { currentRole } = useAuth();
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
+  const [canSeeAll, setCanSeeAll] = useState(false);
+  const [showAll, setShowAll] = useState(false);
   const [search, setSearch] = useState('');
 
   useEffect(() => {
-    apiFetchAuditLogs().then(setLogs);
-  }, []);
+    apiFetchAuditLogs(showAll).then(({ data, canSeeAll: c }) => {
+      setLogs(data);
+      setCanSeeAll(c);
+    });
+  }, [showAll]);
 
   const filtered = logs.filter(
     (l) =>
@@ -20,9 +42,9 @@ export const AuditLogsView: React.FC = () => {
   );
 
   const exportCSV = () => {
-    let csv = 'ID;Date;Action;Acteur;Rôle;Cible;Détails;IP\n';
+    let csv = 'ID;Date;Catégorie;Action;Acteur;Rôle;Cible;Détails;IP\n';
     filtered.forEach((l) => {
-      csv += `${l.id};${l.timestamp};${l.action};${l.actor_name};${l.actor_role};${l.target_resource};"${l.details}";${l.ip_address}\n`;
+      csv += `${l.id};${l.timestamp};${l.category || ''};${l.action};${l.actor_name};${l.actor_role};${l.target_resource};"${l.details}";${l.ip_address}\n`;
     });
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -30,6 +52,8 @@ export const AuditLogsView: React.FC = () => {
     a.href = url;
     a.download = `Audit_Logs_XFactory_${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
+
+    apiLogExport('audit_logs.csv', `Export CSV du journal d'audit (${filtered.length} entrées, vue ${showAll ? 'complète' : 'filtrée par rôle'}).`);
   };
 
   return (
@@ -38,6 +62,12 @@ export const AuditLogsView: React.FC = () => {
         <div>
           <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">Journal d'Audit & Traçabilité</h2>
           <p className="text-xs text-slate-500 mt-0.5">Historique immuable des actions sensibles de gouvernance et sécurité</p>
+          {!showAll && (
+            <p className="text-[11px] text-slate-400 mt-1 flex items-center gap-1">
+              <Info className="w-3 h-3" />
+              Vue filtrée à votre périmètre de rôle — les autres catégories sont suivies par leurs responsables respectifs.
+            </p>
+          )}
         </div>
 
         <div className="flex items-center space-x-3">
@@ -51,6 +81,21 @@ export const AuditLogsView: React.FC = () => {
               className="pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-[#008751]"
             />
           </div>
+
+          {canSeeAll && (
+            <button
+              onClick={() => setShowAll((v) => !v)}
+              className={`flex items-center gap-2 px-3.5 py-2 text-xs font-bold rounded-xl transition-all shadow-sm cursor-pointer border ${
+                showAll
+                  ? 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-500'
+                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+              }`}
+              title="Réservé au Super Admin : bascule entre la vue essentielle et le journal complet"
+            >
+              {showAll ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+              <span>{showAll ? 'Tout affiché' : 'Afficher tout'}</span>
+            </button>
+          )}
 
           <button
             onClick={exportCSV}
@@ -67,6 +112,7 @@ export const AuditLogsView: React.FC = () => {
           <thead>
             <tr className="border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px]">
               <th className="py-2.5 px-3">Horodatage</th>
+              <th className="py-2.5 px-3">Catégorie</th>
               <th className="py-2.5 px-3">Action</th>
               <th className="py-2.5 px-3">Acteur</th>
               <th className="py-2.5 px-3">Cible</th>
@@ -79,6 +125,11 @@ export const AuditLogsView: React.FC = () => {
               <tr key={log.id} className="hover:bg-slate-50/80 transition-colors">
                 <td className="py-3 px-3 text-slate-500 font-mono text-[11px]">
                   {new Date(log.timestamp).toLocaleString()}
+                </td>
+                <td className="py-3 px-3">
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600">
+                    {log.category ? CATEGORY_LABELS[log.category] || log.category : '—'}
+                  </span>
                 </td>
                 <td className="py-3 px-3">
                   <span className="px-2 py-0.5 rounded font-mono text-[10px] font-bold bg-slate-900 text-amber-300">

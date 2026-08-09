@@ -15,12 +15,20 @@ export const CreateReservationSchema = z
     reservation_date: z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date invalide (format YYYY-MM-DD requis)'),
+    end_date: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date de fin invalide (format YYYY-MM-DD requis)')
+      .optional(),
     start_time: z.string().regex(/^\d{2}:\d{2}$/, 'Heure de début invalide (HH:mm)'),
     end_time: z.string().regex(/^\d{2}:\d{2}$/, 'Heure de fin invalide (HH:mm)'),
     purpose: z.string().max(500, 'Motif trop long (max 500 caractères)').optional(),
     notes: z.string().max(1000, 'Notes trop longues (max 1000 caractères)').optional(),
   })
-  .strict();
+  .strict()
+  .refine((data) => !data.end_date || data.end_date >= data.reservation_date, {
+    message: 'La date de fin doit être postérieure ou égale à la date de début',
+    path: ['end_date'],
+  });
 
 // 2. Reservation Status Update Schema
 export const UpdateReservationStatusSchema = z
@@ -247,3 +255,22 @@ export const WorkstationUpdateSchema = z
       .optional(),
   })
   .strict();
+
+// 18. Extension Seat Creation Schema — motif + visibility + permanent/temporary window
+export const ExtensionSeatSchema = z
+  .object({
+    reason: z.string().min(3, 'Motif requis (3 caractères minimum)').max(500, 'Motif trop long (max 500 caractères)'),
+    isPublic: z.boolean(),
+    isTemporary: z.boolean(),
+    startAt: z.string().datetime({ message: 'Date de début invalide' }).optional(),
+    endAt: z.string().datetime({ message: 'Date de fin invalide' }).optional(),
+  })
+  .strict()
+  .refine((data) => !data.isTemporary || !!data.endAt, {
+    message: 'Une date/heure de fin est requise pour un poste temporaire',
+    path: ['endAt'],
+  })
+  .refine((data) => !data.isTemporary || !data.startAt || !data.endAt || data.endAt > data.startAt, {
+    message: 'La date de fin doit être postérieure à la date de début',
+    path: ['endAt'],
+  });

@@ -29,6 +29,20 @@ aiRouter.post('/ask', requireRole(...AI_ALLOWED_ROLES), validateBody(AIQuerySche
     const userRole = req.user!.role;
     const userId = req.user!.id;
     const response = await AIAssistantService.askXFactoryAI(query, userRole, userId);
+
+    // FR-96 / §26.1 "Requête IA sensible" — SRS §22.5 requires every generated
+    // recommendation/report to be journaled. Was never logged at all despite AI_QUERY existing
+    // in the audit_action enum since day one.
+    const { AuditRepository } = await import('@/database/repositories/auditRepository');
+    AuditRepository.logEvent(
+      'AI_QUERY',
+      userId,
+      req.user!.full_name,
+      userRole,
+      'xfactory-ai',
+      `Requête IA : "${query.slice(0, 200)}"`
+    ).catch(() => {});
+
     res.json({ success: true, data: response });
   } catch (err) {
     res.status(500).json({ success: false, error: 'Échec du traitement de la requête IA' });

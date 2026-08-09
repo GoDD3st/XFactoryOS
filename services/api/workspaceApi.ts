@@ -111,13 +111,26 @@ export async function apiLookupUsers(): Promise<{ id: string; full_name: string;
   return body.data || [];
 }
 
-export async function apiAddExtensionSeat(clusterId: string): Promise<void> {
+export interface AddExtensionSeatPayload {
+  reason: string;
+  isPublic: boolean;
+  isTemporary: boolean;
+  startAt?: string; // ISO 8601
+  endAt?: string; // ISO 8601
+}
+
+export async function apiAddExtensionSeat(clusterId: string, payload: AddExtensionSeatPayload): Promise<void> {
   const response = await fetch(`/api/workspaces/clusters/${clusterId}/seats`, {
     method: 'POST',
     headers: await authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
   });
   if (!response.ok) {
     const result = await response.json().catch(() => ({}));
-    throw new Error(result.message || "Échec de l'ajout du poste.");
+    const detail =
+      Array.isArray(result.errors) && result.errors.length > 0
+        ? result.errors.map((e: { field: string; message: string }) => e.message).join(' · ')
+        : null;
+    throw new Error(detail || result.message || "Échec de l'ajout du poste.");
   }
 }

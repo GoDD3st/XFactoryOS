@@ -125,6 +125,20 @@ async function startServer() {
     }
   }, 60000);
 
+  // Background Temporary Seat Expiry Ticker — auto-disables extension seats added via the
+  // "Ajouter un poste" form as temporary once their end-of-window is reached.
+  const { WorkspaceService } = await import('../services/workspaces/workspaceService');
+  setInterval(async () => {
+    try {
+      const disabled = await WorkspaceService.expireTemporarySeats();
+      if (disabled > 0) {
+        console.log(`[Temporary Seat Ticker] Auto-disabled ${disabled} expired temporary seat(s).`);
+      }
+    } catch (err) {
+      // non-blocking
+    }
+  }, 60000);
+
   // Vite middleware or Static files handler
   if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
     const vite = await createViteServer({

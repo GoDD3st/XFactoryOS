@@ -61,7 +61,9 @@ export class ApprovalRepository {
             requester_id: a.requested_by,
             requester_name: a.requester?.full_name || 'Collaborateur Safi',
             user_department: a.requester?.department || 'OCP Safi Team',
-            approver_role: 'director',
+            // Rows written before the approver_role column existed have no stored value —
+            // 'director' matches their original (client-only, never persisted) default.
+            approver_role: a.approver_role || 'director',
             status: a.status === 'INFO_REQUESTED' ? 'needs_info' : (a.status.toLowerCase() as any),
             reason: a.objective || 'Réservation longue durée (> 2 jours ouvrés)',
             objective: a.objective || a.reservations?.purpose || 'Mission Safi Digital Factory',
@@ -115,6 +117,7 @@ export class ApprovalRepository {
         requested_by: item.requester_id,
         status: 'PENDING',
         objective: item.objective,
+        approver_role: item.approver_role,
       })
       .select('id')
       .single();

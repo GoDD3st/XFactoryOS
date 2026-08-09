@@ -120,6 +120,9 @@ export class WorkstationRepository {
             is_pmr: w.metadata?.is_pmr ?? (seatNum === 1),
             is_quiet_zone: w.metadata?.is_quiet_zone ?? false,
             notes: w.metadata?.notes || '',
+            is_temporary: w.metadata?.is_temporary ?? false,
+            temp_start_at: w.metadata?.temp_start_at,
+            temp_end_at: w.metadata?.temp_end_at,
           },
         };
 
@@ -226,6 +229,7 @@ export class WorkstationRepository {
   }
 
   private static mapDbStatusToDomain(dbStatus: string, reservable: boolean): any {
+    if (dbStatus === 'DISABLED') return 'disabled';
     if (dbStatus === 'MAINTENANCE') return 'maintenance';
     if (dbStatus === 'MANAGEMENT_RESERVED' || !reservable) return 'management_reserved';
     if (dbStatus === 'OCCUPIED' || dbStatus === 'CHECKED_IN') return 'occupé';
@@ -234,6 +238,7 @@ export class WorkstationRepository {
   }
 
   private static mapDomainStatusToDb(domainStatus: string): string {
+    if (domainStatus === 'disabled') return 'DISABLED';
     if (domainStatus === 'maintenance') return 'MAINTENANCE';
     // 'MANAGEMENT_RESERVED' is not a workstation_status enum value — callers also set
     // `reservable: false` alongside this, which mapDbStatusToDomain reads back correctly.

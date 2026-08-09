@@ -38,8 +38,28 @@ export class ApprovalService {
     requestId: string,
     decision: 'approved' | 'rejected' | 'needs_info',
     decisionNote: string,
-    deciderId: string
+    deciderId: string,
+    deciderRole?: string
   ): Promise<boolean> {
+    // SRS 8.6/8.7: EA approves long/sensitive reservations, Director approves reservations
+    // exceeding the max configured duration — two distinct authorities, not an interchangeable
+    // pool. Every request now carries the role it was actually routed to (approver_role); only
+    // that role (or admin/super_admin, who can always act as a backstop) may decide it.
+    const approvals = await ApprovalRepository.getApprovals();
+    const pending = approvals.find((a) => a.id === requestId);
+    if (
+      pending &&
+      deciderRole &&
+      deciderRole !== 'admin' &&
+      deciderRole !== 'super_admin' &&
+      pending.approver_role &&
+      pending.approver_role !== deciderRole
+    ) {
+      throw new Error(
+        `Cette demande est réservée au rôle ${pending.approver_role} — vous ne pouvez pas la décider.`
+      );
+    }
+
     const success = await ApprovalRepository.updateApprovalDecision(requestId, decision, decisionNote, deciderId);
 
     if (success) {
@@ -83,7 +103,9 @@ export class ApprovalService {
         'Approbateur Direction Safi',
         target?.approver_role || 'director',
         target?.reservation_id || requestId,
-        `Décision d'approbation ${decision}. Note: ${decisionNote}`
+        `Décision d'approbation ${decision}. Note: ${decisionNote}`,
+        '10.120.4.18',
+        'approval'
       );
     }
 

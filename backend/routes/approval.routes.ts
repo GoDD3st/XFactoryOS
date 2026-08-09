@@ -6,9 +6,11 @@ import { ApprovalDecisionSchema, CreateApprovalRequestSchema } from '../validato
 
 export const approvalRouter = Router();
 
-// Approver roles list
+// Approver roles list. SRS section 13 RBAC matrix, row "Approuver longue durée": Building
+// Manager is explicitly X (no rights) — only EA/Director/Admin/Super Admin approve, matching
+// BR-06 ("Approbateurs longue durée : Executive Assistant ou Director"). Building Manager was
+// previously included here in error.
 const APPROVER_ROLES = [
-  'building_manager',
   'executive_assistant',
   'director',
   'admin',
@@ -51,7 +53,7 @@ approvalRouter.put(
       const { decision, decisionNote } = req.body;
       // 🛡️ Decider ID is taken from req.user (JWT), removing impersonation
       const deciderId = req.user!.id;
-      const success = await ApprovalService.decideApproval(req.params.id, decision, decisionNote, deciderId);
+      const success = await ApprovalService.decideApproval(req.params.id, decision, decisionNote, deciderId, req.user!.role);
       res.json({ success });
     } catch (error: any) {
       res.status(500).json({ status: 'error', message: error.message });

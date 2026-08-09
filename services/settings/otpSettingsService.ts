@@ -72,7 +72,9 @@ export class OTPSettingsService {
   static async confirmUpdate(
     challengeId: string,
     otpCode: string,
-    adminId: string
+    adminId: string,
+    adminName?: string,
+    adminRole?: string
   ): Promise<{ success: boolean; updatedSettings?: SystemSettings; error?: string }> {
     const challenge = pendingChallenges.get(challengeId);
 
@@ -111,8 +113,8 @@ export class OTPSettingsService {
     await AuditRepository.logEvent(
       'SETTINGS_CHANGE',
       adminId,
-      'Super Admin',
-      'super_admin',
+      adminName || 'Administrateur',
+      adminRole || 'admin',
       'public.settings',
       `Mise à jour des paramètres système (v${updatedSettings.configVersion}). Modifications: ${JSON.stringify(challenge.pendingSettings)}`
     );

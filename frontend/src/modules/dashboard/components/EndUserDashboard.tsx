@@ -175,6 +175,7 @@ export const EndUserDashboard: React.FC = () => {
           cluster_id: selectedSeat.cluster.id,
           cluster_name: selectedSeat.cluster.name,
           reservation_date: resDate,
+          end_date: endDate || resDate,
           start_time: startTime,
           end_time: endTime,
           purpose: motifPayload || purpose,
@@ -194,27 +195,14 @@ export const EndUserDashboard: React.FC = () => {
       return;
     }
 
-    // If extension required (> 2 business days), submit approval request
+    // If extension required (> 2 business days), the server already created the Director-routed
+    // approval request as part of createReservation (see ReservationService.createReservation) —
+    // it has the objective/motif too, since they're threaded through via notes/purpose above.
+    // A second client-side call here used to create a duplicate approval row for the same
+    // reservation, tagged the same way, which duplicated the approver's queue.
     if (requiresExtension && newRes) {
-      await ApprovalService.createApprovalRequest({
-        reservation_id: newRes.id,
-        requester_id: currentUser.id,
-        requester_name: currentUser.full_name,
-        user_department: currentUser.department,
-        approver_role: 'director',
-        reason: motifPayload || purpose,
-        objective: objectivePayload,
-        reservation_date: resDate,
-        end_date: endDate,
-        start_time: startTime,
-        end_time: endTime,
-        duration_days: businessDaysCount,
-        workstation_code: selectedSeat.workstation.code,
-        cluster_name: selectedSeat.cluster.name,
-      });
-
       setBookingSuccessMsg(
-        `Demande d'extension (${businessDaysCount} jours ouvrés) envoyée à la Direction, Building Manager & Admin. Référence: #${newRes.id.substring(0, 8)}.`
+        `Demande d'extension (${businessDaysCount} jours ouvrés) envoyée à la Direction. Référence: #${newRes.id.substring(0, 8)}.`
       );
     } else {
       setBookingSuccessMsg(

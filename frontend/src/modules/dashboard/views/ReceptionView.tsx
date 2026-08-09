@@ -17,6 +17,11 @@ import { DigitalTwin } from '../../../shared/components/DigitalTwin';
 import { getLocalReservations, updateReservationStatus } from '@/services/reservations/reservationService';
 import { Reservation } from '../../../types';
 
+// SRS 8.9: Visitor is "modélisé mais non activé en self-service" for Module 1 — the guest-badge
+// panel below stays in the codebase (data/handlers untouched) but is not shown to receptionists
+// until Visitor is actually activated in a future module.
+const VISITOR_BADGE_ENABLED = false;
+
 export const ReceptionView: React.FC = () => {
   const [todaysReservations, setTodaysReservations] = useState<Reservation[]>([]);
   const [visitorBadgeName, setVisitorBadgeName] = useState<string>('');
@@ -95,9 +100,9 @@ export const ReceptionView: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className={`grid grid-cols-1 gap-6 ${VISITOR_BADGE_ENABLED ? 'lg:grid-cols-3' : ''}`}>
         {/* Rapid Check-in Queue */}
-        <div className="lg:col-span-2 bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-4">
+        <div className={`bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-4 ${VISITOR_BADGE_ENABLED ? 'lg:col-span-2' : ''}`}>
           <h3 className="text-sm font-bold text-slate-900 flex items-center justify-between">
             <span className="flex items-center gap-2">
               <UserCheck className="w-4 h-4 text-teal-600" />
@@ -150,6 +155,7 @@ export const ReceptionView: React.FC = () => {
         </div>
 
         {/* Issue Visitor Badge Form */}
+        {VISITOR_BADGE_ENABLED && (
         <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-4">
           <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
             <BadgePlus className="w-4 h-4 text-teal-600" />
@@ -219,6 +225,7 @@ export const ReceptionView: React.FC = () => {
             </div>
           </div>
         </div>
+        )}
       </div>
 
       {/* Digital Twin Supervision */}

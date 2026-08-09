@@ -6,13 +6,13 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '@/database/client';
 
 export const INITIAL_CLUSTERS: Cluster[] = [
-  { id: 'cl-a', code: 'CL-A', name: 'Cluster A — Innovation & R&D', description: 'Zone dédiée aux projets d\'innovation et R&D Safi', desk_count: 4, is_management_only: false, enabled: true, location_zone: 'Zone Ouest Level 1', workstations: [] },
-  { id: 'cl-b', code: 'CL-B', name: 'Cluster B — Digital Factory & Tech', description: 'Zone équipes développement et architecture SI', desk_count: 4, is_management_only: false, enabled: true, location_zone: 'Zone Centre Level 1', workstations: [] },
-  { id: 'cl-c', code: 'CL-C', name: 'Cluster C — Facility Management & Operations', description: 'Opérations site et services généraux', desk_count: 4, is_management_only: false, enabled: true, location_zone: 'Zone Est Level 1', workstations: [] },
-  { id: 'cl-d', code: 'CL-D', name: 'Cluster D — Security & Infrastructure', description: 'Supervision sécurité et infrastructure', desk_count: 4, is_management_only: false, enabled: true, location_zone: 'Zone Nord Level 1', workstations: [] },
-  { id: 'cl-e', code: 'CL-E', name: 'Cluster E — GCI Governance', description: 'Gouvernance et conformité industrielle', desk_count: 4, is_management_only: false, enabled: true, location_zone: 'Zone Sud Level 1', workstations: [] },
-  { id: 'cl-f', code: 'CL-F', name: 'Cluster F — Executive Direction', description: 'Cluster réservé Direction Générale', desk_count: 4, is_management_only: true, enabled: true, location_zone: 'Zone VIP Level 1', workstations: [] },
-  { id: 'cl-g', code: 'CL-G', name: 'Cluster G — VIP Boardroom Annex', description: 'Annexe VIP réunion exécutive', desk_count: 4, is_management_only: true, enabled: true, location_zone: 'Zone VIP Level 1', workstations: [] },
+  { id: 'cl-a', code: 'CL-A', name: 'Cluster A', description: 'Cluster A', desk_count: 4, is_management_only: false, enabled: true, location_zone: 'Openspace', workstations: [] },
+  { id: 'cl-b', code: 'CL-B', name: 'Cluster B', description: 'Cluster B', desk_count: 4, is_management_only: false, enabled: true, location_zone: 'Openspace', workstations: [] },
+  { id: 'cl-c', code: 'CL-C', name: 'Cluster C', description: 'Cluster C', desk_count: 4, is_management_only: false, enabled: true, location_zone: 'Openspace', workstations: [] },
+  { id: 'cl-d', code: 'CL-D', name: 'Cluster D', description: 'Cluster D', desk_count: 4, is_management_only: false, enabled: true, location_zone: 'Openspace', workstations: [] },
+  { id: 'cl-e', code: 'CL-E', name: 'Cluster E', description: 'Cluster E', desk_count: 4, is_management_only: false, enabled: true, location_zone: 'Openspace', workstations: [] },
+  { id: 'cl-f', code: 'CL-F', name: 'Cluster F', description: 'Cluster F', desk_count: 4, is_management_only: false, enabled: true, location_zone: 'Openspace', workstations: [] },
+  { id: 'cl-g', code: 'CL-G', name: 'Cluster G', description: 'Cluster G', desk_count: 4, is_management_only: false, enabled: true, location_zone: 'Openspace', workstations: [] },
 ];
 
 export class WorkspaceService {
@@ -125,38 +125,83 @@ export class WorkspaceService {
     return map;
   }
 
-  static async setSeatMaintenanceStatus(clusterId: string, seatId: string, isMaintenance: boolean): Promise<Record<string, Workstation[]>> {
-    const workstations = this.getSavedWorkstations();
-    const clusterSeats = workstations[clusterId];
-    if (clusterSeats) {
-      const seat = clusterSeats.find((s) => s.id === seatId);
-      if (seat) {
-        const newStatus: SeatStatus = isMaintenance ? 'maintenance' : 'disponible';
-        seat.status = newStatus;
-        await WorkstationRepository.updateWorkstationStatus(seat.id, newStatus, !isMaintenance);
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('xfactory_workstations_v2', JSON.stringify(workstations));
-          window.dispatchEvent(new CustomEvent('xfactory_workstations_changed'));
-        }
-      }
+  static async setSeatMaintenanceStatus(
+    clusterId: string,
+    seatId: string,
+    isMaintenance: boolean,
+    actorId?: string,
+    actorName?: string,
+    actorRole?: string,
+    dbClient?: SupabaseClient
+  ): Promise<Record<string, Workstation[]>> {
+    // Was reading getSavedWorkstations(), which on the server (no `window`) falls straight
+    // through to generateDefaultWorkstations() — synthetic seed data with fake ids like
+    // 'cl-a-seat-1'. The real UUID sent from the browser never matched, so `seat` was always
+    // undefined and this silently no-op'd — the button appeared to work (200 OK) but never
+    // touched the database. Same bug as toggleExtensionSeatVisibility below.
+    const workstations = await WorkstationRepository.getWorkstations(dbClient);
+    const clusterSeats = workstations[clusterId] || workstations[clusterId.toLowerCase()];
+    const seat = clusterSeats?.find((s) => s.id === seatId || s.code === seatId);
+    if (!seat) {
+      throw new Error(`Poste introuvable (${seatId}) dans le cluster ${clusterId}.`);
     }
+
+    const newStatus: SeatStatus = isMaintenance ? 'maintenance' : 'disponible';
+    const updated = await WorkstationRepository.updateWorkstationStatus(seat.id, newStatus, !isMaintenance, dbClient);
+    if (!updated) {
+      throw new Error(`Échec de la mise à jour du poste ${seat.code} — le changement de statut n'a pas été persisté.`);
+    }
+    seat.status = newStatus;
+
+    const { AuditRepository } = await import('@/database/repositories/auditRepository');
+    await AuditRepository.logEvent(
+      'UPDATE',
+      actorId || 'system',
+      actorName || 'Building Manager',
+      actorRole || 'building_manager',
+      seat.code || seatId,
+      `Poste ${seat.code || seatId} ${isMaintenance ? 'mis en maintenance' : 'remis en service'}.`,
+      '10.120.4.18',
+      'cluster_management'
+    );
+
     return workstations;
   }
 
-  static async toggleExtensionSeatVisibility(clusterId: string, seatId: string, visible: boolean): Promise<Record<string, Workstation[]>> {
-    const workstations = this.getSavedWorkstations();
-    const clusterSeats = workstations[clusterId];
-    if (clusterSeats) {
-      const seat = clusterSeats.find((s) => s.id === seatId);
-      if (seat) {
-        seat.visibleToUsers = visible;
-        await WorkstationRepository.updateWorkstation(seat.id, { metadataPatch: { visibleToUsers: visible } });
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('xfactory_workstations_v2', JSON.stringify(workstations));
-          window.dispatchEvent(new CustomEvent('xfactory_workstations_changed'));
-        }
-      }
+  static async toggleExtensionSeatVisibility(
+    clusterId: string,
+    seatId: string,
+    visible: boolean,
+    actorId?: string,
+    actorName?: string,
+    actorRole?: string,
+    dbClient?: SupabaseClient
+  ): Promise<Record<string, Workstation[]>> {
+    const workstations = await WorkstationRepository.getWorkstations(dbClient);
+    const clusterSeats = workstations[clusterId] || workstations[clusterId.toLowerCase()];
+    const seat = clusterSeats?.find((s) => s.id === seatId || s.code === seatId);
+    if (!seat) {
+      throw new Error(`Poste introuvable (${seatId}) dans le cluster ${clusterId}.`);
     }
+
+    const updated = await WorkstationRepository.updateWorkstation(seat.id, { metadataPatch: { visibleToUsers: visible } }, dbClient);
+    if (!updated) {
+      throw new Error(`Échec de la mise à jour du poste ${seat.code} — la visibilité n'a pas été persistée.`);
+    }
+    seat.visibleToUsers = visible;
+
+    const { AuditRepository } = await import('@/database/repositories/auditRepository');
+    await AuditRepository.logEvent(
+      'UPDATE',
+      actorId || 'system',
+      actorName || 'Administrateur',
+      actorRole || 'admin',
+      seat.code || seatId,
+      `Visibilité du poste d'extension ${seat.code || seatId} ${visible ? 'activée' : 'désactivée'}.`,
+      '10.120.4.18',
+      'cluster_management'
+    );
+
     return workstations;
   }
 
@@ -246,7 +291,9 @@ export class WorkspaceService {
     clusterId: string,
     userId: string,
     assignedBy?: string,
-    dbClient?: SupabaseClient
+    dbClient?: SupabaseClient,
+    assignedByName?: string,
+    assignedByRole?: string
   ): Promise<void> {
     const db = dbClient || supabase;
     const { isValidUuid } = await import('@/database/utils/uuid');
@@ -261,9 +308,28 @@ export class WorkspaceService {
       { onConflict: 'cluster_id,user_id' }
     );
     if (error) throw new Error(`Échec de l'assignation de l'utilisateur au cluster VIP : ${error.message}`);
+
+    const { AuditRepository } = await import('@/database/repositories/auditRepository');
+    await AuditRepository.logEvent(
+      'UPDATE',
+      assignedBy || 'system',
+      assignedByName || 'Direction',
+      assignedByRole || 'director',
+      clusterId,
+      `Utilisateur ${userId} ajouté à la liste VIP du cluster ${clusterId}.`,
+      '10.120.4.18',
+      'cluster_management'
+    );
   }
 
-  static async removeClusterVipMember(clusterId: string, userId: string, dbClient?: SupabaseClient): Promise<void> {
+  static async removeClusterVipMember(
+    clusterId: string,
+    userId: string,
+    dbClient?: SupabaseClient,
+    actorId?: string,
+    actorName?: string,
+    actorRole?: string
+  ): Promise<void> {
     const db = dbClient || supabase;
     const { error } = await db
       .from('cluster_vip_members')
@@ -271,10 +337,37 @@ export class WorkspaceService {
       .eq('cluster_id', clusterId)
       .eq('user_id', userId);
     if (error) throw new Error(`Échec du retrait de l'utilisateur du cluster VIP : ${error.message}`);
+
+    const { AuditRepository } = await import('@/database/repositories/auditRepository');
+    await AuditRepository.logEvent(
+      'UPDATE',
+      actorId || 'system',
+      actorName || 'Direction',
+      actorRole || 'director',
+      clusterId,
+      `Utilisateur ${userId} retiré de la liste VIP du cluster ${clusterId}.`,
+      '10.120.4.18',
+      'cluster_management'
+    );
   }
 
-  /** Adds the next sequential extension seat (5-8) to a cluster. Hard-capped at 8 per cluster. */
-  static async addExtensionSeat(clusterId: string, dbClient?: SupabaseClient): Promise<Workstation> {
+  /**
+   * Adds the next sequential extension seat (5-8) to a cluster. Hard-capped at 8 per cluster.
+   * `reason` is mandatory (governance: every ad-hoc seat addition must state why). `isPublic`
+   * controls whether the seat is open to any collaborator (reservable=true) or restricted the
+   * same way a VIP-locked seat is (reservable=false — bypassable only by role or a
+   * cluster_vip_members entry, see ReservationService.createReservation's BR-07 check).
+   * `isTemporary` + `endAt` are read back by expireTemporarySeats() below, which the server ticker
+   * calls every 60s to auto-disable seats whose window has elapsed.
+   */
+  static async addExtensionSeat(
+    clusterId: string,
+    dbClient?: SupabaseClient,
+    actorId?: string,
+    actorName?: string,
+    actorRole?: string,
+    options?: { reason: string; isPublic: boolean; isTemporary: boolean; startAt?: string; endAt?: string }
+  ): Promise<Workstation> {
     const db = dbClient || supabase;
 
     const { data: cluster, error: clusterErr } = await db
@@ -296,20 +389,51 @@ export class WorkspaceService {
       throw new Error('Ce cluster a déjà atteint la limite maximale de 8 postes.');
     }
 
+    const reservable = options ? options.isPublic : !cluster.management_reserved;
+    const isTemporary = options?.isTemporary ?? false;
+    const tempStartAt = isTemporary ? options?.startAt || new Date().toISOString() : undefined;
+    const tempEndAt = isTemporary ? options?.endAt : undefined;
+
     const { data: created, error: insertErr } = await db
       .from('workstations')
       .insert({
         cluster_id: clusterId,
         code: `${cluster.code}-W${nextSeat}`,
         status: 'AVAILABLE',
-        reservable: !cluster.management_reserved,
+        reservable,
         svg_position: { x: 50 + nextSeat * 100, y: 100 },
-        metadata: { seat_number: nextSeat, near_window: false, is_pmr: false, is_quiet_zone: false, visibleToUsers: false },
+        metadata: {
+          seat_number: nextSeat,
+          near_window: false,
+          is_pmr: false,
+          is_quiet_zone: false,
+          visibleToUsers: true,
+          notes: options?.reason ? `[Ajout ${new Date().toLocaleDateString('fr-FR')}] ${options.reason}` : '',
+          is_temporary: isTemporary,
+          temp_start_at: tempStartAt,
+          temp_end_at: tempEndAt,
+        },
       })
       .select()
       .single();
 
     if (insertErr || !created) throw new Error(`Échec de la création du poste : ${insertErr?.message}`);
+
+    const { AuditRepository } = await import('@/database/repositories/auditRepository');
+    const visibilityLabel = reservable ? 'public' : 'privé';
+    const durationLabel = isTemporary
+      ? `temporaire jusqu'au ${tempEndAt ? new Date(tempEndAt).toLocaleString('fr-FR') : '?'}`
+      : 'permanent';
+    await AuditRepository.logEvent(
+      'CREATE',
+      actorId || 'system',
+      actorName || 'Direction',
+      actorRole || 'director',
+      created.code,
+      `Poste d'extension ${created.code} ajouté au cluster ${cluster.code} (siège ${nextSeat}/8) — ${visibilityLabel}, ${durationLabel}. Motif : ${options?.reason || 'non renseigné'}.`,
+      '10.120.4.18',
+      'cluster_management'
+    );
 
     return {
       id: created.id,
@@ -319,9 +443,64 @@ export class WorkspaceService {
       status: 'disponible',
       reservable: created.reservable,
       is_extension: true,
-      visibleToUsers: false,
-      metadata: { near_window: false, is_pmr: false, is_quiet_zone: false, notes: '' },
+      visibleToUsers: true,
+      metadata: {
+        near_window: false,
+        is_pmr: false,
+        is_quiet_zone: false,
+        notes: created.metadata?.notes || '',
+        is_temporary: isTemporary,
+        temp_start_at: tempStartAt,
+        temp_end_at: tempEndAt,
+      },
     };
+  }
+
+  /**
+   * Auto-disables temporary seats (see addExtensionSeat) whose window has elapsed. Called from a
+   * 60s server ticker (backend/server.ts), same pattern as NoShowService/WaitingListService.
+   * Uses jsonb containment (`.contains`) to find candidates, matching PostgREST's native support
+   * rather than raw ->> text-extraction filters.
+   */
+  static async expireTemporarySeats(dbClient?: SupabaseClient): Promise<number> {
+    const db = dbClient || supabase;
+    const { data, error } = await db
+      .from('workstations')
+      .select('id, code, status, metadata')
+      .contains('metadata', { is_temporary: true });
+
+    if (error || !data || data.length === 0) return 0;
+
+    const now = Date.now();
+    const expired = data.filter((w: any) => {
+      if (w.status === 'DISABLED') return false;
+      const endAt = w.metadata?.temp_end_at;
+      return !!endAt && new Date(endAt).getTime() <= now;
+    });
+
+    if (expired.length === 0) return 0;
+
+    const { AuditRepository } = await import('@/database/repositories/auditRepository');
+    for (const seat of expired) {
+      const { error: updateErr } = await db
+        .from('workstations')
+        .update({ status: 'DISABLED', reservable: false, updated_at: new Date().toISOString() })
+        .eq('id', seat.id);
+      if (updateErr) continue;
+
+      await AuditRepository.logEvent(
+        'UPDATE',
+        'system',
+        'Système XFactory',
+        'admin',
+        seat.code,
+        `Poste temporaire ${seat.code} désactivé automatiquement (fin de période atteinte).`,
+        '10.120.4.18',
+        'cluster_management'
+      );
+    }
+
+    return expired.length;
   }
 }
 

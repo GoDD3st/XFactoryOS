@@ -106,7 +106,6 @@ export const WorkstationsAdminView: React.FC = () => {
               <th className="py-2.5 px-3">Code Poste</th>
               <th className="py-2.5 px-3">Cluster ID</th>
               <th className="py-2.5 px-3">Statut</th>
-              <th className="py-2.5 px-3">Équipement</th>
               <th className="py-2.5 px-3">Extension Admin</th>
               <th className="py-2.5 px-3 text-right">Actions</th>
             </tr>
@@ -130,13 +129,6 @@ export const WorkstationsAdminView: React.FC = () => {
                   >
                     {ws.status}
                   </span>
-                </td>
-                <td className="py-3 px-3 text-slate-500 text-[11px]">
-                  {[
-                    ws.metadata.is_pmr && 'PMR',
-                    ws.metadata.near_window && 'Fenêtre',
-                    ws.metadata.is_quiet_zone && 'Zone calme',
-                  ].filter(Boolean).join(' • ') || '—'}
                 </td>
                 <td className="py-3 px-3 font-semibold text-slate-600">
                   {ws.is_extension ? (

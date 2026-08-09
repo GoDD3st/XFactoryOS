@@ -1,6 +1,26 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '../client';
-import { AuditLogEntry, UserRole } from '@/frontend/src/types';
+import { AuditLogEntry, AuditCategory, UserRole } from '@/frontend/src/types';
+
+// Default category per action, for the actions where the action alone is unambiguous. CREATE/
+// UPDATE are used across many different domains (reservations, workstations, user accounts...),
+// so those call sites must pass an explicit category — this table only covers the actions that
+// mean exactly one thing everywhere they're used.
+const ACTION_DEFAULT_CATEGORY: Partial<Record<string, AuditCategory>> = {
+  LOGIN: 'auth',
+  LOGOUT: 'auth',
+  CHECK_IN: 'checkinout',
+  CHECK_OUT: 'checkinout',
+  NO_SHOW: 'noshow',
+  APPROVE: 'approval',
+  REJECT: 'approval',
+  ROLE_CHANGE: 'role_change',
+  SETTINGS_CHANGE: 'settings',
+  CLUSTER_ACTIVATE: 'cluster_management',
+  CLUSTER_DEACTIVATE: 'cluster_management',
+  EXPORT: 'export',
+  AI_QUERY: 'ai_query',
+};
 
 // audit_logs read is restricted to SUPER_ADMIN/SECURITY/IT_ADMIN by RLS (p_audit_read), which
 // requires a real Supabase Auth session. Server-side callers (the /api/audit route, which
@@ -36,6 +56,11 @@ export class AuditRepository {
         target_resource: l.entity_id || l.entity_type || 'SYSTEM',
         details: l.after?.details || `${l.action} sur ${l.entity_type}`,
         ip_address: l.ip_address || '10.120.4.18',
+        // Rows written before the category column existed (or by a call site that predates a
+        // given category) fall back to the action-based default, or 'reservation' as the last
+        // resort for legacy CREATE/UPDATE rows — better than leaving them uncategorized and
+        // invisible to everyone.
+        category: (l.category as AuditCategory) || ACTION_DEFAULT_CATEGORY[l.action] || 'reservation',
       }));
     } catch (err) {
       console.warn('Fetch audit logs fallback:', err);
@@ -50,8 +75,14 @@ export class AuditRepository {
     actorRole: UserRole | string,
     targetResource: string,
     details: string,
-    ipAddress: string = '10.120.4.18'
+    ipAddress: string = '10.120.4.18',
+    category?: AuditCategory
   ): Promise<AuditLogEntry> {
+    // CREATE/UPDATE/DELETE are used across many domains (reservations, workstations, user
+    // accounts...) so those call sites must pass `category` explicitly — everything else has an
+    // unambiguous default (see ACTION_DEFAULT_CATEGORY).
+    const resolvedCategory = category || ACTION_DEFAULT_CATEGORY[action] || 'reservation';
+
     try {
       const db = await resolveClient();
       const { isValidUuid } = await import('../utils/uuid');
@@ -65,6 +96,7 @@ export class AuditRepository {
         before: { actor_name: actorName, actor_role: actorRole },
         after: { details: details },
         ip_address: ipAddress,
+        category: resolvedCategory,
       });
     } catch (err) {
       console.warn('Log audit event DB notice:', err);
@@ -80,6 +112,7 @@ export class AuditRepository {
       target_resource: targetResource,
       details,
       ip_address: ipAddress,
+      category: resolvedCategory,
     };
   }
 }

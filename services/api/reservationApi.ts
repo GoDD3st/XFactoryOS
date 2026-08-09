@@ -20,6 +20,7 @@ function buildReservationRequestBody(payload: Partial<Reservation>) {
     cluster_id: payload.cluster_id,
     cluster_name: payload.cluster_name,
     reservation_date: payload.reservation_date,
+    end_date: payload.end_date,
     start_time: payload.start_time,
     end_time: payload.end_time,
     purpose: payload.purpose,
