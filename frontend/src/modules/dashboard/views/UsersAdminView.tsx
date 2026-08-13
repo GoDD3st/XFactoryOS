@@ -259,7 +259,7 @@ const EditUserModal: React.FC<{ user: UserProfile; onClose: () => void; onSaved:
             </button>
           )}
           <p className="text-[10px] text-slate-400">
-            Le mot de passe est régénéré et haché par Supabase Auth (bcrypt) — il n'est jamais stocké en clair et n'est affiché qu'une seule fois ici.
+            Le mot de passe est régénéré et stocké sous forme hachée — il n'est jamais conservé en clair et n'est affiché qu'une seule fois ici.
           </p>
         </div>
       </div>
@@ -550,7 +550,7 @@ const BulkImportModal: React.FC<{ onClose: () => void; onImported: () => void }>
                   {createdRows.length} mot(s) de passe temporaire(s) généré(s) — affichés une seule fois.
                 </p>
                 <p>
-                  Ils ne sont pas stockés en clair (Supabase Auth les hache en bcrypt). Téléchargez-les maintenant si vous
+                  Ils ne sont pas conservés en clair. Téléchargez-les maintenant si vous
                   devez les transmettre, puis supprimez le fichier après distribution.
                 </p>
                 <button
@@ -643,8 +643,8 @@ export const UsersAdminView: React.FC = () => {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-5 rounded-2xl bg-white border border-slate-200 shadow-sm">
         <div>
-          <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">Gestion des Comptes & Utilisateurs Supabase</h2>
-          <p className="text-xs text-slate-500 mt-0.5">Données chargées en temps réel depuis la table `users` de Supabase</p>
+          <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">Gestion des Comptes Utilisateurs</h2>
+          <p className="text-xs text-slate-500 mt-0.5">Annuaire des comptes du site</p>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
@@ -705,7 +705,7 @@ export const UsersAdminView: React.FC = () => {
 
       <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm overflow-x-auto">
         {loading ? (
-          <div className="p-6 text-center text-xs text-slate-400">Chargement des utilisateurs depuis Supabase...</div>
+          <div className="p-6 text-center text-xs text-slate-400">Chargement des utilisateurs...</div>
         ) : (
           <table className="w-full text-left text-xs border-collapse">
             <thead>

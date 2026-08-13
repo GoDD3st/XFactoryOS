@@ -343,9 +343,8 @@ export const ClustersAdminView: React.FC = () => {
               <span>Créer un cluster</span>
             </button>
           )}
-          <span className="px-3 py-1 bg-[#008751] text-white font-bold text-xs rounded-full">
-            Gouvernance Safi Active
-          </span>
+          {/* "Gouvernance Safi Active" removed — a decorative status claim nothing verified,
+              shown to every role that can reach this screen. */}
         </div>
       </div>
 

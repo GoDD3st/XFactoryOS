@@ -344,18 +344,18 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
     <div className="w-full bg-white text-slate-900 rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-6 space-y-5 overflow-hidden">
       {/* Header bar */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+        {/* No deployment/sync badge and no "supervision" framing here: this component is shown
+            to every role, including the collaborator and the receptionist, who neither supervise
+            the site nor have any use for the module's delivery status. The cluster count is read
+            from the data instead of being hardcoded. */}
         <div>
           <div className="flex items-center space-x-2">
-            <span className="inline-block w-2.5 h-2.5 rounded-full bg-[#00b050] animate-pulse-subtle" />
             <h2 className="text-xl font-bold tracking-tight text-slate-800 flex items-center gap-2">
-              Digital Twin 2D - Open Space
+              Plan de l'Open Space
             </h2>
-            <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-              Module 1 Sync
-            </span>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Supervision temps réel des 7 clusters & réservation dynamique de postes. Site Safi.
+            {clusters.length} cluster(s) — Site Safi.
           </p>
         </div>
 

@@ -520,22 +520,18 @@ export const RoleShell: React.FC = () => {
         {renderActiveView()}
       </main>
 
-      {/* Professional Polish Footer Status Bar */}
+      {/* Footer — site identity only.
+          Previously carried "PostgreSQL DB: Connected" and a "v4.0.1 Enterprise" build badge on
+          every role's screen. Both were hardcoded strings: the first would have claimed a healthy
+          database while Postgres was down, and the version contradicted the repository. Neither
+          is a collaborator's, receptionist's, director's or approver's concern — real platform
+          health is probed by /api/health and shown in the IT Administrator console. */}
       <footer className="h-8 bg-[#005A36] text-white flex items-center justify-between px-6 shrink-0 text-[10px]">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-amber-400" />
-            <span className="font-bold uppercase tracking-wider text-amber-100">Site Safi</span>
-          </div>
-          <div className="hidden sm:flex items-center gap-2 border-l border-emerald-700 pl-4">
-            <span className="w-2 h-2 rounded-full bg-emerald-300" />
-            <span className="font-medium uppercase tracking-wider text-emerald-100">PostgreSQL DB: Connected</span>
-          </div>
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-amber-400" />
+          <span className="font-bold uppercase tracking-wider text-amber-100">{siteName}</span>
         </div>
-        <div className="flex items-center gap-4">
-          <span className="text-emerald-200 font-mono tracking-widest hidden md:inline">SITE CODE: SFI-XFACTORY</span>
-          <span className="bg-[#004227] text-amber-300 px-2 py-0.5 rounded font-bold uppercase tracking-tighter border border-amber-400/30">v4.0.1 Enterprise</span>
-        </div>
+        <span className="text-emerald-200 font-mono tracking-widest hidden md:inline">SFI-XFACTORY</span>
       </footer>
 
       {/* AI Assistant Drawer (SRS 28.14) */}

@@ -304,10 +304,8 @@ export const EndUserDashboard: React.FC = () => {
 
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
           <div className="space-y-2 max-w-2xl">
-            <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200/80 text-xs font-bold">
-              <Zap className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Session Active — Site Safi</span>
-            </div>
+            {/* No session/system status badge: the collaborator has no mandate over platform
+                state, and "Session Active" asserted something the screen never actually checked. */}
             <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
               Bienvenue, {currentUser.full_name}
             </h1>

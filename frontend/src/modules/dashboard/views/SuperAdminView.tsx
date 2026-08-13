@@ -127,7 +127,7 @@ export const SuperAdminView: React.FC = () => {
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
           <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
             <Settings className="w-4 h-4 text-slate-600" />
-            <span>Configuration Active</span>
+            <span>Paramètres en vigueur</span>
           </h3>
           <div className="grid grid-cols-2 gap-2 text-xs">
             <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">

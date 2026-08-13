@@ -65,9 +65,8 @@ export const MyReservationsView: React.FC = () => {
           <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">Mes Réservations Open Space</h2>
           <p className="text-xs text-slate-500 mt-0.5">Suivi de vos réservations, check-in et libération anticipée</p>
         </div>
-        <span className="px-3 py-1 bg-emerald-50 text-emerald-700 font-bold text-xs rounded-full border border-emerald-200">
-          Clean Desk Active
-        </span>
+        {/* "Clean Desk Active" removed — a policy/system status claim on the collaborator's own
+            reservations page, asserting a state nothing here verifies. */}
       </div>
 
       {msg && (
@@ -78,7 +77,7 @@ export const MyReservationsView: React.FC = () => {
       )}
 
       {loading ? (
-        <div className="p-6 text-center text-xs text-slate-400">Chargement depuis Supabase…</div>
+        <div className="p-6 text-center text-xs text-slate-400">Chargement…</div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {reservations.map((res) => (
