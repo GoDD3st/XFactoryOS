@@ -2,14 +2,17 @@ import React, { useState, useEffect } from 'react';
 import {
   UserRole,
   RoleConfig,
-  UserNotification
+  UserNotification,
+  SystemSettings
 } from '../../types';
 import { apiFetchNotifications, apiMarkNotificationRead } from '@/services/api/notificationApi';
+import { SettingsService } from '@/services/settings/settingsService';
 import { useAuth, ROLE_CONFIGS } from '../../modules/auth/context/AuthContext';
 import { EndUserDashboard } from '../../modules/dashboard/components/EndUserDashboard';
 import { ReceptionView } from '../../modules/dashboard/views/ReceptionView';
 import { BuildingView } from '../../modules/dashboard/views/BuildingView';
 import { GCIView } from '../../modules/dashboard/views/GCIView';
+import { ClusterAuthorizationsView } from '../../modules/dashboard/views/ClusterAuthorizationsView';
 import { ApprovalsView } from '../../modules/dashboard/views/ApprovalsView';
 import { DirectionView } from '../../modules/dashboard/views/DirectionView';
 import { AdminView } from '../../modules/dashboard/views/AdminView';
@@ -52,11 +55,12 @@ import {
   Lock,
   Wrench,
   ListOrdered,
-  History
+  History,
+  KeyRound
 } from 'lucide-react';
 
 // RBAC Tab definitions per role (SRS Section 13 Matrix)
-type TabKey = 'home' | 'digital-twin' | 'reservations' | 'calendar' | 'waiting-list' | 'dashboard-exec' | 'workstations' | 'clusters' | 'users' | 'roles' | 'settings' | 'audit' | 'approvals';
+type TabKey = 'home' | 'digital-twin' | 'reservations' | 'calendar' | 'waiting-list' | 'dashboard-exec' | 'workstations' | 'clusters' | 'users' | 'roles' | 'settings' | 'audit' | 'approvals' | 'cluster-auth';
 
 interface TabDef {
   key: TabKey;
@@ -71,53 +75,86 @@ const ROLE_TABS: Record<UserRole, TabDef[]> = {
     { key: 'calendar', label: 'Calendrier', icon: <Clock className="w-3.5 h-3.5" /> },
     { key: 'waiting-list', label: 'Liste d\'Attente', icon: <ListOrdered className="w-3.5 h-3.5" /> },
   ],
+  // SRS §13 matrix, Receptionist column: C on "Réserver poste standard", U on both own and
+  // others' reservations — and X on Dashboard exécutif, Analytics, Audit logs, Utilisateurs,
+  // Rôles, Paramètres and Administration technique. Front-office only: today's arrivals,
+  // check-in, and the seat map. The Audit tab was removed because the policy table gives this
+  // role no audit_logs read, so the endpoint answered 403 and the tab was dead.
   receptionist: [
     { key: 'home', label: 'Réception', icon: <Layers className="w-3.5 h-3.5" /> },
     { key: 'reservations', label: 'Réservations', icon: <Calendar className="w-3.5 h-3.5" /> },
     { key: 'calendar', label: 'Calendrier', icon: <Clock className="w-3.5 h-3.5" /> },
     { key: 'waiting-list', label: 'Liste d\'Attente', icon: <ListOrdered className="w-3.5 h-3.5" /> },
-    { key: 'audit', label: 'Audit', icon: <FileText className="w-3.5 h-3.5" /> },
   ],
   building_manager: [
     { key: 'home', label: 'Bâtiment', icon: <Building className="w-3.5 h-3.5" /> },
     { key: 'dashboard-exec', label: 'Dashboard', icon: <BarChart3 className="w-3.5 h-3.5" /> },
+    { key: 'reservations', label: 'Mes Réservations', icon: <Calendar className="w-3.5 h-3.5" /> },
+    { key: 'calendar', label: 'Calendrier', icon: <Clock className="w-3.5 h-3.5" /> },
+    // BR-09 names Building Manager alongside GCI Manager as an authorizer of management clusters.
+    { key: 'cluster-auth', label: 'Autorisations', icon: <KeyRound className="w-3.5 h-3.5" /> },
     { key: 'workstations', label: 'Postes', icon: <Wrench className="w-3.5 h-3.5" /> },
     { key: 'clusters', label: 'Clusters', icon: <Layers className="w-3.5 h-3.5" /> },
+    { key: 'users', label: 'Utilisateurs', icon: <Users className="w-3.5 h-3.5" /> },
     { key: 'audit', label: 'Audit', icon: <FileText className="w-3.5 h-3.5" /> },
   ],
+  // SRS §13 matrix, GCI Manager column: R dashboard/analytics/audit, C+U reservations (incl.
+  // others'), A on "Autoriser cluster management", RU postes/clusters, R users. Roles and
+  // Administration technique are X — they must stay absent from this menu.
   gci_manager: [
     { key: 'home', label: 'GCI', icon: <Shield className="w-3.5 h-3.5" /> },
     { key: 'dashboard-exec', label: 'Dashboard', icon: <BarChart3 className="w-3.5 h-3.5" /> },
+    { key: 'cluster-auth', label: 'Autorisations', icon: <KeyRound className="w-3.5 h-3.5" /> },
     { key: 'clusters', label: 'Clusters', icon: <Layers className="w-3.5 h-3.5" /> },
     { key: 'workstations', label: 'Postes', icon: <Wrench className="w-3.5 h-3.5" /> },
+    { key: 'reservations', label: 'Réservations', icon: <Calendar className="w-3.5 h-3.5" /> },
+    { key: 'calendar', label: 'Calendrier', icon: <Clock className="w-3.5 h-3.5" /> },
+    { key: 'users', label: 'Utilisateurs', icon: <Users className="w-3.5 h-3.5" /> },
     { key: 'audit', label: 'Audit', icon: <FileText className="w-3.5 h-3.5" /> },
   ],
+  // SRS §13 matrix, Executive Assistant column: A on "Approuver longue durée" (its whole
+  // mandate), R on Dashboard exécutif and Analytics, C on "Réserver poste standard", U on its
+  // OWN reservation only — and X on modifier réservation d'autrui, Autoriser cluster management,
+  // Utilisateurs, Rôles, Paramètres, Audit logs and Administration technique.
+  // The "Clusters VIP" tab was removed: that screen mutates clusters (VIP flag, members,
+  // extension seats) and this role is read-only on the seat referential.
   executive_assistant: [
     { key: 'home', label: 'Approbations', icon: <CheckCircle2 className="w-3.5 h-3.5" /> },
     { key: 'dashboard-exec', label: 'Dashboard', icon: <BarChart3 className="w-3.5 h-3.5" /> },
-    { key: 'reservations', label: 'Réservations', icon: <Calendar className="w-3.5 h-3.5" /> },
     { key: 'approvals', label: 'Longue Durée', icon: <Clock className="w-3.5 h-3.5" /> },
-    { key: 'clusters', label: 'Clusters VIP', icon: <Layers className="w-3.5 h-3.5" /> },
+    { key: 'reservations', label: 'Mes Réservations', icon: <Calendar className="w-3.5 h-3.5" /> },
   ],
+  // SRS §13 matrix, Director column: A on "Approuver longue durée", R on Dashboard exécutif,
+  // C on "Réserver poste standard", U on its OWN reservation only — and X on modifier
+  // réservation d'autrui, Autoriser cluster management, Utilisateurs, Rôles, Paramètres and
+  // Administration technique. Functionally near-identical to Executive Assistant.
+  // "Clusters VIP" removed: that screen mutates clusters and this role is read-only on the seat
+  // referential. "Audit" removed on a deliberate override — see audit.routes.ts.
   director: [
     { key: 'home', label: 'Direction', icon: <Sparkles className="w-3.5 h-3.5" /> },
     { key: 'dashboard-exec', label: 'Dashboard', icon: <BarChart3 className="w-3.5 h-3.5" /> },
     { key: 'approvals', label: 'Approbations', icon: <CheckCircle2 className="w-3.5 h-3.5" /> },
-    { key: 'clusters', label: 'Clusters VIP', icon: <Layers className="w-3.5 h-3.5" /> },
-    { key: 'audit', label: 'Audit', icon: <FileText className="w-3.5 h-3.5" /> },
+    { key: 'reservations', label: 'Mes Réservations', icon: <Calendar className="w-3.5 h-3.5" /> },
   ],
+  // SRS §13 matrix, Administrator column: CRUD postes/clusters/utilisateurs/paramètres,
+  // C+U reservations (incl. others'), R roles/audit/analytics. "Administration technique" is X —
+  // it stays absent (that is IT Admin's mandate).
   admin: [
     { key: 'home', label: 'Admin', icon: <Settings className="w-3.5 h-3.5" /> },
     { key: 'dashboard-exec', label: 'Dashboard', icon: <BarChart3 className="w-3.5 h-3.5" /> },
     { key: 'workstations', label: 'Postes', icon: <Wrench className="w-3.5 h-3.5" /> },
     { key: 'clusters', label: 'Clusters', icon: <Layers className="w-3.5 h-3.5" /> },
     { key: 'users', label: 'Utilisateurs', icon: <Users className="w-3.5 h-3.5" /> },
+    { key: 'reservations', label: 'Réservations', icon: <Calendar className="w-3.5 h-3.5" /> },
+    { key: 'calendar', label: 'Calendrier', icon: <Clock className="w-3.5 h-3.5" /> },
+    { key: 'roles', label: 'Rôles', icon: <Lock className="w-3.5 h-3.5" /> },
     { key: 'settings', label: 'Paramètres', icon: <Settings className="w-3.5 h-3.5" /> },
     { key: 'audit', label: 'Audit', icon: <FileText className="w-3.5 h-3.5" /> },
   ],
   super_admin: [
     { key: 'home', label: 'Console', icon: <ShieldCheck className="w-3.5 h-3.5" /> },
     { key: 'dashboard-exec', label: 'Dashboard', icon: <BarChart3 className="w-3.5 h-3.5" /> },
+    { key: 'reservations', label: 'Réservations', icon: <Calendar className="w-3.5 h-3.5" /> },
     { key: 'workstations', label: 'Postes', icon: <Wrench className="w-3.5 h-3.5" /> },
     { key: 'clusters', label: 'Clusters', icon: <Layers className="w-3.5 h-3.5" /> },
     { key: 'users', label: 'Utilisateurs', icon: <Users className="w-3.5 h-3.5" /> },
@@ -125,10 +162,15 @@ const ROLE_TABS: Record<UserRole, TabDef[]> = {
     { key: 'settings', label: 'Paramètres', icon: <Settings className="w-3.5 h-3.5" /> },
     { key: 'audit', label: 'Audit', icon: <FileText className="w-3.5 h-3.5" /> },
   ],
+  // SRS §13 matrix, IT Admin column: CRUD on "Administration technique" (its whole mandate) and
+  // R on everything else — postes, clusters, utilisateurs, rôles, paramètres, audit, analytics.
+  // The "Postes" tab was removed because WorkstationsAdminView is a management screen whose write
+  // actions 403 for this role (manage_workstations is R here), and "Dashboard" because the
+  // executive KPI view is the business roles' surface, not technical operations.
+  // "Utilisateurs" stays: UsersAdminView is genuinely read-only outside Admin/Super Admin, which
+  // is exactly the R the matrix grants — useful for application support.
   it_admin: [
     { key: 'home', label: 'IT Admin', icon: <Wrench className="w-3.5 h-3.5" /> },
-    { key: 'dashboard-exec', label: 'Dashboard', icon: <BarChart3 className="w-3.5 h-3.5" /> },
-    { key: 'workstations', label: 'Postes', icon: <Wrench className="w-3.5 h-3.5" /> },
     { key: 'users', label: 'Utilisateurs', icon: <Users className="w-3.5 h-3.5" /> },
     { key: 'audit', label: 'Audit', icon: <FileText className="w-3.5 h-3.5" /> },
   ],
@@ -144,11 +186,27 @@ export const RoleShell: React.FC = () => {
   const [isAIOpen, setIsAIOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>('home');
   const [notifications, setNotifications] = useState<UserNotification[]>([]);
+  const [siteName, setSiteName] = useState<string>(
+    (SettingsService.getSettings() as SystemSettings).siteName
+  );
 
   // Reset tab when role changes
   React.useEffect(() => {
     setActiveTab('home');
   }, [currentRole]);
+
+  // Settings §28.12 "Nom du site" — previously saved but never read anywhere in the UI, so
+  // changing it had no visible effect at all. Now drives the header title and the browser tab.
+  useEffect(() => {
+    const applySiteName = () => setSiteName((SettingsService.getSettings() as SystemSettings).siteName);
+    applySiteName();
+    window.addEventListener('xfactory_settings_changed', applySiteName);
+    return () => window.removeEventListener('xfactory_settings_changed', applySiteName);
+  }, []);
+
+  useEffect(() => {
+    if (siteName) document.title = siteName;
+  }, [siteName]);
 
   const loadNotifications = () => {
     apiFetchNotifications().then(setNotifications).catch(() => {});
@@ -228,6 +286,8 @@ export const RoleShell: React.FC = () => {
         return <AuditLogsView />;
       case 'approvals':
         return <ApprovalsView />;
+      case 'cluster-auth':
+        return <ClusterAuthorizationsView />;
       default:
         return renderHomeView();
     }
@@ -272,25 +332,22 @@ export const RoleShell: React.FC = () => {
       <header className="sticky top-0 z-40 h-14 bg-white border-b border-slate-200 flex items-center justify-between px-4 sm:px-6 shrink-0 shadow-sm">
         <div className="max-w-7xl mx-auto w-full flex items-center justify-between gap-4">
           
-          {/* OCP SA Logo & App Title */}
+          {/* App Logo & Title */}
           <div className="flex items-center space-x-3 shrink-0">
             <div className="w-8 h-8 rounded-lg bg-[#008751] flex items-center justify-center font-black text-white text-base shadow-sm ring-1 ring-amber-400/40">
-              <span className="text-amber-300 font-extrabold text-sm tracking-tighter">OCP</span>
+              <span className="text-amber-300 font-extrabold text-sm tracking-tighter">XF</span>
             </div>
             <div className="flex items-center space-x-3">
               <div>
                 <div className="flex items-center space-x-2">
                   <h1 className="text-lg font-black tracking-tight uppercase text-slate-800 underline underline-offset-4 decoration-[#008751]">
-                    XFactory OS
+                    {siteName}
                   </h1>
-                  <span className="px-1.5 py-0.2 text-[9px] font-black bg-amber-100 text-amber-800 rounded border border-amber-300 uppercase">
-                    GROUPE OCP
-                  </span>
                 </div>
               </div>
               <div className="hidden sm:block h-4 w-[1px] bg-slate-300" />
               <span className="hidden sm:inline-block text-xs font-bold text-slate-500 uppercase tracking-widest">
-                OCP SA • Safi Site
+                Site Safi
               </span>
             </div>
           </div>
@@ -463,12 +520,12 @@ export const RoleShell: React.FC = () => {
         {renderActiveView()}
       </main>
 
-      {/* Professional Polish Footer Status Bar - OCP SA Branded */}
+      {/* Professional Polish Footer Status Bar */}
       <footer className="h-8 bg-[#005A36] text-white flex items-center justify-between px-6 shrink-0 text-[10px]">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-amber-400" />
-            <span className="font-bold uppercase tracking-wider text-amber-100">GROUPE OCP SA - Safi Site</span>
+            <span className="font-bold uppercase tracking-wider text-amber-100">Site Safi</span>
           </div>
           <div className="hidden sm:flex items-center gap-2 border-l border-emerald-700 pl-4">
             <span className="w-2 h-2 rounded-full bg-emerald-300" />
@@ -476,8 +533,8 @@ export const RoleShell: React.FC = () => {
           </div>
         </div>
         <div className="flex items-center gap-4">
-          <span className="text-emerald-200 font-mono tracking-widest hidden md:inline">SITE CODE: OCP-SFI-XFACTORY</span>
-          <span className="bg-[#004227] text-amber-300 px-2 py-0.5 rounded font-bold uppercase tracking-tighter border border-amber-400/30">v4.0.1 OCP Enterprise</span>
+          <span className="text-emerald-200 font-mono tracking-widest hidden md:inline">SITE CODE: SFI-XFACTORY</span>
+          <span className="bg-[#004227] text-amber-300 px-2 py-0.5 rounded font-bold uppercase tracking-tighter border border-amber-400/30">v4.0.1 Enterprise</span>
         </div>
       </footer>
 

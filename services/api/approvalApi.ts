@@ -21,6 +21,13 @@ export async function apiFetchPendingApprovals(): Promise<ApprovalRequest[]> {
   return response.json();
 }
 
+/** Decided requests (approved/refused), for the approver's counters and history view. */
+export async function apiFetchApprovalHistory(): Promise<ApprovalRequest[]> {
+  const response = await fetch('/api/approvals/history', { headers: await authHeaders() });
+  if (!response.ok) return [];
+  return response.json();
+}
+
 export async function apiDecideApproval(
   id: string,
   decision: 'approved' | 'rejected' | 'needs_info',
