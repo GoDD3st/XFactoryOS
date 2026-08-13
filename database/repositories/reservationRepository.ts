@@ -5,15 +5,45 @@ import { AuditRepository } from './auditRepository';
 import { WorkstationRepository } from './workstationRepository';
 import { isValidUuid } from '../utils/uuid';
 
+/**
+ * `reservations` stores only foreign keys — there is no flat `workstation_code`, `user_name` or
+ * `cluster_name` column. Reading with a plain `select('*')` therefore left every one of those
+ * fields undefined, and mapRowToReservation() silently substituted its placeholders
+ * ("WS-SF" / "Collaborateur Safi" / "Cluster A"). It only ever looked correct for reservations
+ * created in the current browser session, because those carry a `fallback` from the client
+ * payload; anything read fresh from the database showed the placeholder desk.
+ *
+ * `users` is embedded with an explicit FK hint: reservations has TWO foreign keys to users
+ * (user_id and cancelled_by), so a bare `users(...)` embed is ambiguous and PostgREST rejects it.
+ */
+const RESERVATION_SELECT =
+  '*, workstations(code, clusters(id, code, name)), users!reservations_user_id_fkey(full_name, department)';
+
+/**
+ * The module-level `supabase` client carries the anon key and is subject to RLS. Server-side
+ * callers (routes, tickers) have no user JWT, so reads through it come back empty — which
+ * surfaced as "Réservation introuvable" on the reception check-in path. Same resolveClient()
+ * pattern the workstation/roles/clusterAuthorization repositories already use.
+ */
+async function resolveClient(): Promise<SupabaseClient> {
+  if (typeof window === 'undefined') {
+    const { getAdminClient } = await import('../serverClient');
+    const admin = getAdminClient();
+    if (admin) return admin;
+  }
+  return supabase;
+}
+
 export class ReservationRepository {
   /**
    * Fetch single reservation by ID
    */
   static async getReservationById(id: string): Promise<Reservation | null> {
     try {
-      const { data, error } = await supabase
+      const db = await resolveClient();
+      const { data, error } = await db
         .from('reservations')
-        .select('*')
+        .select(RESERVATION_SELECT)
         .eq('id', id)
         .single();
 
@@ -77,6 +107,42 @@ export class ReservationRepository {
   }
 
   /**
+   * Find the reservation that lets `userId` check in/out of `workstationId` right now —
+   * used by the seat-QR badge scan flow. Only CONFIRMED (not yet checked in) or OCCUPIED
+   * (already checked in, scanning again checks out) reservations count; the current moment
+   * must fall within [start_at, end_at] so a seat's badge doesn't check someone into a
+   * reservation for a different day.
+   */
+  static async getActiveReservationForUserAndSeat(
+    userId: string,
+    workstationId: string,
+    dbClient: SupabaseClient = supabase
+  ): Promise<Reservation | null> {
+    if (!isValidUuid(userId) || !isValidUuid(workstationId)) return null;
+
+    try {
+      const nowIso = new Date().toISOString();
+      const { data, error } = await dbClient
+        .from('reservations')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('workstation_id', workstationId)
+        .in('status', ['CONFIRMED', 'OCCUPIED'])
+        .lte('start_at', nowIso)
+        .gte('end_at', nowIso)
+        .order('start_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error || !data) return null;
+      return this.mapRowToReservation(data);
+    } catch (err) {
+      console.warn('getActiveReservationForUserAndSeat fallback:', err);
+      return null;
+    }
+  }
+
+  /**
    * Fetch active reservations for a single user
    */
   static async getUserReservations(userId: string, dbClient: SupabaseClient = supabase): Promise<Reservation[]> {
@@ -85,7 +151,7 @@ export class ReservationRepository {
     try {
       const { data, error } = await dbClient
         .from('reservations')
-        .select('*')
+        .select(RESERVATION_SELECT)
         .eq('user_id', userId)
         .not('status', 'in', '(CANCELLED,NO_SHOW,REJECTED)')
         .order('start_at', { ascending: false });
@@ -120,7 +186,7 @@ export class ReservationRepository {
   static async getAllReservations(dbClient: SupabaseClient = supabase): Promise<Reservation[]> {
     const { data, error } = await dbClient
       .from('reservations')
-      .select('*')
+      .select(RESERVATION_SELECT)
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -204,7 +270,8 @@ export class ReservationRepository {
         ...extra,
       };
 
-      const { error } = await supabase.from('reservations').update(updateObj).eq('id', id);
+      const db = await resolveClient();
+      const { error } = await db.from('reservations').update(updateObj).eq('id', id);
       if (error) {
         console.error('Error updating reservation status:', error);
         return false;
@@ -234,15 +301,21 @@ export class ReservationRepository {
       return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
     };
 
+    // Joined values win over the client-supplied `fallback`: the database is authoritative, and
+    // the fallback only exists so a just-created reservation can be returned before it's re-read.
+    const seat = data.workstations;
+    const cluster = seat?.clusters;
+    const person = data.users;
+
     return {
       id: data.id,
       user_id: data.user_id,
-      user_name: fallback?.user_name || data.user_name || 'Collaborateur Safi',
-      user_department: fallback?.user_department || data.user_department || 'Digital Factory',
+      user_name: person?.full_name || fallback?.user_name || data.user_name || 'Collaborateur Safi',
+      user_department: person?.department || fallback?.user_department || data.user_department || 'Digital Factory',
       workstation_id: data.workstation_id,
-      workstation_code: fallback?.workstation_code || data.workstation_code || 'WS-SF',
-      cluster_id: fallback?.cluster_id || data.cluster_id || 'cl-a',
-      cluster_name: fallback?.cluster_name || data.cluster_name || 'Cluster A',
+      workstation_code: seat?.code || fallback?.workstation_code || data.workstation_code || 'WS-SF',
+      cluster_id: cluster?.id || fallback?.cluster_id || data.cluster_id || 'cl-a',
+      cluster_name: cluster?.name || fallback?.cluster_name || data.cluster_name || 'Cluster A',
       reservation_date: data.start_at
         ? new Date(data.start_at).toISOString().split('T')[0]
         : fallback?.reservation_date || new Date().toISOString().split('T')[0],
