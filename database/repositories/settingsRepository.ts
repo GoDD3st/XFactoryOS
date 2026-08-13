@@ -4,9 +4,9 @@ import { SystemSettings, UserRole } from '@/frontend/src/types';
 import { OCP_SAFI_PUBLIC_HOLIDAYS_2026 } from '@/frontend/src/shared/utils/dateValidation';
 
 // settings write access (p_settings_admin_write) requires has_role(SUPER_ADMIN/ADMIN/IT_ADMIN),
-// which needs a real Supabase Auth session — the OTP-confirmed settings change runs server-side
-// (backend/routes/settings.routes.ts), where demo mode has no such session, so it must bypass
-// RLS via the service-role client.
+// which needs a real Supabase Auth session — the password-confirmed settings change runs
+// server-side (backend/routes/settings.routes.ts), where demo mode has no such session, so it
+// must bypass RLS via the service-role client.
 async function resolveClient(): Promise<SupabaseClient> {
   if (typeof window === 'undefined') {
     const { getAdminClient } = await import('../serverClient');
@@ -36,7 +36,7 @@ export class SettingsRepository {
     extensionSeatsVisibleByDefault: false,
     managementClustersEnabled: false,
     theme: 'dark',
-    siteName: 'OCP SA - Safi Site XFactory OS',
+    siteName: 'XFactory OS — Site Safi',
     configVersion: 1,
   };
 
@@ -73,7 +73,7 @@ export class SettingsRepository {
         extensionSeatsVisibleByDefault: raw.extensionSeatsVisibleByDefault ?? false,
         managementClustersEnabled: raw.managementClustersEnabled ?? false,
         theme: raw.theme || 'dark',
-        siteName: raw.siteName || 'OCP SA - Safi Site XFactory OS',
+        siteName: raw.siteName || 'XFactory OS — Site Safi',
         configVersion: raw.configVersion || 1,
         updated_at: data.updated_at,
         updated_by: data.updated_by,

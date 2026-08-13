@@ -1,7 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { UserProfile, UserRole } from '@/frontend/src/types';
-import { apiFetchUsers, apiCreateUser, apiSetUserStatus, apiUpdateUser, apiResetUserPassword } from '@/services/api/userApi';
-import { Search, UserPlus, X, Power, KeyRound, Pencil, RefreshCw, Filter } from 'lucide-react';
+import {
+  apiFetchUsers,
+  apiCreateUser,
+  apiSetUserStatus,
+  apiUpdateUser,
+  apiResetUserPassword,
+  apiBulkImportUsers,
+  ImportReport,
+} from '@/services/api/userApi';
+import { useAuth } from '../../auth/context/AuthContext';
+import { Search, UserPlus, X, Power, KeyRound, Pencil, RefreshCw, Filter, Upload } from 'lucide-react';
+
+// SRS §13 "Gérer utilisateurs": CRUD is Admin/Super Admin only — Building Manager, GCI Manager,
+// and IT Admin have R (read-only), matching the server-side gate already enforced on
+// POST/PATCH/reset-password in backend/routes/users.routes.ts (GET already allows all four).
+const USER_MANAGEMENT_ROLES: UserRole[] = ['admin', 'super_admin'];
 
 const ROLE_OPTIONS: { value: UserRole; label: string }[] = [
   { value: 'collaborator', label: 'Employee / Collaborator' },
@@ -253,12 +267,340 @@ const EditUserModal: React.FC<{ user: UserProfile; onClose: () => void; onSaved:
   );
 };
 
+/**
+ * SRS §28.10 / FR-11 — "import massif d'utilisateurs".
+ *
+ * Always previews before writing: the same payload is sent once with dryRun:true (validates the
+ * file against itself and against existing accounts, persists nothing) and only then, on explicit
+ * confirmation, with dryRun:false.
+ */
+const EXPECTED_HEADERS = ['email', 'full_name', 'department', 'role'];
+
+const ROLE_ALIASES: Record<string, UserRole> = {
+  ...Object.fromEntries(ROLE_OPTIONS.map((o) => [o.value, o.value])),
+  employee: 'collaborator',
+  collaborateur: 'collaborator',
+  security: 'security_guard',
+  receptionniste: 'receptionist',
+  directeur: 'director',
+  administrator: 'admin',
+  administrateur: 'admin',
+} as Record<string, UserRole>;
+
+interface ParsedRow {
+  email: string;
+  full_name: string;
+  department: string;
+  role: UserRole;
+}
+
+/** Minimal CSV parse: handles quoted fields and , or ; separators. */
+function parseCsv(text: string): { rows: ParsedRow[]; errors: string[] } {
+  const errors: string[] = [];
+  const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  if (lines.length === 0) return { rows: [], errors: ['Le fichier est vide.'] };
+
+  const separator = (lines[0].match(/;/g) || []).length > (lines[0].match(/,/g) || []).length ? ';' : ',';
+
+  const splitLine = (line: string): string[] => {
+    const out: string[] = [];
+    let cur = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          cur += '"';
+          i++;
+        } else inQuotes = !inQuotes;
+      } else if (ch === separator && !inQuotes) {
+        out.push(cur);
+        cur = '';
+      } else cur += ch;
+    }
+    out.push(cur);
+    return out.map((c) => c.trim());
+  };
+
+  const header = splitLine(lines[0]).map((h) => h.toLowerCase().replace(/\s+/g, '_'));
+  const missing = EXPECTED_HEADERS.filter((h) => !header.includes(h));
+  if (missing.length > 0) {
+    return {
+      rows: [],
+      errors: [`Colonnes manquantes dans l'en-tête : ${missing.join(', ')}. Attendu : ${EXPECTED_HEADERS.join(', ')}.`],
+    };
+  }
+
+  const idx = Object.fromEntries(EXPECTED_HEADERS.map((h) => [h, header.indexOf(h)]));
+  const rows: ParsedRow[] = [];
+
+  lines.slice(1).forEach((line, i) => {
+    const cells = splitLine(line);
+    const rawRole = (cells[idx.role] || '').toLowerCase().replace(/\s+/g, '_');
+    const role = ROLE_ALIASES[rawRole];
+    if (!role) {
+      errors.push(`Ligne ${i + 1} : rôle inconnu « ${cells[idx.role] || ''} ».`);
+      return;
+    }
+    rows.push({
+      email: cells[idx.email] || '',
+      full_name: cells[idx.full_name] || '',
+      department: cells[idx.department] || '',
+      role,
+    });
+  });
+
+  return { rows, errors };
+}
+
+const STATUS_STYLES: Record<string, { label: string; className: string }> = {
+  ready: { label: 'À créer', className: 'bg-sky-100 text-sky-700' },
+  created: { label: 'Créé', className: 'bg-emerald-100 text-emerald-700' },
+  duplicate: { label: 'Doublon', className: 'bg-amber-100 text-amber-700' },
+  exists: { label: 'Existe déjà', className: 'bg-slate-200 text-slate-600' },
+  failed: { label: 'Échec', className: 'bg-rose-100 text-rose-700' },
+};
+
+const BulkImportModal: React.FC<{ onClose: () => void; onImported: () => void }> = ({ onClose, onImported }) => {
+  const [rawText, setRawText] = useState('');
+  const [parsed, setParsed] = useState<ParsedRow[]>([]);
+  const [parseErrors, setParseErrors] = useState<string[]>([]);
+  const [report, setReport] = useState<ImportReport | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | undefined>();
+
+  const handleText = (text: string) => {
+    setRawText(text);
+    setReport(null);
+    setError(undefined);
+    const { rows, errors } = parseCsv(text);
+    setParsed(rows);
+    setParseErrors(errors);
+  };
+
+  const handleFile = async (file: File) => {
+    handleText(await file.text());
+  };
+
+  const runPreview = async () => {
+    setBusy(true);
+    setError(undefined);
+    try {
+      setReport(await apiBulkImportUsers(parsed, true));
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const runImport = async () => {
+    setBusy(true);
+    setError(undefined);
+    try {
+      const result = await apiBulkImportUsers(parsed, false);
+      setReport(result);
+      onImported();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const downloadTemplate = () => {
+    const csv = 'email,full_name,department,role\njane.doe@ocpgroup.ma,Jane Doe,Digital Factory,collaborator\n';
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'modele_import_utilisateurs.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const createdRows = report?.rows.filter((r) => r.status === 'created' && r.tempPassword) || [];
+
+  const downloadCredentials = () => {
+    const csv =
+      'email,full_name,mot_de_passe_temporaire\n' +
+      createdRows.map((r) => `${r.email},"${r.full_name}",${r.tempPassword}`).join('\n') +
+      '\n';
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'mots_de_passe_temporaires.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const isDone = report && !report.dryRun;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+      <div className="w-full max-w-3xl bg-white rounded-2xl shadow-2xl p-6 space-y-4 relative max-h-[90vh] overflow-y-auto">
+        <button type="button" onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600">
+          <X className="w-4 h-4" />
+        </button>
+
+        <div>
+          <h3 className="text-base font-black text-slate-800 flex items-center gap-2">
+            <Upload className="w-4 h-4 text-[#008751]" />
+            Import massif d'utilisateurs
+          </h3>
+          <p className="text-[11px] text-slate-500 mt-0.5">
+            Fichier CSV avec l'en-tête <code className="bg-slate-100 px-1 rounded">email, full_name, department, role</code>.
+            Séparateur <code className="bg-slate-100 px-1 rounded">,</code> ou <code className="bg-slate-100 px-1 rounded">;</code>. Maximum 200 lignes.
+          </p>
+        </div>
+
+        {!isDone && (
+          <>
+            <div className="flex items-center gap-2">
+              <label className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold cursor-pointer">
+                Choisir un fichier CSV
+                <input
+                  type="file"
+                  accept=".csv,text/csv"
+                  className="hidden"
+                  onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
+                />
+              </label>
+              <button onClick={downloadTemplate} className="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100">
+                Télécharger un modèle
+              </button>
+            </div>
+
+            <textarea
+              rows={6}
+              value={rawText}
+              onChange={(e) => handleText(e.target.value)}
+              placeholder={'email,full_name,department,role\njane.doe@ocpgroup.ma,Jane Doe,Digital Factory,collaborator'}
+              className="w-full p-3 text-xs font-mono rounded-xl border border-slate-300 bg-slate-50 focus:ring-2 focus:ring-[#008751] outline-none"
+            />
+          </>
+        )}
+
+        {parseErrors.length > 0 && (
+          <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs space-y-1">
+            {parseErrors.map((e, i) => (
+              <div key={i}>{e}</div>
+            ))}
+          </div>
+        )}
+
+        {error && <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs">{error}</div>}
+
+        {parsed.length > 0 && !report && (
+          <p className="text-xs text-slate-600 font-semibold">{parsed.length} ligne(s) prête(s) à être vérifiée(s).</p>
+        )}
+
+        {report && (
+          <div className="space-y-2">
+            <div className="flex flex-wrap gap-2 text-[11px] font-bold">
+              <span className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700">{report.total} ligne(s)</span>
+              {report.dryRun ? (
+                <span className="px-2.5 py-1 rounded-lg bg-sky-100 text-sky-700">{report.ready} à créer</span>
+              ) : (
+                <span className="px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-700">{report.created} créé(s)</span>
+              )}
+              <span className="px-2.5 py-1 rounded-lg bg-amber-100 text-amber-700">{report.skipped} ignoré(s)</span>
+              {report.failed > 0 && (
+                <span className="px-2.5 py-1 rounded-lg bg-rose-100 text-rose-700">{report.failed} en échec</span>
+              )}
+              {report.dryRun && (
+                <span className="px-2.5 py-1 rounded-lg bg-slate-900 text-white">Aperçu — rien n'a été enregistré</span>
+              )}
+            </div>
+
+            <div className="max-h-64 overflow-y-auto rounded-xl border border-slate-200">
+              <table className="w-full text-[11px]">
+                <thead className="sticky top-0 bg-slate-50">
+                  <tr className="text-left text-slate-500 uppercase text-[10px]">
+                    <th className="py-1.5 px-2">Ligne</th>
+                    <th className="py-1.5 px-2">Email</th>
+                    <th className="py-1.5 px-2">Nom</th>
+                    <th className="py-1.5 px-2">Rôle</th>
+                    <th className="py-1.5 px-2">Statut</th>
+                    <th className="py-1.5 px-2">Détail</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {report.rows.map((r) => {
+                    const s = STATUS_STYLES[r.status] || STATUS_STYLES.ready;
+                    return (
+                      <tr key={r.line}>
+                        <td className="py-1.5 px-2 text-slate-400">{r.line}</td>
+                        <td className="py-1.5 px-2 font-semibold text-slate-800">{r.email}</td>
+                        <td className="py-1.5 px-2 text-slate-600">{r.full_name}</td>
+                        <td className="py-1.5 px-2 text-slate-500">{r.role}</td>
+                        <td className="py-1.5 px-2">
+                          <span className={`px-1.5 py-0.5 rounded font-bold ${s.className}`}>{s.label}</span>
+                        </td>
+                        <td className="py-1.5 px-2 text-slate-500">{r.message || '—'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {createdRows.length > 0 && (
+              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[11px] space-y-2">
+                <p className="font-bold">
+                  {createdRows.length} mot(s) de passe temporaire(s) généré(s) — affichés une seule fois.
+                </p>
+                <p>
+                  Ils ne sont pas stockés en clair (Supabase Auth les hache en bcrypt). Téléchargez-les maintenant si vous
+                  devez les transmettre, puis supprimez le fichier après distribution.
+                </p>
+                <button
+                  onClick={downloadCredentials}
+                  className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold"
+                >
+                  Télécharger les mots de passe
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+          <button onClick={onClose} className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl">
+            {isDone ? 'Fermer' : 'Annuler'}
+          </button>
+          {!isDone && !report && (
+            <button
+              onClick={runPreview}
+              disabled={busy || parsed.length === 0}
+              className="px-5 py-2 text-xs font-bold text-white rounded-xl shadow-md bg-slate-800 hover:bg-slate-700 disabled:opacity-50"
+            >
+              {busy ? 'Vérification…' : 'Vérifier le fichier'}
+            </button>
+          )}
+          {!isDone && report?.dryRun && (
+            <button
+              onClick={runImport}
+              disabled={busy || report.ready === 0}
+              className="px-5 py-2 text-xs font-bold text-white rounded-xl shadow-md bg-[#008751] hover:bg-[#00703f] disabled:opacity-50"
+            >
+              {busy ? 'Import…' : `Importer ${report.ready} utilisateur(s)`}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const UsersAdminView: React.FC = () => {
+  const { currentRole } = useAuth();
+  const canManageUsers = USER_MANAGEMENT_ROLES.includes(currentRole);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<UserRole | ''>('');
   const [showCreate, setShowCreate] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
   const [actionError, setActionError] = useState<string | undefined>();
 
@@ -336,13 +678,24 @@ export const UsersAdminView: React.FC = () => {
           >
             <RefreshCw className="w-4 h-4" />
           </button>
-          <button
-            onClick={() => setShowCreate(true)}
-            className="flex items-center gap-1.5 px-4 py-2 bg-[#008751] hover:bg-emerald-600 text-white text-xs font-bold rounded-xl transition-all shadow-md cursor-pointer"
-          >
-            <UserPlus className="w-4 h-4 text-amber-300" />
-            <span>Nouvel Utilisateur</span>
-          </button>
+          {canManageUsers && (
+            <>
+              <button
+                onClick={() => setShowImport(true)}
+                className="flex items-center gap-1.5 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-xl transition-all shadow-md cursor-pointer"
+              >
+                <Upload className="w-4 h-4" />
+                <span>Importer</span>
+              </button>
+              <button
+                onClick={() => setShowCreate(true)}
+                className="flex items-center gap-1.5 px-4 py-2 bg-[#008751] hover:bg-emerald-600 text-white text-xs font-bold rounded-xl transition-all shadow-md cursor-pointer"
+              >
+                <UserPlus className="w-4 h-4 text-amber-300" />
+                <span>Nouvel Utilisateur</span>
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -358,11 +711,11 @@ export const UsersAdminView: React.FC = () => {
             <thead>
               <tr className="border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px]">
                 <th className="py-2.5 px-3">Nom Complet</th>
-                <th className="py-2.5 px-3">Email OCP</th>
+                <th className="py-2.5 px-3">Email</th>
                 <th className="py-2.5 px-3">Département</th>
                 <th className="py-2.5 px-3">Rôle</th>
                 <th className="py-2.5 px-3">Statut</th>
-                <th className="py-2.5 px-3 text-right">Action</th>
+                {canManageUsers && <th className="py-2.5 px-3 text-right">Action</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -381,28 +734,30 @@ export const UsersAdminView: React.FC = () => {
                       {u.status}
                     </span>
                   </td>
-                  <td className="py-3 px-3 text-right">
-                    <div className="flex items-center justify-end gap-1.5">
-                      <button
-                        onClick={() => setEditingUser(u)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-slate-100 text-slate-700 hover:bg-slate-200"
-                      >
-                        <Pencil className="w-3 h-3" />
-                        Modifier
-                      </button>
-                      <button
-                        onClick={() => handleToggleStatus(u)}
-                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold ${
-                          u.status === 'active'
-                            ? 'bg-red-50 text-red-600 hover:bg-red-100'
-                            : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                        }`}
-                      >
-                        <Power className="w-3 h-3" />
-                        {u.status === 'active' ? 'Désactiver' : 'Activer'}
-                      </button>
-                    </div>
-                  </td>
+                  {canManageUsers && (
+                    <td className="py-3 px-3 text-right">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          onClick={() => setEditingUser(u)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-slate-100 text-slate-700 hover:bg-slate-200"
+                        >
+                          <Pencil className="w-3 h-3" />
+                          Modifier
+                        </button>
+                        <button
+                          onClick={() => handleToggleStatus(u)}
+                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold ${
+                            u.status === 'active'
+                              ? 'bg-red-50 text-red-600 hover:bg-red-100'
+                              : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                          }`}
+                        >
+                          <Power className="w-3 h-3" />
+                          {u.status === 'active' ? 'Désactiver' : 'Activer'}
+                        </button>
+                      </div>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -411,7 +766,30 @@ export const UsersAdminView: React.FC = () => {
       </div>
 
       {showCreate && (
-        <CreateUserModal onClose={() => setShowCreate(false)} onCreated={loadUsers} />
+        <CreateUserModal
+          // onCreated fires the moment the account is created, while the modal is still showing
+          // the temp-password screen — the admin can't see the table refresh at that point. If
+          // that background fetch has any hiccup (network blip, timing), the table stayed stale
+          // until a full page reload, even though the account was created correctly (verified:
+          // it's the list not reliably re-fetching, not a backend/data issue). Refreshing again
+          // on close guarantees the table is current at the exact moment the admin can see it.
+          onClose={() => {
+            setShowCreate(false);
+            loadUsers();
+          }}
+          onCreated={loadUsers}
+        />
+      )}
+      {showImport && (
+        // Same rationale as CreateUserModal above: refresh on close as well as on import, so the
+        // table is current at the moment the admin can actually see it.
+        <BulkImportModal
+          onClose={() => {
+            setShowImport(false);
+            loadUsers();
+          }}
+          onImported={loadUsers}
+        />
       )}
       {editingUser && (
         <EditUserModal user={editingUser} onClose={() => setEditingUser(null)} onSaved={loadUsers} />

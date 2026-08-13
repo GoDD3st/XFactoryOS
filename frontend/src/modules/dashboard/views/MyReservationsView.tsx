@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Reservation } from '@/frontend/src/types';
 import { deleteReservation, syncReservationsFromDb } from '@/services/reservations/reservationService';
-import { CheckInOutService } from '@/services/checkinout/checkInOutService';
+import { apiCheckIn, apiCheckOut } from '@/services/api/checkinoutApi';
 import { useAuth } from '@/frontend/src/modules/auth/context/AuthContext';
 import { Calendar, Clock, MapPin, CheckCircle, LogOut, Trash2, AlertCircle } from 'lucide-react';
 
@@ -28,21 +28,27 @@ export const MyReservationsView: React.FC = () => {
     return () => window.removeEventListener('xfactory_reservations_changed', loadReservations);
   }, [currentUser.id]);
 
+  // Both go through the API rather than CheckInOutService: the server forces the user id from
+  // the session (so this can only touch your own reservation) and the write stays behind the
+  // ownership guard instead of relying on RLS alone.
   const handleCheckIn = async (resId: string) => {
-    const ok = await CheckInOutService.performCheckIn(resId, currentUser.id);
-    if (ok) {
+    try {
+      await apiCheckIn(resId);
       setMsg('Check-in effectué avec succès !');
       await loadReservations();
-    } else {
-      setMsg('Échec du check-in. Vérifiez que la réservation est confirmée.');
+    } catch (err: any) {
+      setMsg(err?.message || 'Échec du check-in. Vérifiez que la réservation est confirmée.');
     }
   };
 
   const handleCheckOut = async (resId: string) => {
-    const ok = await CheckInOutService.performCheckOut(resId, currentUser.id);
-    if (ok) {
+    try {
+      await apiCheckOut(resId);
       setMsg('Check-out effectué avec succès. Poste libéré.');
       await loadReservations();
+    } catch (err: any) {
+      // Previously had no failure branch at all — a failed check-out was completely silent.
+      setMsg(err?.message || 'Échec du check-out.');
     }
   };
 

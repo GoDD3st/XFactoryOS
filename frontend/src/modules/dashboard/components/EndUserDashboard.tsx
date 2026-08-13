@@ -23,6 +23,7 @@ import { DateTimePicker24h } from '../../../shared/components/DateTimePicker24h'
 import { ExtensionRequestModal } from '../../../shared/components/ExtensionRequestModal';
 import { Workstation, Cluster, Reservation, ApprovalRequest, SystemSettings } from '../../../types';
 import { createReservation, syncReservationsFromDb } from '@/services/reservations/reservationService';
+import { apiCheckIn, apiCheckOut } from '@/services/api/checkinoutApi';
 import { ReservationConflictError } from '@/services/api/reservationApi';
 import { ApprovalService } from '@/services/approval/approvalService';
 import { SettingsService } from '@/services/settings/settingsService';
@@ -117,6 +118,54 @@ export const EndUserDashboard: React.FC = () => {
   const activeHeroRes = myReservations.find(
     (r) => r.status === 'check-in' || r.status === 'confirmée'
   );
+
+  // --- Ma présence (check-in / check-out) ---
+  const [presenceBusy, setPresenceBusy] = useState(false);
+  const [presenceMsg, setPresenceMsg] = useState<string | null>(null);
+  // Recompute the countdown each minute so it stays truthful without a reload.
+  const [, setPresenceTick] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => setPresenceTick((t) => t + 1), 60000);
+    return () => clearInterval(id);
+  }, []);
+
+  const todayKey = new Date().toISOString().split('T')[0];
+  const todayPresence = myReservations.find(
+    (r) => r.reservation_date === todayKey && (r.status === 'confirmée' || r.status === 'check-in')
+  );
+
+  // The no-show window is configured by the Super Admin (settings.noShowDelayMinutes) — read it
+  // rather than assuming the SRS default of 30.
+  const noShowDelay = (settings as SystemSettings)?.noShowDelayMinutes ?? 30;
+
+  const presenceMinutesLeft = (() => {
+    if (!todayPresence || todayPresence.status === 'check-in') return null;
+    const [h, m] = (todayPresence.start_time || '00:00').split(':').map(Number);
+    const start = new Date(`${todayPresence.reservation_date}T00:00:00`);
+    start.setHours(h || 0, m || 0, 0, 0);
+    return Math.round((start.getTime() + noShowDelay * 60000 - Date.now()) / 60000);
+  })();
+
+  const handlePresenceAction = async () => {
+    if (!todayPresence) return;
+    setPresenceBusy(true);
+    setPresenceMsg(null);
+    try {
+      if (todayPresence.status === 'check-in') {
+        await apiCheckOut(todayPresence.id);
+        setPresenceMsg('Check-out effectué — le poste est libéré.');
+      } else {
+        await apiCheckIn(todayPresence.id);
+        setPresenceMsg('Check-in effectué — bonne journée !');
+      }
+      await loadMyData();
+    } catch (err: any) {
+      setPresenceMsg(err?.message || 'Action impossible.');
+    } finally {
+      setPresenceBusy(false);
+    }
+  };
 
   const handleSeatClickFromTwin = (ws: Workstation, cl: Cluster) => {
     setSelectedSeat({ workstation: ws, cluster: cl });
@@ -257,7 +306,7 @@ export const EndUserDashboard: React.FC = () => {
           <div className="space-y-2 max-w-2xl">
             <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200/80 text-xs font-bold">
               <Zap className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Session Active — OCP SA Safi</span>
+              <span>Session Active — Site Safi</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
               Bienvenue, {currentUser.full_name}
@@ -294,6 +343,75 @@ export const EndUserDashboard: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* Ma présence — check-in/check-out for today's reservation.
+          FR-59: the collaborator must be warned before the check-in window expires, and after
+          noShowDelayMinutes the reservation auto-flips to no-show and the seat is released.
+          This action previously lived only in "Mes Réservations", so the single most
+          time-critical thing this role does was absent from its home screen. */}
+      {todayPresence && (
+        <div
+          className={`rounded-2xl p-5 border shadow-sm space-y-3 ${
+            todayPresence.status === 'check-in'
+              ? 'bg-emerald-50 border-emerald-200'
+              : presenceMinutesLeft !== null && presenceMinutesLeft <= 0
+              ? 'bg-rose-50 border-rose-200'
+              : 'bg-amber-50 border-amber-200'
+          }`}
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="text-sm">
+              <div className="font-bold text-slate-900 flex items-center gap-2">
+                <Clock className="w-4 h-4" />
+                Ma présence — {todayPresence.workstation_code}
+                {todayPresence.cluster_name && (
+                  <span className="font-normal text-slate-500 text-xs">({todayPresence.cluster_name})</span>
+                )}
+              </div>
+              <p className="text-xs text-slate-600 mt-1">
+                Réservation {todayPresence.start_time} → {todayPresence.end_time}
+              </p>
+
+              {todayPresence.status === 'check-in' ? (
+                <p className="text-xs font-bold text-emerald-700 mt-1">
+                  Check-in effectué — vous occupez ce poste.
+                </p>
+              ) : presenceMinutesLeft === null ? null : presenceMinutesLeft > 0 ? (
+                <p className="text-xs font-bold text-amber-700 mt-1">
+                  Check-in possible encore {presenceMinutesLeft} min — au-delà, la réservation
+                  passe en no-show et le poste est libéré.
+                </p>
+              ) : (
+                <p className="text-xs font-bold text-rose-700 mt-1">
+                  Délai de check-in dépassé — la réservation va passer en no-show.
+                </p>
+              )}
+            </div>
+
+            <button
+              onClick={handlePresenceAction}
+              disabled={presenceBusy}
+              className={`shrink-0 px-4 py-2.5 rounded-xl text-xs font-bold text-white shadow-md transition-all disabled:opacity-60 ${
+                todayPresence.status === 'check-in'
+                  ? 'bg-slate-800 hover:bg-slate-700'
+                  : 'bg-[#008751] hover:bg-[#00703f]'
+              }`}
+            >
+              {presenceBusy
+                ? 'Enregistrement…'
+                : todayPresence.status === 'check-in'
+                ? 'Check-out'
+                : 'Check-in'}
+            </button>
+          </div>
+
+          {presenceMsg && (
+            <div className="text-xs font-semibold text-slate-700 bg-white/70 rounded-lg px-3 py-2 border border-slate-200">
+              {presenceMsg}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Main Interactive Reservation Section */}
       <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-6">

@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Shield, Mail, Lock, AlertCircle } from 'lucide-react';
 import { signInWithPassword, signInWithGoogle } from '../services/realAuthService';
+import { SettingsService } from '@/services/settings/settingsService';
+import { SystemSettings } from '@/frontend/src/types';
 
 export const LoginScreen: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -8,6 +10,22 @@ export const LoginScreen: React.FC = () => {
   const [error, setError] = useState<string | undefined>();
   const [submitting, setSubmitting] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [siteName, setSiteName] = useState<string>(
+    (SettingsService.getSettings() as SystemSettings).siteName
+  );
+
+  // Settings §28.12 "Nom du site" — GET /api/settings has no auth requirement, so this resolves
+  // even pre-login. Falls back to the default if the anonymous read is blocked by RLS.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (siteName) document.title = siteName;
+    Promise.resolve(SettingsService.getSettings()).then((s) => {
+      if (s.siteName) {
+        setSiteName(s.siteName);
+        document.title = s.siteName;
+      }
+    });
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,9 +58,9 @@ export const LoginScreen: React.FC = () => {
       <div className="w-full max-w-sm bg-white rounded-2xl shadow-xl border border-slate-200 p-8 space-y-6">
         <div className="flex flex-col items-center text-center gap-2">
           <div className="w-12 h-12 rounded-xl bg-[#008751] flex items-center justify-center font-black text-white text-lg shadow-sm ring-1 ring-amber-400/40">
-            <span className="text-amber-300 font-extrabold text-base tracking-tighter">OCP</span>
+            <span className="text-amber-300 font-extrabold text-base tracking-tighter">XF</span>
           </div>
-          <h1 className="text-lg font-black uppercase tracking-tight text-slate-800">XFactory OS</h1>
+          <h1 className="text-lg font-black uppercase tracking-tight text-slate-800">{siteName}</h1>
           <p className="text-xs text-slate-400">Module Smart Open Space Management — Site de Safi</p>
         </div>
 

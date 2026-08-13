@@ -205,6 +205,127 @@ export class WorkspaceService {
     return workstations;
   }
 
+  /**
+   * SRS §13 "Gérer clusters" = CRUD for Administrator/Super Admin. Before this, `clusters` rows
+   * were only ever inserted by database/seeder.ts — there was no create path in the application
+   * at all, so the C in CRUD did not exist.
+   */
+  static async createCluster(
+    payload: { code: string; name: string; deskCount?: number; isManagement?: boolean },
+    actorId?: string,
+    actorName?: string,
+    actorRole?: string,
+    dbClient?: SupabaseClient
+  ): Promise<{ id: string; code: string; name: string }> {
+    const db = dbClient || supabase;
+    const code = payload.code.trim().toUpperCase();
+
+    const { data: existing } = await db.from('clusters').select('id').eq('code', code).maybeSingle();
+    if (existing) throw new Error(`Un cluster portant le code ${code} existe déjà.`);
+
+    // clusters.space_id is NOT NULL — inherit the space the existing clusters belong to rather
+    // than inventing one, so a new cluster lands on the same site as the rest.
+    const { data: anyCluster } = await db.from('clusters').select('space_id').limit(1).maybeSingle();
+    if (!anyCluster?.space_id) throw new Error("Aucun espace de référence trouvé pour rattacher le cluster.");
+
+    const { data: created, error } = await db
+      .from('clusters')
+      .insert({
+        space_id: anyCluster.space_id,
+        code,
+        name: payload.name.trim(),
+        desk_count: payload.deskCount ?? 4,
+        management_reserved: payload.isManagement ?? false,
+        enabled: true,
+      })
+      .select('id, code, name')
+      .single();
+
+    if (error || !created) throw new Error(`Échec de la création du cluster : ${error?.message}`);
+
+    const { AuditRepository } = await import('@/database/repositories/auditRepository');
+    await AuditRepository.logEvent(
+      'CREATE',
+      actorId || 'system',
+      actorName || 'Administrateur',
+      actorRole || 'admin',
+      created.code,
+      `Cluster ${created.code} (${created.name}) créé.`,
+      '10.120.4.18',
+      'cluster_management'
+    );
+
+    return created;
+  }
+
+  /**
+   * Soft delete (`enabled = false`): the cluster and its seats leave the booking flows and the
+   * Digital Twin, but reservations and audit history remain intact. Pass `enabled: true` to
+   * restore. Refuses while the cluster still holds active reservations, since disabling it would
+   * strand people who already booked a seat there.
+   */
+  static async setClusterEnabled(
+    clusterId: string,
+    enabled: boolean,
+    actorId?: string,
+    actorName?: string,
+    actorRole?: string,
+    dbClient?: SupabaseClient
+  ): Promise<void> {
+    const db = dbClient || supabase;
+
+    const { data: cluster } = await db.from('clusters').select('code, name').eq('id', clusterId).maybeSingle();
+    if (!cluster) throw new Error('Cluster introuvable.');
+
+    if (!enabled) {
+      const { data: seats } = await db.from('workstations').select('id').eq('cluster_id', clusterId);
+      const seatIds = (seats || []).map((s: any) => s.id);
+
+      if (seatIds.length > 0) {
+        const { count } = await db
+          .from('reservations')
+          .select('id', { count: 'exact', head: true })
+          .in('workstation_id', seatIds)
+          // Real reservation_status enum labels — 'PENDING'/'CHECKED_IN' do not exist and would
+          // fail the query with 22P02 rather than returning zero rows.
+          .in('status', ['PENDING_APPROVAL', 'CONFIRMED', 'CHECK_IN_PENDING', 'OCCUPIED'])
+          .gte('end_at', new Date().toISOString());
+
+        if ((count ?? 0) > 0) {
+          throw new Error(
+            `Impossible de désactiver ${cluster.code} : ${count} réservation(s) active(s) sur ses postes. Annulez-les d'abord.`
+          );
+        }
+      }
+    }
+
+    const { error } = await db.from('clusters').update({ enabled, updated_at: new Date().toISOString() }).eq('id', clusterId);
+    if (error) throw new Error(`Échec de la mise à jour du cluster : ${error.message}`);
+
+    const { AuditRepository } = await import('@/database/repositories/auditRepository');
+    await AuditRepository.logEvent(
+      enabled ? 'UPDATE' : 'DELETE',
+      actorId || 'system',
+      actorName || 'Administrateur',
+      actorRole || 'admin',
+      cluster.code,
+      `Cluster ${cluster.code} ${enabled ? 'réactivé' : 'désactivé (suppression logique)'}.`,
+      '10.120.4.18',
+      'cluster_management'
+    );
+  }
+
+  /** Cluster code (CL-F) for audit targets; returns the raw id if it can't be resolved. */
+  private static async resolveClusterCode(clusterId: string, dbClient?: SupabaseClient): Promise<string> {
+    try {
+      const db = dbClient || supabase;
+      const { data } = await db.from('clusters').select('code').eq('id', clusterId).maybeSingle();
+      return data?.code || clusterId;
+    } catch {
+      return clusterId;
+    }
+  }
+
   static async toggleManagementClusterLock(
     clusterId: string,
     unlocked: boolean,
@@ -234,14 +355,19 @@ export class WorkspaceService {
         window.dispatchEvent(new CustomEvent('xfactory_clusters_changed'));
       }
 
+      // Log the cluster CODE, not its UUID: target_resource is what the audit screen's
+      // "Entité / Cible" filter shows, and a raw UUID there is unreadable. Falls back to the id
+      // only if the cluster can't be resolved.
+      const clusterCode = await this.resolveClusterCode(clusterId, dbClient);
+
       const { AuditRepository } = await import('@/database/repositories/auditRepository');
       await AuditRepository.logEvent(
         unlocked ? 'CLUSTER_ACTIVATE' : 'CLUSTER_DEACTIVATE',
         actorId || 'admin-current',
         actorName || 'Admin Direction Safi',
         'super_admin',
-        clusterId,
-        `Cluster Management ${clusterId.toUpperCase()} ${unlocked ? 'débloqué pour les utilisateurs' : 'verrouillé réservé Direction'}.`
+        clusterCode,
+        `Cluster Management ${clusterCode} ${unlocked ? 'débloqué pour les utilisateurs' : 'verrouillé réservé Direction'}.`
       );
     }
     return workstations;
@@ -272,9 +398,13 @@ export class WorkspaceService {
     dbClient?: SupabaseClient
   ): Promise<{ id: string; user_id: string; full_name: string; email: string; assigned_at: string }[]> {
     const db = dbClient || supabase;
+    // cluster_vip_members has TWO foreign keys to users (user_id AND assigned_by), so the plain
+    // `users(...)` embed is ambiguous — PostgREST errors, which silently fell into the
+    // `error || !data` branch below and returned an empty list every time regardless of how many
+    // VIP members were actually assigned. Same bug class as UserRepository.getUsers().
     const { data, error } = await db
       .from('cluster_vip_members')
-      .select('id, user_id, assigned_at, users(full_name, email)')
+      .select('id, user_id, assigned_at, users!cluster_vip_members_user_id_fkey(full_name, email)')
       .eq('cluster_id', clusterId);
 
     if (error || !data) return [];

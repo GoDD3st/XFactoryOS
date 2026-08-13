@@ -1,21 +1,35 @@
 import React, { useEffect, useState } from 'react';
 import * as XLSX from 'xlsx';
-import { getRealTimeTelemetry, SiteTelemetrySummary, DailyReservationTrend } from '@/services/telemetry/telemetryService';
+import {
+  getRealTimeTelemetry,
+  SiteTelemetrySummary,
+  DailyReservationTrend,
+  getUserDepartmentStats,
+  UserDepartmentStats,
+  predictTomorrowOccupancy,
+  OccupancyPrediction,
+} from '@/services/telemetry/telemetryService';
 import { apiFetchNoShowStats } from '@/services/api/noShowApi';
 import { apiFetchReservationTrends } from '@/services/api/telemetryApi';
 import { apiLogExport } from '@/services/api/auditApi';
-import { BarChart3, TrendingUp, Clock, AlertTriangle, Download, Sparkles, Building, Layers, FileSpreadsheet, Printer, LineChart } from 'lucide-react';
+import { BarChart3, TrendingUp, Clock, AlertTriangle, Download, Sparkles, Building, Layers, FileSpreadsheet, Printer, LineChart, CheckCircle2, CalendarClock, Users, Sparkle } from 'lucide-react';
 
 export const ExecutiveDashboard: React.FC = () => {
   const [telemetry, setTelemetry] = useState<SiteTelemetrySummary | null>(null);
   const [noShowStats, setNoShowStats] = useState<{ today: number; thisWeek: number }>({ today: 0, thisWeek: 0 });
   const [trends, setTrends] = useState<DailyReservationTrend[]>([]);
+  const [userDeptStats, setUserDeptStats] = useState<UserDepartmentStats | null>(null);
+  const [prediction, setPrediction] = useState<OccupancyPrediction | null>(null);
 
   useEffect(() => {
     const refresh = () => {
-      getRealTimeTelemetry().then(setTelemetry);
+      getRealTimeTelemetry().then((t) => {
+        setTelemetry(t);
+        predictTomorrowOccupancy(t.totalCapacity).then(setPrediction);
+      });
       apiFetchNoShowStats().then(setNoShowStats);
       apiFetchReservationTrends(14).then(setTrends);
+      getUserDepartmentStats().then(setUserDeptStats);
     };
 
     refresh();
@@ -85,6 +99,8 @@ export const ExecutiveDashboard: React.FC = () => {
   };
 
   const maxTrendCount = Math.max(1, ...trends.map((t) => t.count));
+  const availableTotal = telemetry.clusters.reduce((sum, c) => sum + c.availableDesks, 0);
+  const reservedTotal = telemetry.clusters.reduce((sum, c) => sum + c.reservedDesks, 0);
 
   return (
     <div className="space-y-6">
@@ -94,7 +110,7 @@ export const ExecutiveDashboard: React.FC = () => {
           <div className="flex items-center space-x-2">
             <h2 className="text-xl font-black tracking-tight">Dashboard Exécutif & Telemetry</h2>
             <span className="px-2 py-0.5 text-[10px] font-bold bg-[#008751] text-white rounded border border-emerald-400/30">
-              OCP SA Safi
+              Site Safi
             </span>
           </div>
           <p className="text-xs text-slate-400 mt-1">Supervision globale de l'occupation des 7 clusters Open Space</p>
@@ -170,6 +186,24 @@ export const ExecutiveDashboard: React.FC = () => {
           <div className="text-2xl font-black text-slate-900">{noShowStats.today} aujourd'hui</div>
           <p className="text-[10px] text-slate-400 font-medium">{noShowStats.thisWeek} cette semaine</p>
         </div>
+
+        <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-2">
+          <div className="flex items-center justify-between text-xs text-slate-500 font-semibold">
+            <span>Postes Disponibles</span>
+            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+          </div>
+          <div className="text-2xl font-black text-slate-900">{availableTotal}</div>
+          <p className="text-[10px] text-slate-400 font-medium">/ {telemetry.totalCapacity} postes</p>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-2">
+          <div className="flex items-center justify-between text-xs text-slate-500 font-semibold">
+            <span>Postes Réservés</span>
+            <CalendarClock className="w-4 h-4 text-amber-500" />
+          </div>
+          <div className="text-2xl font-black text-slate-900">{reservedTotal}</div>
+          <p className="text-[10px] text-slate-400 font-medium">/ {telemetry.totalCapacity} postes</p>
+        </div>
       </div>
 
       {/* Reservation Trends (FR-86) */}
@@ -215,6 +249,93 @@ export const ExecutiveDashboard: React.FC = () => {
         </div>
       </div>
 
+      {/* User & Department Statistics */}
+      {userDeptStats && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-3">
+            <div className="flex items-center gap-2">
+              <Users className="w-5 h-5 text-[#008751]" />
+              <h3 className="font-bold text-sm text-slate-800">Utilisateurs Actifs</h3>
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div>
+                <div className="text-lg font-black text-slate-900">{userDeptStats.activeToday}</div>
+                <div className="text-[10px] text-slate-400">Aujourd'hui</div>
+              </div>
+              <div>
+                <div className="text-lg font-black text-slate-900">{userDeptStats.activeThisWeek}</div>
+                <div className="text-[10px] text-slate-400">Cette semaine</div>
+              </div>
+              <div>
+                <div className="text-lg font-black text-slate-900">{userDeptStats.activeThisMonth}</div>
+                <div className="text-[10px] text-slate-400">Ce mois</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="lg:col-span-2 p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Building className="w-5 h-5 text-[#008751]" />
+                <h3 className="font-bold text-sm text-slate-800">Usage par Département</h3>
+              </div>
+              <span className="text-[10px] text-slate-400 font-semibold">30 derniers jours</span>
+            </div>
+            {userDeptStats.departmentUsage.length === 0 ? (
+              <p className="text-xs text-slate-400 text-center py-4">Données insuffisantes.</p>
+            ) : (
+              <div className="space-y-2">
+                {userDeptStats.departmentUsage.slice(0, 6).map((d) => (
+                  <div key={d.department} className="flex items-center gap-3">
+                    <span className="w-32 shrink-0 text-xs font-semibold text-slate-600 truncate">{d.department}</span>
+                    <div className="flex-1 bg-slate-100 h-2 rounded-full overflow-hidden">
+                      <div className="bg-[#008751] h-full" style={{ width: `${d.percentage}%` }} />
+                    </div>
+                    <span className="w-10 text-right text-xs font-bold text-slate-700">{d.percentage}%</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* AI Predictions (statistical forecast, not a live model) */}
+      {prediction && (
+        <div className="p-5 rounded-2xl bg-slate-900 text-white border border-slate-800 shadow-lg space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Sparkle className="w-5 h-5 text-amber-300" />
+              <h3 className="font-bold text-sm">Prévision d'Occupation — Demain</h3>
+            </div>
+            {prediction.isHighDemand && (
+              <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-bold flex items-center gap-1">
+                <AlertTriangle className="w-3 h-3" /> Forte demande prévue
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="text-3xl font-black">{prediction.predictedOccupancyRate}%</div>
+            <div className="flex-1 bg-slate-800 h-2.5 rounded-full overflow-hidden">
+              <div
+                className={`h-full ${prediction.isHighDemand ? 'bg-amber-400' : 'bg-[#008751]'}`}
+                style={{ width: `${prediction.predictedOccupancyRate}%` }}
+              />
+            </div>
+          </div>
+          <p className="text-[11px] text-slate-400">
+            {prediction.sampleSize > 0 ? (
+              <>
+                Basé sur {prediction.sampleSize} {new Date(`${prediction.predictedDate}T00:00:00`).toLocaleDateString('fr-FR', { weekday: 'long' })}(s) précédent(s).
+                {prediction.peakWindow && ` Affluence habituelle : ${prediction.peakWindow}.`}
+              </>
+            ) : (
+              "Données historiques insuffisantes pour ce jour de la semaine — estimation à confirmer avec plus d'usage."
+            )}
+          </p>
+        </div>
+      )}
+
       {/* Cluster Occupancy Heatmap Table */}
       <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-4">
         <div className="flex items-center justify-between border-b border-slate-100 pb-3">
@@ -222,7 +343,9 @@ export const ExecutiveDashboard: React.FC = () => {
             <Layers className="w-5 h-5 text-[#008751]" />
             <h3 className="font-bold text-sm text-slate-800">Heatmap d'Occupation des Clusters</h3>
           </div>
-          <span className="text-xs font-semibold text-slate-400">7 Clusters • 56 Postes</span>
+          <span className="text-xs font-semibold text-slate-400">
+            {telemetry.clusters.length} Clusters • {telemetry.totalCapacity} Postes
+          </span>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

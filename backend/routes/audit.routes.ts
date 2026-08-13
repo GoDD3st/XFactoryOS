@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { AuditService } from '@/services/audit/auditService';
-import { requireRole } from '../middleware/rbacMiddleware';
+import { requirePermission } from '../middleware/rbacMiddleware';
 import { AuditCategory, UserRole } from '@/frontend/src/types';
 
 export const auditRouter = Router();
@@ -38,7 +38,12 @@ const CAN_SEE_ALL = ['super_admin'] as const;
 // per-category visibility breakdown above explicitly routes 5 of the 10 categories to them
 // (reservations, check-in/out, no-show, approvals, cluster ops) — without route access none of
 // that would ever be reachable.
-auditRouter.get('/', requireRole('super_admin', 'admin', 'building_manager', 'gci_manager', 'director', 'it_admin', 'security_guard', 'receptionist'), async (req, res) => {
+// This list must match the policy table, or the fallback would silently re-grant access the
+// policy denies whenever the policy can't be read. Receptionist is X in the §13 matrix.
+// Director is excluded on a deliberate override: the matrix row grants it R, but the SRS section
+// naming the audit-log actors lists only Super Administrator, Security and IT Administrator —
+// the two contradict each other and the narrative section was chosen.
+auditRouter.get('/', requirePermission('audit_logs', 'read', ['super_admin', 'admin', 'building_manager', 'gci_manager', 'it_admin', 'security_guard']), async (req, res) => {
   try {
     const data = await AuditService.getAuditLogs();
     const role = req.user!.role;

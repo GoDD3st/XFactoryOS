@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { ReservationService, ReservationConflictError } from '@/services/reservations/reservationService';
 import { validateBody } from '../middleware/validateBody';
-import { requireOwnerOrAdmin } from '../middleware/rbacMiddleware';
+import { requireOwnerOrAdmin, requirePermission } from '../middleware/rbacMiddleware';
 import { reservationLimiter } from '../middleware/rateLimiter';
 import { CreateReservationSchema, UpdateReservationStatusSchema } from '../validators';
 import { ReservationRepository } from '@/database/repositories/reservationRepository';
@@ -26,7 +26,29 @@ reservationsRouter.get('/', async (req, res) => {
 });
 
 // POST /api/reservations — Create reservation (Rate limited + Zod validated + Zero-trust user identity)
-reservationsRouter.post('/', reservationLimiter, validateBody(CreateReservationSchema), async (req, res) => {
+//
+// SRS §13 row "Réserver poste standard": C for every role EXCEPT Security and Visitor, which are
+// X. This route previously had no role or permission guard at all — the `reserve_standard`
+// permission existed in the policy table but was referenced nowhere in the codebase, so any
+// authenticated user could book, including the roles the matrix forbids.
+const RESERVE_FALLBACK_ROLES = [
+  'collaborator',
+  'receptionist',
+  'building_manager',
+  'gci_manager',
+  'executive_assistant',
+  'director',
+  'admin',
+  'super_admin',
+  'it_admin',
+] as const;
+
+reservationsRouter.post(
+  '/',
+  reservationLimiter,
+  requirePermission('reserve_standard', 'create', RESERVE_FALLBACK_ROLES),
+  validateBody(CreateReservationSchema),
+  async (req, res) => {
   try {
     const dbClient = getDbClient(req);
     const payload = {

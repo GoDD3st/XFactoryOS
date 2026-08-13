@@ -81,6 +81,29 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [realUser, setRealUser] = useState<UserProfile | null>(null);
   const [authLoading, setAuthLoading] = useState<boolean>(!demo);
 
+  // In demo mode the backend resolves each demo role to a REAL users row (see
+  // resolveDemoUserId in authMiddleware) so that writes satisfy the uuid foreign keys. The
+  // frontend kept its synthetic id ('usr-collab-1'), so reads filtered by currentUser.id never
+  // matched what the backend had just written — a demo collaborator could book a seat and then
+  // not see its own reservation. Adopt the server's resolved identity so both agree.
+  useEffect(() => {
+    if (!demo) return;
+    let cancelled = false;
+
+    fetch('/api/auth/me', { headers: { 'x-demo-role': demoRole } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body) => {
+        const serverUser = body?.user;
+        if (cancelled || !serverUser?.id) return;
+        setDemoUser((prev) => (prev.id === serverUser.id ? prev : { ...prev, id: serverUser.id }));
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [demo, demoRole]);
+
   useEffect(() => {
     if (demo) return; // demo mode never touches Supabase Auth
 
@@ -234,7 +257,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }
 
   const isAdminOrSuperAdmin = currentRole === 'admin' || currentRole === 'super_admin';
-  const canView8Postes = isAdminOrSuperAdmin;
+  // SRS §13 "Gérer postes"/"Gérer clusters" = RU for Building Manager and GCI Manager too —
+  // they need to see the real full inventory (including extension seats 5-8) to operate on it,
+  // not just the base 4/cluster a plain collaborator sees. Restricting this to admin-only made
+  // their own KPI totals (Digital Twin counts vs. Dashboard "X postes" totals) visibly disagree.
+  const canView8Postes = isAdminOrSuperAdmin || currentRole === 'building_manager' || currentRole === 'gci_manager';
   const canAccessManagementClusters =
     currentRole === 'director' ||
     currentRole === 'executive_assistant' ||

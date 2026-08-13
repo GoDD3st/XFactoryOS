@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { ApprovalService } from '../../services';
-import { requireRole } from '../middleware/rbacMiddleware';
+import { requirePermission } from '../middleware/rbacMiddleware';
 import { validateBody } from '../middleware/validateBody';
 import { ApprovalDecisionSchema, CreateApprovalRequestSchema } from '../validators';
 
@@ -10,15 +10,18 @@ export const approvalRouter = Router();
 // Manager is explicitly X (no rights) — only EA/Director/Admin/Super Admin approve, matching
 // BR-06 ("Approbateurs longue durée : Executive Assistant ou Director"). Building Manager was
 // previously included here in error.
+// Administrator removed deliberately: BR-06 and the use-case diagram both name Executive
+// Assistant and Director as the only long-duration approvers. The §13 matrix's "A" for
+// Administrator contradicts them, and the business rule wins. Super Admin is kept as the
+// break-glass approver so approvals cannot deadlock if no EA/Director is available.
 const APPROVER_ROLES = [
   'executive_assistant',
   'director',
-  'admin',
   'super_admin',
 ] as const;
 
 // GET /api/approvals/pending — Approver roles only
-approvalRouter.get('/pending', requireRole(...APPROVER_ROLES), async (req, res) => {
+approvalRouter.get('/pending', requirePermission('approve_long_duration', 'approve', APPROVER_ROLES), async (req, res) => {
   try {
     const pending = await ApprovalService.getPendingApprovals();
     res.json(pending);
@@ -46,7 +49,7 @@ approvalRouter.post('/', validateBody(CreateApprovalRequestSchema), async (req, 
 // PUT /api/approvals/:id/decide — Approvers only (deciderId forced from req.user.id)
 approvalRouter.put(
   '/:id/decide',
-  requireRole(...APPROVER_ROLES),
+  requirePermission('approve_long_duration', 'approve', APPROVER_ROLES),
   validateBody(ApprovalDecisionSchema),
   async (req, res) => {
     try {
@@ -62,7 +65,7 @@ approvalRouter.put(
 );
 
 // GET /api/approvals/history — Approvers only
-approvalRouter.get('/history', requireRole(...APPROVER_ROLES), async (req, res) => {
+approvalRouter.get('/history', requirePermission('approve_long_duration', 'approve', APPROVER_ROLES), async (req, res) => {
   try {
     const history = await ApprovalService.getApprovalHistory();
     res.json(history);

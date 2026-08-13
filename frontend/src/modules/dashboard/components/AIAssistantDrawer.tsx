@@ -17,7 +17,7 @@ export const AIAssistantDrawer: React.FC<AIAssistantDrawerProps> = ({ isOpen, on
     {
       id: 'welcome',
       sender: 'ai',
-      text: 'Bonjour ! Je suis l\'assistant IA **XFactory OS** (OCP Safi Site). Comment puis-je vous assister aujourd\'hui ?',
+      text: 'Bonjour ! Je suis l\'assistant IA **XFactory OS** (Site Safi). Comment puis-je vous assister aujourd\'hui ?',
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       suggestions: [
         'Quels sont les postes libres ?',

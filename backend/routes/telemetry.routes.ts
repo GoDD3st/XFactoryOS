@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { TelemetryService } from '@/services/telemetry/telemetryService';
-import { requireRole } from '../middleware/rbacMiddleware';
+import { requirePermission } from '../middleware/rbacMiddleware';
 
 export const telemetryRouter = Router();
 
@@ -20,7 +20,7 @@ const ANALYTICS_ROLES = [
 ] as const;
 
 // GET /api/telemetry/occupancy
-telemetryRouter.get('/occupancy', requireRole(...ANALYTICS_ROLES), async (req, res) => {
+telemetryRouter.get('/occupancy', requirePermission('analytics', 'read', ANALYTICS_ROLES), async (req, res) => {
   try {
     const data = await TelemetryService.getRealTimeTelemetry();
     res.json({ success: true, data });
@@ -30,7 +30,7 @@ telemetryRouter.get('/occupancy', requireRole(...ANALYTICS_ROLES), async (req, r
 });
 
 // GET /api/telemetry/trends — FR-86 daily reservation volume (last N days)
-telemetryRouter.get('/trends', requireRole(...ANALYTICS_ROLES), async (req, res) => {
+telemetryRouter.get('/trends', requirePermission('analytics', 'read', ANALYTICS_ROLES), async (req, res) => {
   try {
     const days = Math.min(60, Math.max(7, parseInt(String(req.query.days || '14'), 10) || 14));
     const data = await TelemetryService.getReservationTrends(days);

@@ -54,6 +54,44 @@ export async function apiCreateUser(payload: {
   return result.data;
 }
 
+// SRS §28.10 / FR-11 — bulk import. Call with dryRun:true to preview, then dryRun:false to apply.
+export interface ImportRowResult {
+  line: number;
+  email: string;
+  full_name: string;
+  role: UserRole;
+  status: 'ready' | 'created' | 'duplicate' | 'exists' | 'failed';
+  message?: string;
+  tempPassword?: string;
+}
+
+export interface ImportReport {
+  dryRun: boolean;
+  total: number;
+  ready: number;
+  created: number;
+  skipped: number;
+  failed: number;
+  rows: ImportRowResult[];
+}
+
+export async function apiBulkImportUsers(
+  rows: { email: string; full_name: string; department: string; role: UserRole }[],
+  dryRun: boolean
+): Promise<ImportReport> {
+  const response = await fetch('/api/users/bulk-import', {
+    method: 'POST',
+    headers: await authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ rows, dryRun }),
+  });
+
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(result.message || "Échec de l'import des utilisateurs.");
+  }
+  return result.data;
+}
+
 export async function apiSetUserStatus(userId: string, status: 'active' | 'inactive'): Promise<void> {
   const response = await fetch(`/api/users/${userId}/status`, {
     method: 'PATCH',

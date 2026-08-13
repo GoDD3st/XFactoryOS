@@ -17,11 +17,13 @@ import {
   EyeOff,
   Wrench,
   Check,
-  UserCheck
+  UserCheck,
+  KeyRound,
+  X
 } from 'lucide-react';
 import { Cluster, Workstation, SeatStatus } from '../../types';
 import { fetchClustersWithOverlays } from '@/services/workspaces/workspaceService';
-import { apiToggleSeatVisibility, apiToggleSeatMaintenance } from '@/services/api/workspaceApi';
+import { apiToggleSeatVisibility, apiToggleSeatMaintenance, apiRequestClusterAccess } from '@/services/api/workspaceApi';
 import { useAuth } from '../../modules/auth/context/AuthContext';
 import { BuildingFloorPlan } from './BuildingFloorPlan';
 
@@ -34,6 +36,14 @@ interface DigitalTwinProps {
   onSelectSeat?: (workstation: Workstation, cluster: Cluster) => void;
   selectedSeatCode?: string | null;
   readOnly?: boolean;
+  /**
+   * When true, onSelectSeat fires for ANY seat regardless of status — used by admin/operational
+   * screens (e.g. BuildingView) where clicking a seat opens an edit modal, not a reservation
+   * flow. Without this, the reservation-flow gating (only 'disponible' / authorized
+   * management-reserved seats are clickable) blocked Building Manager from ever opening the
+   * edit modal for a seat that needed it most — one in maintenance, occupied, or reserved.
+   */
+  adminEditMode?: boolean;
 }
 
 const ICON_MAP: Record<string, React.FC<{ className?: string }>> = {
@@ -49,7 +59,8 @@ const ICON_MAP: Record<string, React.FC<{ className?: string }>> = {
 export const DigitalTwin: React.FC<DigitalTwinProps> = ({
   onSelectSeat,
   selectedSeatCode,
-  readOnly = false
+  readOnly = false,
+  adminEditMode = false
 }) => {
   const { canView8Postes, isAdminOrSuperAdmin, canAccessManagementClusters, currentUser } = useAuth();
 
@@ -69,6 +80,13 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
     workstation: Workstation;
     cluster: Cluster;
   } | null>(null);
+
+  // BR-09 / SRS §14.4 — request temporary access to a locked management cluster
+  const [accessRequestCluster, setAccessRequestCluster] = useState<Cluster | null>(null);
+  const [accessRequestReason, setAccessRequestReason] = useState('');
+  const [accessRequestSubmitting, setAccessRequestSubmitting] = useState(false);
+  const [accessRequestError, setAccessRequestError] = useState<string | null>(null);
+  const [accessRequestSent, setAccessRequestSent] = useState(false);
 
   const loadData = async () => {
     setLoading(true);
@@ -105,12 +123,10 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
       }
 
       const filteredSeats = cluster.workstations.filter((ws) => {
-        // Seat capacity check:
-        // If 8-post view is ON, show seats 1-8.
-        // If 8-post view is OFF, show seats 1-4, OR extension seats explicitly toggled visibleToUsers
-        const isSeatVisibleByCapacity = show8Postes
-          ? true
-          : ws.seat_number <= 4 || ws.visibleToUsers;
+        // Seat visibility: managers (8-postes view) always see every seat so they can manage
+        // hidden ones; regular collaborators only see seats not explicitly hidden via
+        // visibleToUsers (defaults to true — any post, not just extensions, can be hidden).
+        const isSeatVisibleByCapacity = show8Postes || ws.visibleToUsers !== false;
 
         if (!isSeatVisibleByCapacity) return false;
 
@@ -141,6 +157,31 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
     const isMaint = currentStatus === 'maintenance';
     await apiToggleSeatMaintenance(clusterId, seatId, !isMaint);
     loadData();
+  };
+
+  const openAccessRequest = (cluster: Cluster) => {
+    setAccessRequestCluster(cluster);
+    setAccessRequestReason('');
+    setAccessRequestError(null);
+    setAccessRequestSent(false);
+  };
+
+  const submitAccessRequest = async () => {
+    if (!accessRequestCluster) return;
+    if (accessRequestReason.trim().length < 3) {
+      setAccessRequestError('Le motif doit contenir au moins 3 caractères.');
+      return;
+    }
+    setAccessRequestSubmitting(true);
+    setAccessRequestError(null);
+    try {
+      await apiRequestClusterAccess(accessRequestCluster.id, { reason: accessRequestReason.trim() });
+      setAccessRequestSent(true);
+    } catch (err: any) {
+      setAccessRequestError(err.message || "Échec de l'envoi de la demande.");
+    } finally {
+      setAccessRequestSubmitting(false);
+    }
   };
 
   const getStatusColorClass = (status: SeatStatus) => {
@@ -241,6 +282,7 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
               // double-booking a real desk.
               const isVipMember = !!cluster.vipMemberIds?.includes(currentUser.id);
               const isSelectable =
+                adminEditMode ||
                 ws.status === 'disponible' ||
                 (ws.status === 'management_reserved' && (canAccessManagementClusters || isVipMember));
 
@@ -306,14 +348,14 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
           <div className="flex items-center space-x-2">
             <span className="inline-block w-2.5 h-2.5 rounded-full bg-[#00b050] animate-pulse-subtle" />
             <h2 className="text-xl font-bold tracking-tight text-slate-800 flex items-center gap-2">
-              Digital Twin 2D - Open Space OCP Safi
+              Digital Twin 2D - Open Space
             </h2>
             <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
               Module 1 Sync
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Supervision temps réel des 7 clusters & réservation dynamique de postes. Site OCP SA Safi.
+            Supervision temps réel des 7 clusters & réservation dynamique de postes. Site Safi.
           </p>
         </div>
 
@@ -398,7 +440,7 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
       {loading ? (
         <div className="py-20 flex flex-col items-center justify-center space-y-3">
           <RefreshCw className="w-8 h-8 text-emerald-600 animate-spin" />
-          <p className="text-sm text-slate-500 font-medium">Chargement du Digital Twin OCP Safi...</p>
+          <p className="text-sm text-slate-500 font-medium">Chargement du Digital Twin...</p>
         </div>
       ) : (
         <BuildingFloorPlan
@@ -452,6 +494,7 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
 
           <div className="flex items-center space-x-3 w-full md:w-auto justify-end">
             {onSelectSeat && !readOnly && (
+              adminEditMode ||
               activeHoverSeat.workstation.status === 'disponible' ||
               (activeHoverSeat.workstation.status === 'management_reserved' &&
                 (canAccessManagementClusters || activeHoverSeat.cluster.vipMemberIds?.includes(currentUser.id)))
@@ -464,12 +507,85 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
                 <span>Sélectionner ce poste</span>
               </button>
             )}
+            {!readOnly &&
+              !adminEditMode &&
+              activeHoverSeat.workstation.status === 'management_reserved' &&
+              !canAccessManagementClusters &&
+              !activeHoverSeat.cluster.vipMemberIds?.includes(currentUser.id) && (
+                <button
+                  onClick={() => openAccessRequest(activeHoverSeat.cluster)}
+                  className="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 shadow-md"
+                >
+                  <KeyRound className="w-4 h-4" />
+                  <span>Demander l'accès</span>
+                </button>
+              )}
             <button
               onClick={() => setActiveHoverSeat(null)}
               className="text-xs text-slate-400 hover:text-white px-2 py-1 font-semibold"
             >
               Fermer
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Cluster Access Request Modal — BR-09 / SRS §14.4 */}
+      {accessRequestCluster && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2 font-bold text-slate-900 text-sm">
+                <KeyRound className="w-4 h-4 text-purple-600" />
+                <span>Demander l'accès — {accessRequestCluster.name}</span>
+              </div>
+              <button
+                onClick={() => setAccessRequestCluster(null)}
+                className="p-1 rounded hover:bg-slate-100 text-slate-400"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {accessRequestSent ? (
+              <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs">
+                Demande envoyée. Le Building Manager / GCI Manager en sera notifié et vous recevrez une notification une fois la décision prise.
+              </div>
+            ) : (
+              <>
+                <p className="text-xs text-slate-500">
+                  Ce cluster est réservé management. Expliquez pourquoi vous avez besoin d'y accéder — la demande sera transmise au Building Manager et au GCI Manager pour décision.
+                </p>
+                <textarea
+                  rows={3}
+                  value={accessRequestReason}
+                  onChange={(e) => setAccessRequestReason(e.target.value)}
+                  placeholder="Ex : Réunion client confidentielle nécessitant le cluster G"
+                  className="w-full p-3 text-xs rounded-xl border border-slate-300 bg-slate-50 focus:ring-2 focus:ring-purple-400 outline-none"
+                />
+                {accessRequestError && (
+                  <p className="text-xs text-red-600 font-semibold">{accessRequestError}</p>
+                )}
+              </>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                onClick={() => setAccessRequestCluster(null)}
+                className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl"
+              >
+                {accessRequestSent ? 'Fermer' : 'Annuler'}
+              </button>
+              {!accessRequestSent && (
+                <button
+                  onClick={submitAccessRequest}
+                  disabled={accessRequestSubmitting}
+                  className="px-5 py-2 text-xs font-bold text-white rounded-xl shadow-md bg-purple-600 hover:bg-purple-500 disabled:opacity-60 disabled:cursor-wait"
+                >
+                  {accessRequestSubmitting ? 'Envoi...' : 'Envoyer la demande'}
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}

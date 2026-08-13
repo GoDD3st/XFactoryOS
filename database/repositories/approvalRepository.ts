@@ -60,7 +60,7 @@ export class ApprovalRepository {
             reservation_id: a.reservation_id || '',
             requester_id: a.requested_by,
             requester_name: a.requester?.full_name || 'Collaborateur Safi',
-            user_department: a.requester?.department || 'OCP Safi Team',
+            user_department: a.requester?.department || 'Digital Factory',
             // Rows written before the approver_role column existed have no stored value —
             // 'director' matches their original (client-only, never persisted) default.
             approver_role: a.approver_role || 'director',

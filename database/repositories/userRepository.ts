@@ -24,9 +24,16 @@ export class UserRepository {
       const db = getAdminClient() || supabase;
       // `role` is NOT a column on public.users — roles live in user_roles -> roles.
       // Embed the join so each user's real assigned role code comes back with the row.
+      //
+      // user_roles has TWO foreign keys to users (user_id AND granted_by), so the embed is
+      // ambiguous without `!user_roles_user_id_fkey` — PostgREST can't guess which relationship
+      // to use and errors out. That error silently triggered the `error || !data` fallback below
+      // on every single call, meaning this endpoint has always returned 5 hardcoded demo users
+      // instead of the real table — confirmed live: Supabase has 12 real users, the site showed
+      // the same 5 fake names verbatim regardless of who was actually in the database.
       const { data, error } = await db
         .from('users')
-        .select('*, user_roles(roles(code))')
+        .select('*, user_roles!user_roles_user_id_fkey(roles(code))')
         .order('created_at', { ascending: false });
 
       if (error || !data || data.length === 0) {
