@@ -45,6 +45,21 @@ export class WorkstationRepository {
   }
 
   /**
+   * Resolve a workstation's code from its UUID — used by the receptionist's seat-badge
+   * scan-assist flow, which needs to know which seat a scanned QR decoded to before it
+   * can filter today's reservations down to that seat.
+   */
+  static async getWorkstationCode(id: string, dbClient: SupabaseClient = supabase): Promise<string | null> {
+    try {
+      const { data } = await dbClient.from('workstations').select('code').eq('id', id).maybeSingle();
+      return data?.code || null;
+    } catch (err) {
+      console.warn('getWorkstationCode fallback:', err);
+      return null;
+    }
+  }
+
+  /**
    * Fetch all active clusters from Supabase
    */
   static async getClusters(dbClient: SupabaseClient = supabase): Promise<Cluster[]> {
@@ -155,6 +170,80 @@ export class WorkstationRepository {
    * silently reporting success — when neither match updates a row, so callers can surface
    * a real failure rather than assuming the write landed.
    */
+  /**
+   * SRS §13 "Gérer postes" = CRUD for Administrator/Super Admin. Creating a workstation had no
+   * implementation anywhere before this — the only insert path was addExtensionSeat, which is
+   * scoped to extension seats and capped at 8/cluster.
+   *
+   * `code` is auto-derived from the cluster code + next free seat number when not supplied.
+   */
+  static async createWorkstation(
+    clusterId: string,
+    options: { code?: string; seatNumber?: number; reservable?: boolean; metadata?: Record<string, unknown> } = {},
+    dbClient?: SupabaseClient
+  ): Promise<Workstation> {
+    const db = await resolveClient(dbClient);
+
+    const { data: cluster, error: clusterErr } = await db
+      .from('clusters')
+      .select('code, management_reserved')
+      .eq('id', clusterId)
+      .maybeSingle();
+    if (clusterErr || !cluster) throw new Error('Cluster introuvable.');
+
+    const { data: existing, error: existingErr } = await db
+      .from('workstations')
+      .select('code, metadata')
+      .eq('cluster_id', clusterId);
+    if (existingErr) throw new Error(`Échec de lecture des postes existants : ${existingErr.message}`);
+
+    const seatNumbers = (existing || []).map((w: any) => w.metadata?.seat_number || 0);
+    const nextSeat = options.seatNumber ?? (seatNumbers.length > 0 ? Math.max(...seatNumbers) : 0) + 1;
+    if (nextSeat > 8) throw new Error('Ce cluster a déjà atteint la limite maximale de 8 postes.');
+
+    const code = options.code?.trim() || `${cluster.code}-W${nextSeat}`;
+    if ((existing || []).some((w: any) => w.code === code)) {
+      throw new Error(`Le code de poste ${code} existe déjà dans ce cluster.`);
+    }
+
+    const reservable = options.reservable ?? !cluster.management_reserved;
+
+    const { data: created, error: insertErr } = await db
+      .from('workstations')
+      .insert({
+        cluster_id: clusterId,
+        code,
+        status: 'AVAILABLE',
+        reservable,
+        metadata: { seat_number: nextSeat, ...(options.metadata || {}) },
+      })
+      .select('*')
+      .single();
+
+    if (insertErr || !created) throw new Error(`Échec de la création du poste : ${insertErr?.message}`);
+
+    return {
+      id: created.id,
+      cluster_id: created.cluster_id,
+      code: created.code,
+      status: this.mapDbStatusToDomain(created.status, created.reservable),
+      reservable: created.reservable,
+      metadata: created.metadata,
+    } as Workstation;
+  }
+
+  /**
+   * Soft delete: the seat drops out of booking flows and the Digital Twin but its reservation
+   * and audit history stay intact and readable. Pass `disabled: false` to restore it.
+   */
+  static async setWorkstationDisabled(id: string, disabled: boolean, dbClient?: SupabaseClient): Promise<boolean> {
+    return this.updateWorkstation(
+      id,
+      { status: disabled ? 'disabled' : 'disponible', reservable: !disabled },
+      dbClient
+    );
+  }
+
   static async updateWorkstationStatus(id: string, status: string, reservable: boolean, dbClient?: SupabaseClient): Promise<boolean> {
     try {
       const db = await resolveClient(dbClient);
