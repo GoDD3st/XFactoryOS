@@ -95,6 +95,27 @@ export class NotificationRepository {
     }
   }
 
+  /**
+   * Dedupe check for tickers that re-scan the same candidates on every tick (e.g. the
+   * check-in reminder ticker, which re-evaluates "starts within 15 min" every 60s) — lets
+   * the caller send a given (reservation, title) notification at most once.
+   */
+  static async hasNotificationForReservation(reservationId: string, title: string): Promise<boolean> {
+    try {
+      const db = await resolveClient();
+      const { data } = await db
+        .from('notifications')
+        .select('id')
+        .eq('reservation_id', reservationId)
+        .eq('title', title)
+        .limit(1)
+        .maybeSingle();
+      return !!data;
+    } catch {
+      return false;
+    }
+  }
+
   static async markAsRead(id: string): Promise<boolean> {
     try {
       const db = await resolveClient();

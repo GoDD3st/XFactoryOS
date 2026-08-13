@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Clock, ArrowLeft } from 'lucide-react';
 
 /**
- * Schematic room map derived from the real OCP Safi Module 1 floor plan blueprint.
+ * Schematic room map derived from the real Site Safi Module 1 floor plan blueprint.
  * Coordinates are percentages of the building canvas (left, top, width, height), traced by eye
  * from the blueprint — not architectural precision, but real room names/relative positions/
  * proportions instead of an invented layout.
@@ -170,7 +170,7 @@ export const BuildingFloorPlan: React.FC<BuildingFloorPlanProps> = ({ renderOpen
         <>
           <p className="text-[11px] text-slate-500 flex items-center gap-1.5">
             <Clock className="w-3.5 h-3.5 text-emerald-600" />
-            Plan réel du site OCP Safi — cliquez sur l'<strong className="text-emerald-700">Open Space (Module 1)</strong> pour voir les postes. Les autres salles seront activées aux modules suivants.
+            Plan réel du site Safi — cliquez sur l'<strong className="text-emerald-700">Open Space (Module 1)</strong> pour voir les postes. Les autres salles seront activées aux modules suivants.
           </p>
 
           <div

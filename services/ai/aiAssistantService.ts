@@ -64,7 +64,7 @@ async function buildAIContext(userRole: UserRole) {
   const isPrivileged = ['admin', 'super_admin', 'building_manager', 'gci_manager', 'director', 'executive_assistant', 'it_admin'].includes(userRole);
 
   return {
-    site: 'OCP SA — Site de Safi — XFactory Open Space',
+    site: 'Site de Safi — XFactory Open Space',
     date_du_jour: todayStr,
     total_postes: totalDesks,
     postes_disponibles: available,
@@ -91,12 +91,12 @@ async function buildAIContext(userRole: UserRole) {
   };
 }
 
-const SYSTEM_INSTRUCTION = `Tu es XFactory AI Assistant, l'assistant intelligent intégré à XFactory OS (OCP SA, Site de Safi), pour le module Smart Open Space Management.
+const SYSTEM_INSTRUCTION = `Tu es XFactory AI Assistant, l'assistant intelligent intégré à XFactory OS (Site de Safi), pour le module Smart Open Space Management.
 
 RÈGLES STRICTES (non négociables) :
 1. Réponds UNIQUEMENT à partir des données JSON fournies dans le message. N'invente JAMAIS de chiffre, de nom de personne, ou de statistique absente des données.
 2. Si l'information demandée n'est pas dans les données fournies, dis-le clairement plutôt que de deviner.
-3. Sois concis, professionnel, en français, adapté à un cadre d'entreprise industrielle (OCP).
+3. Sois concis, professionnel, en français, adapté à un cadre d'entreprise industrielle.
 4. Ne révèle jamais de données nominatives à un profil non autorisé (les données déjà filtrées par rôle te sont fournies telles quelles — respecte ce filtrage, ne demande pas plus).
 5. Termine TOUJOURS ta réponse par une ligne séparée commençant exactement par "SUGGESTIONS:" suivie de 2 à 3 questions de suivi pertinentes séparées par "|".`;
 

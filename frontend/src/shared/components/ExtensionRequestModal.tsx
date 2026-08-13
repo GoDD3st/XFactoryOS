@@ -137,7 +137,7 @@ export const ExtensionRequestModal: React.FC<ExtensionRequestModalProps> = ({
           {/* Project / Mission Name */}
           <div className="space-y-1">
             <label className="text-xs font-bold text-slate-700 block">
-              Intitulé du Projet / Mission OCP Safi
+              Intitulé du Projet / Mission
             </label>
             <input
               type="text"

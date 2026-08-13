@@ -265,3 +265,52 @@ export interface ApprovalRequest {
   cluster_name?: string;
 }
 
+// BR-09 / SRS §14.4: request/approve/refuse access to a locked management cluster.
+export interface ClusterAuthorization {
+  id: string;
+  cluster_id: string;
+  cluster_code?: string;
+  cluster_name?: string;
+  requested_by: string;
+  requester_name?: string;
+  requester_department?: string;
+  reason: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'INFO_REQUESTED';
+  starts_at?: string | null;
+  ends_at?: string | null;
+  decided_by?: string | null;
+  decided_at?: string | null;
+  decision_note?: string | null;
+  created_at: string;
+}
+
+// SRS §13 "Gérer rôles" — documented RBAC policy record (roles/permissions/role_permissions).
+export interface RoleWithCount {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  is_critical: boolean;
+  user_count: number;
+  created_at: string;
+}
+
+export interface PermissionCell {
+  permission_id: string;
+  permission_code: string;
+  domain: string;
+  description: string | null;
+  can_read: boolean;
+  can_create: boolean;
+  can_update: boolean;
+  can_delete: boolean;
+  can_approve: boolean;
+}
+
+export interface RolePermissionRow {
+  role_id: string;
+  role_code: string;
+  role_name: string;
+  permissions: PermissionCell[];
+}
+

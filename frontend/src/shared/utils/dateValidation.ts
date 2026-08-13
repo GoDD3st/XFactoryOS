@@ -1,5 +1,5 @@
 /**
- * Date & 24h Time Validation Utility for OCP SA Safi XFactory OS
+ * Date & 24h Time Validation Utility for XFactory OS — Site Safi
  */
 
 import { ClosedDateEntry, HolidayEntry, SystemSettings, UserRole } from '@/frontend/src/types';
@@ -238,7 +238,7 @@ export function validateReservationConstraints(
         requiresExtensionApproval: false,
         businessDays: 0,
         durationMinutes: 0,
-        errorMessage: `La date sélectionnée est un jour férié OCP Safi (${getHolidayName(startDateStr, settings.holidays)}). Réservation impossible.`
+        errorMessage: `La date sélectionnée est un jour férié (${getHolidayName(startDateStr, settings.holidays)}). Réservation impossible.`
       };
     }
     if (endDateStr) {
@@ -257,7 +257,7 @@ export function validateReservationConstraints(
           requiresExtensionApproval: false,
           businessDays: 0,
           durationMinutes: 0,
-          errorMessage: `La date de fin tombe sur un jour férié OCP Safi (${getHolidayName(endDateStr, settings.holidays)}).`
+          errorMessage: `La date de fin tombe sur un jour férié (${getHolidayName(endDateStr, settings.holidays)}).`
         };
       }
     }

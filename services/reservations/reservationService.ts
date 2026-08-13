@@ -169,7 +169,7 @@ export class ReservationService {
       }
       if (!settings.allowHolidayBooking && isPublicHoliday(payload.reservation_date, settings.holidays)) {
         throw new Error(
-          `La date sélectionnée est un jour férié OCP Safi (${getHolidayName(payload.reservation_date, settings.holidays)}). Réservation impossible.`
+          `La date sélectionnée est un jour férié (${getHolidayName(payload.reservation_date, settings.holidays)}). Réservation impossible.`
         );
       }
     }
