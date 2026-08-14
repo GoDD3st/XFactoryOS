@@ -13,6 +13,7 @@ import { ReceptionView } from '../../modules/dashboard/views/ReceptionView';
 import { BuildingView } from '../../modules/dashboard/views/BuildingView';
 import { GCIView } from '../../modules/dashboard/views/GCIView';
 import { ClusterAuthorizationsView } from '../../modules/dashboard/views/ClusterAuthorizationsView';
+import { LateCheckInRequestsView } from '../../modules/dashboard/views/LateCheckInRequestsView';
 import { ApprovalsView } from '../../modules/dashboard/views/ApprovalsView';
 import { DirectionView } from '../../modules/dashboard/views/DirectionView';
 import { AdminView } from '../../modules/dashboard/views/AdminView';
@@ -60,7 +61,7 @@ import {
 } from 'lucide-react';
 
 // RBAC Tab definitions per role (SRS Section 13 Matrix)
-type TabKey = 'home' | 'digital-twin' | 'reservations' | 'calendar' | 'waiting-list' | 'dashboard-exec' | 'workstations' | 'clusters' | 'users' | 'roles' | 'settings' | 'audit' | 'approvals' | 'cluster-auth';
+type TabKey = 'home' | 'digital-twin' | 'reservations' | 'calendar' | 'waiting-list' | 'dashboard-exec' | 'workstations' | 'clusters' | 'users' | 'roles' | 'settings' | 'audit' | 'approvals' | 'cluster-auth' | 'late-checkin';
 
 interface TabDef {
   key: TabKey;
@@ -95,6 +96,7 @@ const ROLE_TABS: Record<UserRole, TabDef[]> = {
     { key: 'cluster-auth', label: 'Autorisations', icon: <KeyRound className="w-3.5 h-3.5" /> },
     { key: 'workstations', label: 'Postes', icon: <Wrench className="w-3.5 h-3.5" /> },
     { key: 'clusters', label: 'Clusters', icon: <Layers className="w-3.5 h-3.5" /> },
+    { key: 'late-checkin', label: 'Check-in tardif', icon: <Clock className="w-3.5 h-3.5" /> },
     { key: 'users', label: 'Utilisateurs', icon: <Users className="w-3.5 h-3.5" /> },
     { key: 'audit', label: 'Audit', icon: <FileText className="w-3.5 h-3.5" /> },
   ],
@@ -146,6 +148,7 @@ const ROLE_TABS: Record<UserRole, TabDef[]> = {
     { key: 'clusters', label: 'Clusters', icon: <Layers className="w-3.5 h-3.5" /> },
     { key: 'users', label: 'Utilisateurs', icon: <Users className="w-3.5 h-3.5" /> },
     { key: 'reservations', label: 'Réservations', icon: <Calendar className="w-3.5 h-3.5" /> },
+    { key: 'late-checkin', label: 'Check-in tardif', icon: <Clock className="w-3.5 h-3.5" /> },
     { key: 'calendar', label: 'Calendrier', icon: <Clock className="w-3.5 h-3.5" /> },
     { key: 'roles', label: 'Rôles', icon: <Lock className="w-3.5 h-3.5" /> },
     { key: 'settings', label: 'Paramètres', icon: <Settings className="w-3.5 h-3.5" /> },
@@ -155,6 +158,7 @@ const ROLE_TABS: Record<UserRole, TabDef[]> = {
     { key: 'home', label: 'Console', icon: <ShieldCheck className="w-3.5 h-3.5" /> },
     { key: 'dashboard-exec', label: 'Dashboard', icon: <BarChart3 className="w-3.5 h-3.5" /> },
     { key: 'reservations', label: 'Réservations', icon: <Calendar className="w-3.5 h-3.5" /> },
+    { key: 'late-checkin', label: 'Check-in tardif', icon: <Clock className="w-3.5 h-3.5" /> },
     { key: 'workstations', label: 'Postes', icon: <Wrench className="w-3.5 h-3.5" /> },
     { key: 'clusters', label: 'Clusters', icon: <Layers className="w-3.5 h-3.5" /> },
     { key: 'users', label: 'Utilisateurs', icon: <Users className="w-3.5 h-3.5" /> },
@@ -288,6 +292,8 @@ export const RoleShell: React.FC = () => {
         return <ApprovalsView />;
       case 'cluster-auth':
         return <ClusterAuthorizationsView />;
+      case 'late-checkin':
+        return <LateCheckInRequestsView />;
       default:
         return renderHomeView();
     }

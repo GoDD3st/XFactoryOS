@@ -305,6 +305,32 @@ export const CheckInOnBehalfSchema = z
   .object({ reservationId: z.string().uuid({ message: 'Identifiant de réservation invalide' }) })
   .strict();
 
+// 18y. Late check-in request / decision.
+// The justification is free text by design -- no predefined reason list -- but must be
+// substantive enough to be worth auditing, hence the minimum length.
+export const LateCheckInRequestSchema = z
+  .object({
+    reservationId: z.string().uuid({ message: 'Identifiant de réservation invalide' }),
+    justification: sanitizedString({
+      min: 10,
+      max: 1000,
+      minMessage: 'Merci de détailler votre justification (10 caractères minimum)',
+      maxMessage: 'Justification trop longue (max 1000 caractères)',
+    }),
+  })
+  .strict();
+
+export const LateCheckInDecisionSchema = z
+  .object({
+    decision: z.enum(['APPROVED', 'REJECTED'], { message: 'Décision invalide' }),
+    reviewerComment: sanitizedOptionalString(500, 'Commentaire trop long (max 500 caractères)'),
+  })
+  .strict()
+  .refine((d) => d.decision !== 'REJECTED' || !!d.reviewerComment?.trim(), {
+    message: 'Un motif est obligatoire en cas de refus — il est transmis au demandeur.',
+    path: ['reviewerComment'],
+  });
+
 // 18a. Bulk user import (SRS §28.10 / FR-11 — "import massif d'utilisateurs", Admin/Super Admin).
 // `dryRun` runs validation only and persists nothing, backing the preview step.
 const IMPORT_ROLES = [

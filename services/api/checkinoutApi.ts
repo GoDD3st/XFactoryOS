@@ -14,6 +14,75 @@ async function authHeaders(extra?: Record<string, string>): Promise<Record<strin
   return headers;
 }
 
+// ── Late check-in request workflow ───────────────────────────────────────────────────────────
+export type LateCheckInStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
+export interface LateCheckInRequest {
+  id: string;
+  reservation_id: string;
+  user_id: string;
+  justification: string;
+  status: LateCheckInStatus;
+  reviewed_by?: string | null;
+  reviewed_at?: string | null;
+  reviewer_comment?: string | null;
+  created_at: string;
+  updated_at: string;
+  requester_name?: string;
+  requester_email?: string;
+  requester_department?: string;
+  reviewer_name?: string;
+  workstation_code?: string;
+  cluster_name?: string;
+  reservation_start?: string;
+  reservation_end?: string;
+  reservation_status?: string;
+}
+
+/** Open a late check-in request for one of your own reservations. */
+export async function apiRequestLateCheckIn(
+  reservationId: string,
+  justification: string
+): Promise<LateCheckInRequest> {
+  const response = await fetch('/api/checkinout/late-check-in', {
+    method: 'POST',
+    headers: await authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ reservationId, justification }),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.message || 'Échec de la demande de check-in tardif.');
+  return result.data;
+}
+
+/** The caller's own requests, so they can follow the status. */
+export async function apiFetchMyLateCheckIns(): Promise<LateCheckInRequest[]> {
+  const response = await fetch('/api/checkinout/late-check-in/mine', { headers: await authHeaders() });
+  if (!response.ok) return [];
+  return (await response.json()).data || [];
+}
+
+/** Full queue + history. Reviewer roles only — the server returns 403 otherwise. */
+export async function apiFetchLateCheckInRequests(): Promise<LateCheckInRequest[]> {
+  const response = await fetch('/api/checkinout/late-check-in', { headers: await authHeaders() });
+  if (!response.ok) return [];
+  return (await response.json()).data || [];
+}
+
+export async function apiDecideLateCheckIn(
+  id: string,
+  decision: 'APPROVED' | 'REJECTED',
+  reviewerComment?: string
+): Promise<LateCheckInRequest> {
+  const response = await fetch(`/api/checkinout/late-check-in/${id}/decision`, {
+    method: 'PATCH',
+    headers: await authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ decision, reviewerComment }),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.message || 'Échec de la décision.');
+  return result.data;
+}
+
 /**
  * Self-service check-in / check-out. The server forces the user id from the session, so these
  * can only ever act on the caller's own reservation — which is exactly the collaborator flow.

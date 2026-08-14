@@ -6,7 +6,15 @@ import { ReservationRepository } from '@/database/repositories/reservationReposi
 import { WorkstationRepository } from '@/database/repositories/workstationRepository';
 import { validateBody } from '../middleware/validateBody';
 import { requireRole } from '../middleware/rbacMiddleware';
-import { CheckInOutSchema, ScanSeatSchema, DecodeSeatSchema, CheckInOnBehalfSchema } from '../validators';
+import {
+  CheckInOutSchema,
+  ScanSeatSchema,
+  DecodeSeatSchema,
+  CheckInOnBehalfSchema,
+  LateCheckInRequestSchema,
+  LateCheckInDecisionSchema,
+} from '../validators';
+import { LateCheckInService, LATE_CHECKIN_REVIEWER_ROLES } from '@/services/checkinout/lateCheckInService';
 import { UserRole } from '@/frontend/src/types';
 
 export const checkInOutRouter = Router();
@@ -57,6 +65,69 @@ checkInOutRouter.post(
       }
 
       res.json({ status: 'success', data: result });
+    } catch (error: any) {
+      res.status(400).json({ status: 'error', message: error.message });
+    }
+  }
+);
+
+// ── Late check-in request workflow ───────────────────────────────────────────────────────────
+// Authorization is enforced here AND by RLS on late_check_in_requests. The UI hiding a button is
+// not authorization; both layers restrict deciding to Building Manager / Admin / Super Admin.
+
+// POST /api/checkinout/late-check-in — a reservation holder asks for a late check-in.
+// The requester is taken from the session, never from the body, so one user cannot open a
+// request in another's name.
+checkInOutRouter.post('/late-check-in', validateBody(LateCheckInRequestSchema), async (req, res) => {
+  try {
+    const created = await LateCheckInService.request(
+      req.body.reservationId,
+      req.user!.id,
+      req.body.justification
+    );
+    res.status(201).json({ status: 'success', data: created });
+  } catch (error: any) {
+    res.status(400).json({ status: 'error', message: error.message });
+  }
+});
+
+// GET /api/checkinout/late-check-in/mine — the caller's own requests and their status.
+checkInOutRouter.get('/late-check-in/mine', async (req, res) => {
+  try {
+    res.json({ status: 'success', data: await LateCheckInService.listForUser(req.user!.id) });
+  } catch (error: any) {
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
+// GET /api/checkinout/late-check-in — full queue + history, reviewers only.
+checkInOutRouter.get(
+  '/late-check-in',
+  requireRole(...LATE_CHECKIN_REVIEWER_ROLES),
+  async (req, res) => {
+    try {
+      res.json({ status: 'success', data: await LateCheckInService.list() });
+    } catch (error: any) {
+      res.status(500).json({ status: 'error', message: error.message });
+    }
+  }
+);
+
+// PATCH /api/checkinout/late-check-in/:id/decision — approve or reject.
+// Approval routes through the existing check-in path and is recorded with origin=LATE_CHECK_IN.
+checkInOutRouter.patch(
+  '/late-check-in/:id/decision',
+  requireRole(...LATE_CHECKIN_REVIEWER_ROLES),
+  validateBody(LateCheckInDecisionSchema),
+  async (req, res) => {
+    try {
+      const decided = await LateCheckInService.decide(
+        req.params.id,
+        req.body.decision,
+        { id: req.user!.id, name: req.user!.full_name, role: req.user!.role },
+        req.body.reviewerComment
+      );
+      res.json({ status: 'success', data: decided });
     } catch (error: any) {
       res.status(400).json({ status: 'error', message: error.message });
     }

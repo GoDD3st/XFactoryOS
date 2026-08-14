@@ -22,64 +22,70 @@ interface ZoneDef {
   height: number;
   kind: 'utility' | 'meeting' | 'relax' | 'circulation' | 'openspace';
   interactive: boolean;
+  /** Rotates the label 90° — for tall narrow zones (corridors, right-hand column). */
+  vertical?: boolean;
 }
 
+/**
+ * Layout redrawn from the reference blueprint. The structural changes versus the previous
+ * version, all of which came from that plan:
+ *
+ *  - the circulation spine is now TWO vertical corridors, one immediately right of the
+ *    left-hand service column and one on the right-hand edge, instead of a single mid-plan
+ *    spur; the horizontal corridor under the meeting rooms is kept and now runs between them;
+ *  - Accueil / Espace de repos becomes a wide block occupying the bottom-left, to the left of
+ *    the Open Space, rather than a narrow strip;
+ *  - the bottom-left "Cour" is replaced by Sanitaire 3H + 3F + PMR;
+ *  - Kitchenette and Zone Fumeurs sit stacked on the right edge with vertical labels.
+ *
+ * Every pre-existing space is preserved; only positions changed.
+ */
 const ZONES: ZoneDef[] = [
-  // Top-left utility strip (colonne gauche, largeur mesurée sur le plan: 8.3%)
+  // ── Left service column ────────────────────────────────────────────────────────────────────
   { id: 'vestiaires-1', label: 'Vestiaires', left: 0, top: 0, width: 8.3, height: 13.5, kind: 'utility', interactive: false },
   { id: 'vestiaires-2', label: 'Vestiaires', left: 0, top: 13.5, width: 8.3, height: 13.5, kind: 'utility', interactive: false },
   { id: 'kitchenette-1', label: 'Kitchenette', left: 0, top: 27, width: 8.3, height: 13.5, kind: 'utility', interactive: false },
   { id: 'salle-priere', label: 'Salle de prière', left: 0, top: 40.5, width: 8.3, height: 21, kind: 'relax', interactive: false },
+  // Bottom-left is now sanitaires (was "Cour" — absent from the reference plan).
+  { id: 'sanitaire-pmr', label: 'Sanitaire 3H + 3F + PMR', left: 0, top: 61.5, width: 8.3, height: 38.5, kind: 'utility', interactive: false },
 
-  // Top strip — petites salles utilitaires (SAS, Ménages, Stockage, L.T., Régie)
-  // hauteur réelle mesurée: 15.5% (et non 27) — cette bande est plus courte que la
-  // salle de conférences qui se trouve juste en dessous.
-  { id: 'sas', label: 'SAS', left: 8.3, top: 0, width: 5.84, height: 15.5, kind: 'circulation', interactive: false },
-  { id: 'menages', label: 'Ménages', left: 14.14, top: 0, width: 4.32, height: 15.5, kind: 'utility', interactive: false },
-  { id: 'stockage-1', label: 'Stockage', left: 18.46, top: 0, width: 5.42, height: 15.5, kind: 'utility', interactive: false },
-  { id: 'lt-1', label: 'L.T.', left: 23.88, top: 0, width: 6.07, height: 15.5, kind: 'utility', interactive: false },
-  { id: 'regie-traduction', label: 'Régie Traduction', left: 29.95, top: 0, width: 7.24, height: 15.5, kind: 'utility', interactive: false },
+  // ── Vertical corridor, left ────────────────────────────────────────────────────────────────
+  { id: 'couloir-vertical-gauche', label: 'Couloir', left: 8.3, top: 0, width: 3.2, height: 61.5, kind: 'circulation', interactive: false, vertical: true },
 
-  // Grande salle de conférences ovale, sous la bande utilitaire — descend plus bas
-  // qu'elle (jusqu'à 56.25%, contre 15.5% pour SAS/Ménages/Stockage/L.T./Régie)
-  { id: 'salle-conferences', label: 'Salle de réunion/conférences (52 pers.)', left: 8.3, top: 15.5, width: 28.89, height: 40.75, kind: 'meeting', interactive: true },
+  // ── Top utility strip ──────────────────────────────────────────────────────────────────────
+  { id: 'sas', label: 'SAS', left: 11.5, top: 0, width: 3.0, height: 15.5, kind: 'circulation', interactive: false },
+  { id: 'menages', label: 'Ménages', left: 14.5, top: 0, width: 4.32, height: 15.5, kind: 'utility', interactive: false },
+  { id: 'stockage-1', label: 'Stockage', left: 18.82, top: 0, width: 5.42, height: 15.5, kind: 'utility', interactive: false },
+  { id: 'lt-1', label: 'L.T.', left: 24.24, top: 0, width: 6.07, height: 15.5, kind: 'utility', interactive: false },
+  { id: 'regie-traduction', label: 'Régie Traduction', left: 30.31, top: 0, width: 7.24, height: 15.5, kind: 'utility', interactive: false },
 
-  // Meeting/focus room cluster (centre) — largeurs corrigées: chaque salle fait ~7.9%,
-  // pas 10.5%. Toutes alignées sur top:0, hauteur 37.5 (confirmé par la mesure réelle).
-  { id: 'stand-up-meeting', label: 'Stand up meeting', left: 39.88, top: 0, width: 7.88, height: 37.5, kind: 'meeting', interactive: true },
-  { id: 'total-focus', label: 'Total focus', left: 47.76, top: 0, width: 7.64, height: 37.5, kind: 'meeting', interactive: true },
-  { id: 'brainstorming', label: 'Brainstorming space', left: 55.4, top: 0, width: 7.9, height: 37.5, kind: 'meeting', interactive: true },
+  // Conference room, under the utility strip.
+  { id: 'salle-conferences', label: 'Salle de réunion/conférences (52 pers.)', left: 11.5, top: 15.5, width: 26.05, height: 40.75, kind: 'meeting', interactive: true },
 
-  // Bloc escalier "Vers S/sol" + L.T. + sanitaires, entre Brainstorming et Salle 01
-  { id: 'lt-2', label: 'L.T. (Vers S/sol)', left: 63.3, top: 0, width: 8.08, height: 37.5, kind: 'utility', interactive: false },
+  // ── Meeting / lab row ──────────────────────────────────────────────────────────────────────
+  { id: 'stand-up-meeting', label: 'Safi Hub', left: 39.88, top: 0, width: 7.88, height: 37.5, kind: 'meeting', interactive: true },
+  { id: 'total-focus', label: 'Phos Lab', left: 47.76, top: 0, width: 7.64, height: 37.5, kind: 'meeting', interactive: true },
+  { id: 'brainstorming', label: 'Seed Room', left: 55.4, top: 0, width: 7.9, height: 37.5, kind: 'meeting', interactive: true },
+  { id: 'lt-2', label: 'Sanitaire 2H + 2F', left: 63.3, top: 0, width: 8.08, height: 37.5, kind: 'utility', interactive: false },
+  { id: 'salle-reunion-01', label: 'Growth LAB', left: 71.38, top: 0, width: 15.28, height: 37.5, kind: 'meeting', interactive: true },
+  { id: 'salle-reunion-02', label: 'XMind Factory', left: 86.66, top: 0, width: 8.14, height: 37.5, kind: 'meeting', interactive: true },
 
-  // Salles de réunion 01/02 — sur le plan réel, "Salle de réunion 01" (Growth LAB) fait
-  // quasiment le double de large de Salle 02 (elle inclut l'Alcove + tables rondes),
-  // ce n'était pas du tout reflété dans le code précédent.
-  { id: 'salle-reunion-01', label: 'Salle de réunion -"Growth LAB"', left: 71.38, top: 0, width: 15.28, height: 37.5, kind: 'meeting', interactive: true },
-  { id: 'salle-reunion-02', label: 'Salle de réunion 02', left: 86.66, top: 0, width: 8.14, height: 37.5, kind: 'meeting', interactive: true },
-
-  // Colonne droite empilée: Stockage / Kitchenette / Zone fumeur / Cour
-  // (positions et hauteurs mesurées directement sur le plan)
-  { id: 'stockage-2', label: 'Stockage', left: 94.8, top: 0, width: 5.2, height: 17.9, kind: 'utility', interactive: false },
-  { id: 'kitchenette-2', label: 'Kitchenette', left: 94.8, top: 17.9, width: 5.2, height: 20.3, kind: 'utility', interactive: false },
-  { id: 'zone-fumeur', label: 'Zone fumeur', left: 94.8, top: 38.2, width: 5.2, height: 20.5, kind: 'relax', interactive: false },
-  { id: 'cour-droite', label: 'Cour', left: 94.8, top: 58.7, width: 5.2, height: 41.3, kind: 'circulation', interactive: false },
-
-  // Corridor spine — spur vertical (près de Régie Traduction, ~2.7% de large) +
-  // couloir horizontal (bande "Détente" sous toute la rangée de salles de réunion,
-  // du début de Stand up meeting jusqu'au début de la colonne Stockage/Kitchenette)
-  { id: 'couloir-vertical', label: '', left: 37.19, top: 0, width: 2.69, height: 58.95, kind: 'circulation', interactive: false },
+  // Horizontal corridor under the meeting row, between the two vertical corridors.
   { id: 'couloir-horizontal', label: 'Couloir', left: 39.88, top: 37.5, width: 54.92, height: 21.45, kind: 'circulation', interactive: false },
 
-  // Bottom-left: cour, sanitaires, hall
-  { id: 'cour-gauche', label: 'Cour', left: 0, top: 61.5, width: 8.3, height: 38.5, kind: 'circulation', interactive: false },
-  { id: 'hall', label: 'Hall / Espace de repos', left: 8.3, top: 61.5, width: 12.2, height: 38.5, kind: 'relax', interactive: true },
+  // ── Right-hand column ──────────────────────────────────────────────────────────────────────
+  { id: 'stockage-2', label: 'Stockage', left: 94.8, top: 0, width: 5.2, height: 13.5, kind: 'utility', interactive: false },
+  { id: 'kitchenette-2', label: 'Kitchenette', left: 94.8, top: 13.5, width: 5.2, height: 48, kind: 'utility', interactive: false, vertical: true },
+  { id: 'zone-fumeur', label: 'Zone Fumeurs', left: 94.8, top: 61.5, width: 5.2, height: 38.5, kind: 'relax', interactive: false, vertical: true },
+
+  // ── Bottom band ────────────────────────────────────────────────────────────────────────────
+  // Accueil / Espace de repos, wide, immediately left of the Open Space.
+  { id: 'hall', label: 'Espace de repos / Accueil', left: 8.3, top: 61.5, width: 31.58, height: 38.5, kind: 'relax', interactive: true },
 ];
 
 // Open Space fusionné en une seule zone unique (au lieu de Ouest/Est séparés)
 const OPEN_SPACE_ZONES: ZoneDef[] = [
-  { id: 'open-space', label: 'Open Space', left: 21, top: 61.5, width: 71.5, height: 38.5, kind: 'openspace', interactive: true },
+  { id: 'open-space', label: 'Open Space', left: 39.88, top: 61.5, width: 54.92, height: 38.5, kind: 'openspace', interactive: true },
 ];
 
 /** Door symbols (gap in the wall + swing arc), positioned/rotated by eye from the user's blueprint markup. */
@@ -93,8 +99,8 @@ interface DoorDef {
 }
 
 const DOORS: DoorDef[] = [
-  { id: 'door-exterior-hall', left: 15, top: 100, rotation: 0, label: 'Porte principale — accès extérieur vers le Hall / Espace de repos' },
-  { id: 'door-hall-openspace', left: 21, top: 82, rotation: 90, label: "Porte d'accès — Hall vers l'Open Space" },
+  { id: 'door-exterior-hall', left: 24, top: 100, rotation: 0, label: "Porte principale — accès extérieur vers l'Espace de repos / Accueil" },
+  { id: 'door-hall-openspace', left: 39.88, top: 82, rotation: 90, label: "Porte d'accès — Accueil vers l'Open Space" },
   { id: 'door-exterior-openspace', left: 57.5, top: 100, rotation: 0, label: 'Porte principale — accès extérieur direct vers l\'Open Space' },
 ];
 
@@ -189,7 +195,11 @@ export const BuildingFloorPlan: React.FC<BuildingFloorPlanProps> = ({ renderOpen
                   key={z.id}
                   onClick={() => setComingSoonZone(z.label)}
                   className={`absolute border text-center flex items-center justify-center px-1 leading-tight font-semibold hover:brightness-95 transition-all cursor-pointer overflow-hidden ${ZONE_COLORS[z.kind]}`}
-                  style={{ left: `${z.left}%`, top: `${z.top}%`, width: `${z.width}%`, height: `${z.height}%`, fontSize: 'clamp(6px, 0.9vw, 12px)' }}
+                  style={{
+                    left: `${z.left}%`, top: `${z.top}%`, width: `${z.width}%`, height: `${z.height}%`,
+                    fontSize: 'clamp(6px, 0.9vw, 12px)',
+                    writingMode: z.vertical ? 'vertical-rl' : undefined,
+                  }}
                   title={`${z.label} (à venir)`}
                 >
                   {z.label}
@@ -198,7 +208,11 @@ export const BuildingFloorPlan: React.FC<BuildingFloorPlanProps> = ({ renderOpen
                 <div
                   key={z.id}
                   className={`absolute border text-center flex items-center justify-center px-1 leading-tight font-medium overflow-hidden ${ZONE_COLORS[z.kind]}`}
-                  style={{ left: `${z.left}%`, top: `${z.top}%`, width: `${z.width}%`, height: `${z.height}%`, fontSize: 'clamp(6px, 0.9vw, 12px)' }}
+                  style={{
+                    left: `${z.left}%`, top: `${z.top}%`, width: `${z.width}%`, height: `${z.height}%`,
+                    fontSize: 'clamp(6px, 0.9vw, 12px)',
+                    writingMode: z.vertical ? 'vertical-rl' : undefined,
+                  }}
                 >
                   {z.label}
                 </div>
