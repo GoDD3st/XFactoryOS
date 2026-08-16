@@ -5,7 +5,7 @@ import { apiFetchClusters, apiFetchClusterAccessHistory } from '@/services/api/w
 import { DigitalTwin } from '../../../shared/components/DigitalTwin';
 
 /**
- * GCI Manager home — SRS §8.4: "Responsable de la gouvernance Growth Culture & Collaborative
+ * GCI Manager home - SRS §8.4: "Responsable de la gouvernance Growth Culture & Collaborative
  * Innovation. Il peut autoriser les réservations de clusters management et suivre la valeur
  * d'usage."
  *
@@ -97,7 +97,7 @@ export const GCIView: React.FC = () => {
           <span className="px-2.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-bold text-xs">
             Rôle : GCI Manager
           </span>
-          <span className="text-xs text-slate-400">Growth Culture &amp; Collaborative Innovation — Site Safi</span>
+          <span className="text-xs text-slate-400">Growth Culture &amp; Collaborative Innovation - Site Safi</span>
         </div>
         <h1 className="text-xl font-bold mt-1">Gouvernance des espaces &amp; clusters Management</h1>
         <p className="text-xs text-slate-400 mt-0.5">
@@ -119,7 +119,7 @@ export const GCIView: React.FC = () => {
             <span className="text-xs font-bold text-slate-500">Clusters</span>
             <Layers className="w-4 h-4 text-cyan-600" />
           </div>
-          <div className="text-2xl font-black text-slate-900">{loading ? '…' : stats.clusterCount}</div>
+          <div className="text-2xl font-black text-slate-900">{loading ? '...' : stats.clusterCount}</div>
           <p className="text-[11px] text-purple-700 font-semibold">
             {loading ? '' : `${stats.managementCount} Management`}
           </p>
@@ -130,7 +130,7 @@ export const GCIView: React.FC = () => {
             <span className="text-xs font-bold text-slate-500">Postes</span>
             <Armchair className="w-4 h-4 text-slate-600" />
           </div>
-          <div className="text-2xl font-black text-slate-900">{loading ? '…' : stats.seatCount}</div>
+          <div className="text-2xl font-black text-slate-900">{loading ? '...' : stats.seatCount}</div>
           <p className="text-[11px] text-emerald-700 font-semibold">
             {loading ? '' : `${stats.availableSeats} disponibles`}
             {!loading && stats.maintenanceSeats > 0 && (
@@ -145,7 +145,7 @@ export const GCIView: React.FC = () => {
             <Clock className="w-4 h-4 text-amber-600" />
           </div>
           <div className={`text-2xl font-black ${stats.pendingCount > 0 ? 'text-amber-600' : 'text-slate-900'}`}>
-            {loading ? '…' : stats.pendingCount}
+            {loading ? '...' : stats.pendingCount}
           </div>
           <p className="text-[11px] text-slate-500">à traiter</p>
         </div>
@@ -155,14 +155,14 @@ export const GCIView: React.FC = () => {
             <span className="text-xs font-bold text-slate-500">Autorisations actives</span>
             <ShieldCheck className="w-4 h-4 text-emerald-600" />
           </div>
-          <div className="text-2xl font-black text-emerald-700">{loading ? '…' : stats.activeAuthCount}</div>
+          <div className="text-2xl font-black text-emerald-700">{loading ? '...' : stats.activeAuthCount}</div>
           <p className="text-[11px] text-slate-500">
             {loading ? '' : `${stats.unlockedManagement}/${stats.managementCount} cluster(s) Management ouvert(s)`}
           </p>
         </div>
       </div>
 
-      {/* Management cluster status — SRS §2156: locked by default, so make that state loud. */}
+      {/* Management cluster status - SRS §2156: locked by default, so make that state loud. */}
       {!loading && stats.managementCount > 0 && (
         <div
           className={`p-5 rounded-2xl border shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3 ${
@@ -192,7 +192,7 @@ export const GCIView: React.FC = () => {
           </div>
           {stats.pendingCount > 0 && (
             <span className="px-3 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-bold shrink-0">
-              {stats.pendingCount} demande(s) en attente — onglet Autorisations
+              {stats.pendingCount} demande(s) en attente - onglet Autorisations
             </span>
           )}
         </div>
@@ -203,10 +203,10 @@ export const GCIView: React.FC = () => {
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-bold text-slate-900">Usage des clusters</h3>
           <span className="text-xs font-bold text-slate-500">
-            Occupation globale : <span className="text-slate-900">{loading ? '…' : `${occupancyRate}%`}</span>
+            Occupation globale : <span className="text-slate-900">{loading ? '...' : `${occupancyRate}%`}</span>
           </span>
         </div>
-        {loading && <p className="text-xs text-slate-400">Chargement…</p>}
+        {loading && <p className="text-xs text-slate-400">Chargement...</p>}
         {!loading && clusterUsage.length === 0 && (
           <p className="text-xs text-slate-400 italic">Aucun cluster à afficher.</p>
         )}
@@ -237,7 +237,7 @@ export const GCIView: React.FC = () => {
 
       {/* Digital Twin */}
       <div>
-        <h2 className="text-sm font-bold text-slate-900 mb-2">Cartographie des clusters — vue gouvernance GCI</h2>
+        <h2 className="text-sm font-bold text-slate-900 mb-2">Cartographie des clusters - vue gouvernance GCI</h2>
         <DigitalTwin />
       </div>
     </div>

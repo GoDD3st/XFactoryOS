@@ -22,17 +22,20 @@ import {
 } from '../validators';
 
 // SRS §13: "Gérer postes" and "Gérer clusters" are CRUD for exactly these two roles. Building
-// Manager and GCI Manager are RU — they must not reach create/delete.
+// Manager and GCI Manager are RU - they must not reach create/delete.
 const RESOURCE_CRUD_ROLES = ['admin', 'super_admin'] as const;
 
 // BR-09 names GCI Manager and Building Manager as the authorizers of management clusters.
 // Administrator removed deliberately: the §13 matrix grants it "A" but the business rule and the
-// BPMN both scope this decision to the two managers. Super Admin is kept as break-glass.
-const CLUSTER_AUTH_DECIDER_ROLES = ['building_manager', 'gci_manager', 'super_admin'] as const;
+// BPMN both scope this decision to the two managers. Super Admin's break-glass grant was dropped
+// for the same reason. This list is the DB-outage fallback for authorize_cluster_management, so
+// it must mirror the granted cells in role_permissions - see
+// 20260814134906_align_approver_pools_with_business_rules.sql.
+const CLUSTER_AUTH_DECIDER_ROLES = ['building_manager', 'gci_manager'] as const;
 import { getServerWriteClient, extractBearerToken, hasAdminClient, requireAdminClient } from '@/database/serverClient';
 
 // SRS 8.4: GCI Manager "peut autoriser les réservations de clusters management et suivre la
-// valeur d'usage" — this is the specific authority the VIP/reserved-cluster endpoints below
+// valeur d'usage" - this is the specific authority the VIP/reserved-cluster endpoints below
 // govern, so gci_manager belongs in this pool. It was previously absent here entirely (only
 // appearing on the shared management-lock endpoint below), leaving the role almost powerless
 // despite the SRS explicitly naming it as the approver of management-cluster access.
@@ -50,7 +53,7 @@ function getDbClient(req: { headers: { authorization?: string } }) {
 
 export const workspacesRouter = Router();
 
-// GET /api/workspaces/clusters — Authenticated users
+// GET /api/workspaces/clusters - Authenticated users
 workspacesRouter.get('/clusters', async (req, res) => {
   try {
     const clusters = await WorkspaceService.fetchClustersWithOverlays();
@@ -63,7 +66,7 @@ workspacesRouter.get('/clusters', async (req, res) => {
   }
 });
 
-// PATCH /api/workspaces/clusters/:clusterId/seats/:seatId/visibility — SRS §13 row "Gérer
+// PATCH /api/workspaces/clusters/:clusterId/seats/:seatId/visibility - SRS §13 row "Gérer
 // postes": RU for Building Manager and GCI Manager too, not Admin-only.
 workspacesRouter.patch(
   '/clusters/:clusterId/seats/:seatId/visibility',
@@ -89,7 +92,7 @@ workspacesRouter.patch(
   }
 );
 
-// PATCH /api/workspaces/clusters/:clusterId/seats/:seatId/maintenance — SRS §13 row "Gérer
+// PATCH /api/workspaces/clusters/:clusterId/seats/:seatId/maintenance - SRS §13 row "Gérer
 // postes": RU for Building Manager and GCI Manager.
 workspacesRouter.patch(
   '/clusters/:clusterId/seats/:seatId/maintenance',
@@ -115,14 +118,17 @@ workspacesRouter.patch(
   }
 );
 
-// PATCH /api/workspaces/clusters/:clusterId/management-lock — BR-09 + SRS §13 row "Autoriser
+// PATCH /api/workspaces/clusters/:clusterId/management-lock - BR-09 + SRS §13 row "Autoriser
 // cluster management": explicitly "A" for BOTH Building Manager and GCI Manager. A prior session
 // narrowed this to GCI Manager only based on the narrative persona text ("lorsqu'il est
-// autorisé") — the explicit RBAC matrix (the authoritative source) contradicts that reading, so
+// autorisé") - the explicit RBAC matrix (the authoritative source) contradicts that reading, so
 // Building Manager is restored here.
+// This route previously spelled its fallback inline as ['building_manager', 'gci_manager',
+// 'admin', 'super_admin'], which kept Administrator reachable here long after it was removed
+// from the pool everywhere else. It now shares the one constant.
 workspacesRouter.patch(
   '/clusters/:clusterId/management-lock',
-  requirePermission('authorize_cluster_management', 'approve', ['building_manager', 'gci_manager', 'admin', 'super_admin']),
+  requirePermission('authorize_cluster_management', 'approve', CLUSTER_AUTH_DECIDER_ROLES),
   validateBody(ManagementLockSchema),
   async (req, res) => {
     try {
@@ -142,7 +148,7 @@ workspacesRouter.patch(
   }
 );
 
-// PATCH /api/workspaces/clusters/:clusterId/vip — Super Admin/Admin/Director/EA: mark ANY cluster VIP
+// PATCH /api/workspaces/clusters/:clusterId/vip - Super Admin/Admin/Director/EA: mark ANY cluster VIP
 workspacesRouter.patch(
   '/clusters/:clusterId/vip',
   requireRole(...VIP_ROLES),
@@ -164,7 +170,7 @@ workspacesRouter.patch(
   }
 );
 
-// GET /api/workspaces/users/lookup — minimal user list for the VIP-member picker. Deliberately
+// GET /api/workspaces/users/lookup - minimal user list for the VIP-member picker. Deliberately
 // narrower than GET /api/users (which per the SRS §13 matrix is Admin/Building/GCI/IT-Admin only):
 // Director/EA need to pick a name here without being granted general user-directory read access.
 workspacesRouter.get('/users/lookup', requireRole(...VIP_ROLES), async (req, res) => {
@@ -179,7 +185,7 @@ workspacesRouter.get('/users/lookup', requireRole(...VIP_ROLES), async (req, res
   }
 });
 
-// GET /api/workspaces/clusters/:clusterId/members — VIP allowlist for a cluster
+// GET /api/workspaces/clusters/:clusterId/members - VIP allowlist for a cluster
 workspacesRouter.get('/clusters/:clusterId/members', requireRole(...VIP_ROLES), async (req, res) => {
   try {
     const dbClient = getDbClient(req);
@@ -190,7 +196,7 @@ workspacesRouter.get('/clusters/:clusterId/members', requireRole(...VIP_ROLES), 
   }
 });
 
-// POST /api/workspaces/clusters/:clusterId/members — assign a user to a VIP cluster
+// POST /api/workspaces/clusters/:clusterId/members - assign a user to a VIP cluster
 workspacesRouter.post(
   '/clusters/:clusterId/members',
   requireRole(...VIP_ROLES),
@@ -213,7 +219,7 @@ workspacesRouter.post(
   }
 );
 
-// DELETE /api/workspaces/clusters/:clusterId/members/:userId — unassign a user
+// DELETE /api/workspaces/clusters/:clusterId/members/:userId - unassign a user
 workspacesRouter.delete('/clusters/:clusterId/members/:userId', requireRole(...VIP_ROLES), async (req, res) => {
   try {
     const dbClient = getDbClient(req);
@@ -231,7 +237,7 @@ workspacesRouter.delete('/clusters/:clusterId/members/:userId', requireRole(...V
   }
 });
 
-// POST /api/workspaces/clusters/:clusterId/seats — add the next extension seat (max 8/cluster).
+// POST /api/workspaces/clusters/:clusterId/seats - add the next extension seat (max 8/cluster).
 // Requires a motif + explicit visibility + permanent/temporary window (see ExtensionSeatSchema).
 workspacesRouter.post(
   '/clusters/:clusterId/seats',
@@ -256,11 +262,11 @@ workspacesRouter.post(
   }
 );
 
-// PATCH /api/workspaces/seats/:seatId — full workstation update (status/reservable/metadata) for
+// PATCH /api/workspaces/seats/:seatId - full workstation update (status/reservable/metadata) for
 // the admin edit modal. Previously this called Supabase directly from the browser, which silently
 // no-oped under RLS whenever the session wasn't a real authenticated admin (e.g. demo mode).
 // A prior session removed gci_manager from this gate based on the narrative persona text, but
-// SRS §13 row "Gérer postes" explicitly grants RU to both Building Manager and GCI Manager —
+// SRS §13 row "Gérer postes" explicitly grants RU to both Building Manager and GCI Manager - 
 // restored here to match the authoritative matrix.
 workspacesRouter.patch(
   '/seats/:seatId',
@@ -294,7 +300,7 @@ workspacesRouter.patch(
   }
 );
 
-// POST /api/workspaces/clusters — SRS §13 "Gérer clusters" (C). No create path existed before:
+// POST /api/workspaces/clusters - SRS §13 "Gérer clusters" (C). No create path existed before:
 // clusters were only ever inserted by the seeder.
 workspacesRouter.post(
   '/clusters',
@@ -316,7 +322,7 @@ workspacesRouter.post(
   }
 );
 
-// PATCH /api/workspaces/clusters/:clusterId/enabled — SRS §13 "Gérer clusters" (D, soft delete).
+// PATCH /api/workspaces/clusters/:clusterId/enabled - SRS §13 "Gérer clusters" (D, soft delete).
 workspacesRouter.patch(
   '/clusters/:clusterId/enabled',
   requirePermission('manage_clusters', 'delete', RESOURCE_CRUD_ROLES),
@@ -338,7 +344,7 @@ workspacesRouter.patch(
   }
 );
 
-// POST /api/workspaces/clusters/:clusterId/workstations — SRS §13 "Gérer postes" (C).
+// POST /api/workspaces/clusters/:clusterId/workstations - SRS §13 "Gérer postes" (C).
 workspacesRouter.post(
   '/clusters/:clusterId/workstations',
   requirePermission('manage_workstations', 'create', RESOURCE_CRUD_ROLES),
@@ -370,7 +376,7 @@ workspacesRouter.post(
   }
 );
 
-// PATCH /api/workspaces/clusters/:clusterId/workstations/:seatId/enabled — SRS §13 "Gérer
+// PATCH /api/workspaces/clusters/:clusterId/workstations/:seatId/enabled - SRS §13 "Gérer
 // postes" (D, soft delete: the seat leaves booking flows but keeps its history).
 workspacesRouter.patch(
   '/clusters/:clusterId/workstations/:seatId/enabled',
@@ -404,7 +410,7 @@ workspacesRouter.patch(
   }
 );
 
-// POST /api/workspaces/clusters/:clusterId/access-requests — BR-09/§14.4: any authenticated
+// POST /api/workspaces/clusters/:clusterId/access-requests - BR-09/§14.4: any authenticated
 // user can request temporary access to a locked management cluster.
 workspacesRouter.post(
   '/clusters/:clusterId/access-requests',
@@ -427,7 +433,7 @@ workspacesRouter.post(
   }
 );
 
-// GET /api/workspaces/clusters/access-requests/pending — Building/GCI Manager, Admin, Super Admin
+// GET /api/workspaces/clusters/access-requests/pending - Building/GCI Manager, Admin, Super Admin
 workspacesRouter.get(
   '/clusters/access-requests/pending',
   requirePermission('authorize_cluster_management', 'approve', CLUSTER_AUTH_DECIDER_ROLES),
@@ -442,7 +448,7 @@ workspacesRouter.get(
   }
 );
 
-// GET /api/workspaces/clusters/access-requests — full history for the Autorisations Management
+// GET /api/workspaces/clusters/access-requests - full history for the Autorisations Management
 // screen (active windows + decided requests). Same decider-only gate as /pending.
 workspacesRouter.get(
   '/clusters/access-requests',
@@ -458,7 +464,7 @@ workspacesRouter.get(
   }
 );
 
-// PATCH /api/workspaces/clusters/access-requests/:id/decision — approve unlocks the cluster
+// PATCH /api/workspaces/clusters/access-requests/:id/decision - approve unlocks the cluster
 // for the decider-set window only; refuse just records the decision.
 workspacesRouter.patch(
   '/clusters/access-requests/:id/decision',

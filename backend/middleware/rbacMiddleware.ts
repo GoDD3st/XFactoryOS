@@ -3,7 +3,7 @@ import { UserRole } from '@/frontend/src/types';
 import { PermissionService, PermissionAction } from '@/services/rbac/permissionService';
 
 /**
- * RBAC Middleware — Role-Based Access Control
+ * RBAC Middleware - Role-Based Access Control
  * 
  * Must be used AFTER authenticateJWT middleware.
  * Checks req.user.role against allowed roles.
@@ -59,12 +59,12 @@ export function requireRole(...allowedRoles: UserRole[]) {
  *
  * `fallbackRoles` is the hardcoded list this route used before, and it is deliberately kept:
  *  - if the policy table can't be read (outage, unseeded install), the route behaves exactly as
- *    it did before rather than denying everyone — a DB blip must never brick the whole app;
+ *    it did before rather than denying everyone - a DB blip must never brick the whole app;
  *  - once the policy IS readable, it is authoritative and the fallback is ignored, including
  *    when it denies a role the fallback would have allowed.
  *
  * Super Admin always keeps `manage_roles`, regardless of the table. Without that, toggling one
- * cell would remove the only route capable of toggling it back — an unrecoverable lockout.
+ * cell would remove the only route capable of toggling it back - an unrecoverable lockout.
  */
 export function requirePermission(
   permissionCode: string,
@@ -146,7 +146,7 @@ export function requireMinRole(minRole: UserRole) {
 /**
  * Checks if the authenticated user is the owner of a resource, or has admin override.
  * The `extractOwnerId` function receives the request and returns the owner's user ID.
- * If it returns null, the check is skipped (resource not found yet — let the handler deal with it).
+ * If it returns null, the check is skipped (resource not found yet - let the handler deal with it).
  */
 export function requireOwnerOrAdmin(extractOwnerId: (req: Request) => string | null | Promise<string | null>) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {

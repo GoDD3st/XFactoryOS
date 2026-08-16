@@ -5,7 +5,7 @@ import { normalizeRoleCode } from '@/frontend/src/modules/auth/utils/normalizeRo
 import { supabase } from '@/database/client';
 
 /**
- * Authentication Middleware — Zero-Trust JWT Verification
+ * Authentication Middleware - Zero-Trust JWT Verification
  * 
  * Verifies Supabase JWT via supabase.auth.getUser(token).
  * In DEMO_MODE, uses a simulated user from the X-Demo-Role header.
@@ -53,14 +53,31 @@ const DEMO_ROLE_TO_DB_CODE: Record<UserRole, string> = {
   security_guard: 'SECURITY',
 };
 
-// Cached per role for the process lifetime — `null` means "looked up, none exists", so a missing
+/** The real account a demo role maps onto. Both fields describe the SAME row. */
+interface ResolvedDemoIdentity {
+  id: string;
+  email: string;
+}
+
+// Cached per role for the process lifetime - `null` means "looked up, none exists", so a missing
 // account is not re-queried on every request.
-const demoUserIdCache = new Map<UserRole, string | null>();
+const demoUserCache = new Map<UserRole, ResolvedDemoIdentity | null>();
 
-async function resolveDemoUserId(role: UserRole): Promise<string | null> {
-  if (demoUserIdCache.has(role)) return demoUserIdCache.get(role) ?? null;
+/**
+ * Resolves the real account behind a demo role - id AND email together.
+ *
+ * The email matters as much as the id. This used to resolve only the id while req.user.email kept
+ * the synthetic DEMO_USERS address, so the session described two different accounts at once:
+ * writes landed on the real row (by id) while anything keyed on the email hit a non-existent one.
+ * That is what broke the settings step-up re-authentication after a password change - the new
+ * password was set on the real account via its id, then verified by signing in as
+ * "superadmin@ocpgroup.ma" instead of "superadmin.test@ocpgroup.ma", which failed as
+ * "Mot de passe incorrect".
+ */
+async function resolveDemoIdentity(role: UserRole): Promise<ResolvedDemoIdentity | null> {
+  if (demoUserCache.has(role)) return demoUserCache.get(role) ?? null;
 
-  let resolved: string | null = null;
+  let resolved: ResolvedDemoIdentity | null = null;
   try {
     const { getAdminClient } = await import('@/database/serverClient');
     const admin = getAdminClient();
@@ -69,11 +86,17 @@ async function resolveDemoUserId(role: UserRole): Promise<string | null> {
     if (admin && code) {
       // Ordered so the mapping is STABLE: several accounts can share a role (three users hold
       // EMPLOYEE here), and an unordered limit(1) let Postgres return a different one per
-      // restart — the demo collaborator would silently "become" a different person and stop
+      // restart - the demo collaborator would silently "become" a different person and stop
       // seeing its own reservations.
       const { data, error } = await admin
         .from('user_roles')
-        .select('user_id, granted_at, roles!inner(code)')
+        // The users embed MUST name its constraint: user_roles has two FKs to users (user_id and
+        // granted_by), so a bare `users!inner(email)` is ambiguous and PostgREST rejects the whole
+        // query. That left `resolved` null for every role, so demo mode fell back to the synthetic
+        // 'usr-collab-1' ids and every uuid-keyed write failed - the exact failure the comment
+        // below this block describes. Same trap already fixed in reservationRepository
+        // (user_id vs cancelled_by) and waitingListRepository (requested vs offered workstation).
+        .select('user_id, granted_at, roles!inner(code), users!user_roles_user_id_fkey!inner(email)')
         .eq('roles.code', code)
         .order('granted_at', { ascending: true })
         .order('user_id', { ascending: true })
@@ -85,14 +108,18 @@ async function resolveDemoUserId(role: UserRole): Promise<string | null> {
         // uuid-keyed write in demo mode. A bad column name here cost a debugging cycle.
         console.warn(`[DEMO] Could not resolve a real user for role "${role}": ${error.message}`);
       }
-      resolved = (data as any)?.user_id ?? null;
+
+      const id = (data as any)?.user_id;
+      const email = (data as any)?.users?.email;
+      // Both or neither: a half-resolved identity is exactly the inconsistency this fixes.
+      resolved = id && email ? { id, email } : null;
     }
   } catch (err: any) {
     console.warn(`[DEMO] Demo user resolution failed for role "${role}":`, err?.message || err);
     resolved = null;
   }
 
-  demoUserIdCache.set(role, resolved);
+  demoUserCache.set(role, resolved);
   return resolved;
 }
 
@@ -102,22 +129,25 @@ export async function authenticateJWT(req: Request, res: Response, next: NextFun
     return next();
   }
 
-  // ── DEMO MODE — only when explicitly enabled ──
+  // ── DEMO MODE - only when explicitly enabled ──
   const isDemo = process.env.DEMO_MODE === 'true';
   if (isDemo) {
     const demoRole = (req.headers['x-demo-role'] as UserRole) || 'collaborator';
     const demoUser = DEMO_USERS[demoRole] || DEMO_USERS.collaborator;
 
     // DEMO_USERS ids are synthetic strings ('usr-gci-1'). Every table that stores an actor
-    // (reservations.user_id, cluster_authorizations.decided_by, approvals…) uses a uuid FK to
+    // (reservations.user_id, cluster_authorizations.decided_by, approvals...) uses a uuid FK to
     // users, so those writes fail with an invalid-uuid error under demo mode and the feature
     // looks broken when it is not. Resolve the demo role to a real users row when one exists so
-    // demo mode can exercise write paths; fall back to the synthetic id for read-only use.
-    const realId = await resolveDemoUserId(demoRole);
+    // demo mode can exercise write paths; fall back to the synthetic identity for read-only use.
+    const real = await resolveDemoIdentity(demoRole);
 
     req.user = {
-      id: realId || demoUser.id,
-      email: demoUser.email,
+      // id and email must come from the SAME source. Mixing a resolved id with the synthetic
+      // email made password-based re-authentication verify a different account than the one the
+      // password was actually set on.
+      id: real?.id || demoUser.id,
+      email: real?.email || demoUser.email,
       role: demoRole,
       full_name: demoUser.full_name,
       department: demoUser.department,
@@ -125,7 +155,7 @@ export async function authenticateJWT(req: Request, res: Response, next: NextFun
     return next();
   }
 
-  // ── PRODUCTION MODE — Supabase JWT verification ──
+  // ── PRODUCTION MODE - Supabase JWT verification ──
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     res.status(401).json({

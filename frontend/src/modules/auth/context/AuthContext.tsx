@@ -14,7 +14,7 @@ interface AuthContextType {
   switchRole: (role: UserRole) => void;
   isAdminOrSuperAdmin: boolean;
   canView8Postes: boolean;
-  /** BR-07: management-reserved clusters (CL-F/CL-G) are reserved FOR these roles — they can
+  /** BR-07: management-reserved clusters (CL-F/CL-G) are reserved FOR these roles - they can
    * select seats there directly without needing the GCI/Building Manager unlock step. */
   canAccessManagementClusters: boolean;
   /** true when running with the QA Role Switcher (VITE_DEMO_MODE=true), false when gated by real Supabase Auth */
@@ -24,17 +24,17 @@ interface AuthContextType {
   /** true once a real user is signed in (always true in demo mode) */
   isAuthenticated: boolean;
   signOut: () => Promise<void>;
-  /** FR-04 "expirer les sessions inactives" — true when idle warning countdown is showing */
+  /** FR-04 "expirer les sessions inactives" - true when idle warning countdown is showing */
   sessionIdleWarning: boolean;
   /** Seconds remaining before auto-logout, only meaningful while sessionIdleWarning is true */
   idleSecondsLeft: number;
-  /** Resets the idle timer — call when the user confirms they're still there */
+  /** Resets the idle timer - call when the user confirms they're still there */
   extendSession: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// 🛡️ Global Fetch Interceptor to inject X-Demo-Role header into all API calls in demo mode
+// Global Fetch Interceptor to inject X-Demo-Role header into all API calls in demo mode
 if (typeof window !== 'undefined') {
   const originalFetch = window.fetch;
   window.fetch = async function (input: RequestInfo | URL, init?: RequestInit) {
@@ -55,7 +55,7 @@ if (typeof window !== 'undefined') {
   };
 }
 
-// FR-04 "Le système doit expirer les sessions inactives" — auto sign-out after sustained
+// FR-04 "Le système doit expirer les sessions inactives" - auto sign-out after sustained
 // inactivity, with a warning window so an idle-but-present user isn't cut off without notice.
 const IDLE_WARNING_AFTER_MS = 25 * 60 * 1000; // warn at 25 min idle
 const IDLE_LOGOUT_AFTER_MS = 30 * 60 * 1000; // force logout at 30 min idle
@@ -84,7 +84,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // In demo mode the backend resolves each demo role to a REAL users row (see
   // resolveDemoUserId in authMiddleware) so that writes satisfy the uuid foreign keys. The
   // frontend kept its synthetic id ('usr-collab-1'), so reads filtered by currentUser.id never
-  // matched what the backend had just written — a demo collaborator could book a seat and then
+  // matched what the backend had just written - a demo collaborator could book a seat and then
   // not see its own reservation. Adopt the server's resolved identity so both agree.
   useEffect(() => {
     if (!demo) return;
@@ -123,7 +123,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const { profile } = await fetchRealUserProfile(session.user);
         if (!cancelled) setRealUser(profile);
 
-        // SRS FR-05 / §26.1 "Connexion utilisateur" — journaliser chaque connexion.
+        // SRS FR-05 / §26.1 "Connexion utilisateur" - journaliser chaque connexion.
         // Only on an actual sign-in, not every TOKEN_REFRESHED/USER_UPDATED event.
         if (_event === 'SIGNED_IN') {
           const { AuditRepository } = await import('@/database/repositories/auditRepository');
@@ -180,7 +180,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const currentRole = demo ? demoRole : (realUser?.role || 'collaborator');
   const isAuthenticated = demo ? true : !!realUser;
 
-  // ── Idle session expiration (real mode only — demo mode has no real session to expire) ──
+  // ── Idle session expiration (real mode only - demo mode has no real session to expire) ──
   const [sessionIdleWarning, setSessionIdleWarning] = useState(false);
   const [idleSecondsLeft, setIdleSecondsLeft] = useState(0);
   const warningShownRef = useRef(false); // live mirror of sessionIdleWarning, read inside the
@@ -229,7 +229,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const handleActivity = () => {
       // While the warning is showing, ambient activity (e.g. residual mouse movement) shouldn't
-      // silently dismiss it — the user must explicitly confirm via the modal's "stay logged in"
+      // silently dismiss it - the user must explicitly confirm via the modal's "stay logged in"
       // button (which calls extendSession() directly), so a truly-unattended machine still logs
       // out on schedule instead of the warning flashing away on its own.
       if (warningShownRef.current) return;
@@ -247,7 +247,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   // Defensive fallback: never let an unrecognized/empty role crash the UI.
   // If this fires, it means `currentRole` held a value outside the 10 known
-  // UserRole keys — check the console warning below for the actual value.
+  // UserRole keys - check the console warning below for the actual value.
   const safeRoleConfig = ROLE_CONFIGS[currentRole] || ROLE_CONFIGS.collaborator;
   if (!ROLE_CONFIGS[currentRole]) {
     console.warn(
@@ -257,7 +257,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }
 
   const isAdminOrSuperAdmin = currentRole === 'admin' || currentRole === 'super_admin';
-  // SRS §13 "Gérer postes"/"Gérer clusters" = RU for Building Manager and GCI Manager too —
+  // SRS §13 "Gérer postes"/"Gérer clusters" = RU for Building Manager and GCI Manager too - 
   // they need to see the real full inventory (including extension seats 5-8) to operate on it,
   // not just the base 4/cluster a plain collaborator sees. Restricting this to admin-only made
   // their own KPI totals (Digital Twin counts vs. Dashboard "X postes" totals) visibly disagree.

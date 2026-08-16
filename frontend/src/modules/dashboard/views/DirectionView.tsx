@@ -10,14 +10,15 @@ import {
 } from 'lucide-react';
 import { DigitalTwin } from '../../../shared/components/DigitalTwin';
 import { ReservationsTable } from '../../../shared/components/ReservationsTable';
-import { getRealTimeTelemetry, SiteTelemetrySummary } from '@/services/telemetry/telemetryService';
+import { SiteTelemetrySummary } from '@/services/telemetry/telemetryService';
+import { apiFetchOccupancy } from '@/services/api/telemetryApi';
 import { apiFetchPendingApprovals } from '@/services/api/approvalApi';
 import { ApprovalRequest } from '../../../types';
 
 export const DirectionView: React.FC = () => {
   const [telemetry, setTelemetry] = useState<SiteTelemetrySummary | null>(null);
   // BR-06 makes approving long-duration reservations this role's defining function, but it was
-  // absent from its home screen entirely — the pending queue lived only behind the Approbations
+  // absent from its home screen entirely - the pending queue lived only behind the Approbations
   // tab, so nothing here signalled that a decision was waiting.
   const [pending, setPending] = useState<ApprovalRequest[]>([]);
 
@@ -29,7 +30,9 @@ export const DirectionView: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const refresh = () => getRealTimeTelemetry().then(setTelemetry);
+    // Via the API: Director sits outside p_reservations_owner_read, so computing this in the
+    // browser aggregated only this user's own reservations. See services/api/telemetryApi.ts.
+    const refresh = () => apiFetchOccupancy().then(setTelemetry);
     refresh();
 
     // Same fix as ExecutiveDashboard: this was a load-once snapshot that went stale until a
@@ -56,7 +59,7 @@ export const DirectionView: React.FC = () => {
             <span className="px-2.5 py-0.5 rounded bg-rose-500/20 text-rose-300 font-bold text-xs">
               Rôle : Directeur de Site
             </span>
-            <span className="text-xs text-slate-400">Direction Générale — Site Safi</span>
+            <span className="text-xs text-slate-400">Direction Générale - Site Safi</span>
           </div>
           <h1 className="text-xl font-bold mt-1">Tableau de Bord Exécutif & Métriques Stratégiques</h1>
           <p className="text-xs text-slate-400 mt-0.5">
@@ -120,7 +123,7 @@ export const DirectionView: React.FC = () => {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Approvals — the Director's actual decision surface */}
+        {/* Approvals - the Director's actual decision surface */}
         <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-3">
           <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
             <Clock className="w-4 h-4 text-purple-600" />
@@ -156,7 +159,7 @@ export const DirectionView: React.FC = () => {
                 ))}
               </div>
               <p className="text-[10px] text-slate-400 pt-1 border-t border-slate-100">
-                Approuver ou refuser depuis l'onglet <strong>Approbations</strong> — un motif est
+                Approuver ou refuser depuis l'onglet <strong>Approbations</strong> - un motif est
                 obligatoire en cas de refus.
               </p>
             </>
@@ -170,7 +173,7 @@ export const DirectionView: React.FC = () => {
             Utilisation des clusters
           </h3>
           {!telemetry ? (
-            <p className="text-xs text-slate-400">Chargement…</p>
+            <p className="text-xs text-slate-400">Chargement...</p>
           ) : (
             <div className="space-y-2">
               {[...telemetry.clusters]

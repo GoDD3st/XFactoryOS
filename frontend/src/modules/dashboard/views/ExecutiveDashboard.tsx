@@ -1,16 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import * as XLSX from 'xlsx';
 import {
-  getRealTimeTelemetry,
   SiteTelemetrySummary,
   DailyReservationTrend,
-  getUserDepartmentStats,
   UserDepartmentStats,
-  predictTomorrowOccupancy,
   OccupancyPrediction,
 } from '@/services/telemetry/telemetryService';
 import { apiFetchNoShowStats } from '@/services/api/noShowApi';
-import { apiFetchReservationTrends } from '@/services/api/telemetryApi';
+import {
+  apiFetchReservationTrends,
+  apiFetchOccupancy,
+  apiFetchDepartmentStats,
+  apiFetchOccupancyPrediction,
+} from '@/services/api/telemetryApi';
 import { apiLogExport } from '@/services/api/auditApi';
 import { BarChart3, TrendingUp, Clock, AlertTriangle, Download, Sparkles, Building, Layers, FileSpreadsheet, Printer, LineChart, CheckCircle2, CalendarClock, Users, Sparkle } from 'lucide-react';
 
@@ -20,22 +22,29 @@ export const ExecutiveDashboard: React.FC = () => {
   const [trends, setTrends] = useState<DailyReservationTrend[]>([]);
   const [userDeptStats, setUserDeptStats] = useState<UserDepartmentStats | null>(null);
   const [prediction, setPrediction] = useState<OccupancyPrediction | null>(null);
+  // Separate from `telemetry` so a failed fetch shows an error instead of spinning forever:
+  // apiFetchOccupancy resolves to null on 403/500 rather than rejecting.
+  const [occupancyLoaded, setOccupancyLoaded] = useState(false);
 
   useEffect(() => {
+    // Every KPI comes from /api/telemetry (BPMN D6 "DASH → API Layer"). Computing them in the
+    // browser aggregated an RLS-filtered read, so a Director - outside p_reservations_owner_read
+    // - saw the whole dashboard derived from their own bookings. See services/api/telemetryApi.ts.
     const refresh = () => {
-      getRealTimeTelemetry().then((t) => {
+      apiFetchOccupancy().then((t) => {
         setTelemetry(t);
-        predictTomorrowOccupancy(t.totalCapacity).then(setPrediction);
+        setOccupancyLoaded(true);
       });
+      apiFetchOccupancyPrediction().then(setPrediction);
       apiFetchNoShowStats().then(setNoShowStats);
       apiFetchReservationTrends(14).then(setTrends);
-      getUserDepartmentStats().then(setUserDeptStats);
+      apiFetchDepartmentStats().then(setUserDeptStats);
     };
 
     refresh();
 
     // Occupancy/no-show KPIs previously only loaded once on mount and went stale until a manual
-    // page reload — everywhere else (Digital Twin) already reacts live to these same events via
+    // page reload - everywhere else (Digital Twin) already reacts live to these same events via
     // Supabase Realtime (database/realtime.ts), so wire the executive KPIs to them too.
     window.addEventListener('xfactory_reservations_changed', refresh);
     window.addEventListener('xfactory_workstations_changed', refresh);
@@ -47,7 +56,13 @@ export const ExecutiveDashboard: React.FC = () => {
   }, []);
 
   if (!telemetry) {
-    return <div className="p-8 text-center text-xs text-slate-500">Chargement de la télémetrie...</div>;
+    return occupancyLoaded ? (
+      <div className="p-8 text-center text-xs text-slate-500">
+        Télémétrie indisponible - vous n'avez pas accès aux analytics, ou le service n'a pas répondu.
+      </div>
+    ) : (
+      <div className="p-8 text-center text-xs text-slate-500">Chargement de la télémetrie...</div>
+    );
   }
 
   const exportReportCSV = () => {
@@ -92,7 +107,7 @@ export const ExecutiveDashboard: React.FC = () => {
     apiLogExport('dashboard-telemetry.xlsx', 'Export Excel du dashboard exécutif (clusters + tendances 14j).');
   };
 
-  // FR-87 "Export PDF du dashboard" — print-to-PDF via the browser (no server-side PDF
+  // FR-87 "Export PDF du dashboard" - print-to-PDF via the browser (no server-side PDF
   // renderer in this stack); user picks "Enregistrer en PDF" in the print dialog.
   const exportReportPDF = () => {
     window.print();
@@ -306,7 +321,7 @@ export const ExecutiveDashboard: React.FC = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Sparkle className="w-5 h-5 text-amber-300" />
-              <h3 className="font-bold text-sm">Prévision d'Occupation — Demain</h3>
+              <h3 className="font-bold text-sm">Prévision d'Occupation - Demain</h3>
             </div>
             {prediction.isHighDemand && (
               <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-bold flex items-center gap-1">
@@ -330,7 +345,7 @@ export const ExecutiveDashboard: React.FC = () => {
                 {prediction.peakWindow && ` Affluence habituelle : ${prediction.peakWindow}.`}
               </>
             ) : (
-              "Données historiques insuffisantes pour ce jour de la semaine — estimation à confirmer avec plus d'usage."
+              "Données historiques insuffisantes pour ce jour de la semaine - estimation à confirmer avec plus d'usage."
             )}
           </p>
         </div>

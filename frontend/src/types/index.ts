@@ -21,14 +21,27 @@ export interface UserProfile {
   status: 'active' | 'inactive' | 'suspended';
 }
 
-export type SeatStatus = 'disponible' | 'réservé' | 'maintenance' | 'occupé' | 'extension' | 'management_reserved' | 'disabled';
+// 'partiel' is a derived overlay status, never stored: a seat with bookings that leave a bookable
+// gap in the business day. 'réservé' now means taken for the WHOLE day, which is the only case
+// where queuing for a no-show is the sole way in. See services/workspaces/seatAvailability.ts.
+export type SeatStatus = 'disponible' | 'partiel' | 'réservé' | 'maintenance' | 'occupé' | 'extension' | 'management_reserved' | 'disabled';
+
+/** Per-seat availability detail for the selected date/window, attached by the overlay. */
+export interface SeatAvailabilityInfo {
+  /** Occupied stretches on the selected date, as "HH:mm - HH:mm" pairs. */
+  busy: { start: string; end: string }[];
+  /** Bookable stretches left in the business day. */
+  gaps: { start: string; end: string }[];
+  /** Whether the currently selected window is bookable as-is. */
+  windowFree: boolean;
+}
 
 export interface WorkstationMetadata {
   near_window?: boolean;
   is_pmr?: boolean;
   is_quiet_zone?: boolean;
   notes?: string;
-  // Set when a seat is added as temporary via the "Ajouter un poste" form — temp_end_at drives
+  // Set when a seat is added as temporary via the "Ajouter un poste" form - temp_end_at drives
   // the backend expiry sweep (WorkspaceService.expireTemporarySeats) that auto-disables it.
   is_temporary?: boolean;
   temp_start_at?: string;
@@ -45,6 +58,8 @@ export interface Workstation {
   is_extension: boolean; // Seats 5-8
   visibleToUsers?: boolean; // Toggled by admin
   metadata: WorkstationMetadata;
+  /** Populated by fetchClustersWithOverlays for the requested date/window. */
+  availability?: SeatAvailabilityInfo;
 }
 
 export interface Cluster {
@@ -74,7 +89,7 @@ export interface Reservation {
   cluster_id: string;
   cluster_name: string;
   reservation_date: string; // YYYY-MM-DD
-  end_date?: string; // YYYY-MM-DD — last day of a multi-day booking; absent/equal to reservation_date for single-day
+  end_date?: string; // YYYY-MM-DD - last day of a multi-day booking; absent/equal to reservation_date for single-day
   start_time: string; // HH:mm
   end_time: string; // HH:mm
   status: ReservationStatus;
@@ -94,6 +109,20 @@ export interface RoleConfig {
   permissions: string[];
 }
 
+/**
+ * BPMN D5 "zone / equipement" preferences, checked against WorkstationMetadata before a freed
+ * desk is offered. Only `true` constrains: undefined/false means "no opinion", so someone who
+ * didn't ask for a quiet desk can still be offered one.
+ *
+ * Deliberately the same three flags as WorkstationSearchQuery - one preference vocabulary for
+ * searching and for queuing.
+ */
+export interface WaitingListPreferences {
+  nearWindow?: boolean;
+  isPMR?: boolean;
+  isQuietZone?: boolean;
+}
+
 export interface WaitingListEntry {
   id: string;
   user_id: string;
@@ -105,9 +134,19 @@ export interface WaitingListEntry {
   notes?: string;
   created_at: string;
   status: 'waiting' | 'offered' | 'expired' | 'fulfilled' | 'cancelled';
+  /** Specific desk being queued for. Absent = any desk in cluster_preference. */
+  requested_workstation_id?: string;
+  requested_workstation_code?: string;
   offered_workstation_id?: string;
   offered_workstation_code?: string;
   offer_expires_at?: string;
+  /** Attribute preferences the matching engine enforces. Absent = no attribute constraints. */
+  preferences?: WaitingListPreferences;
+  /**
+   * The hours the offer is actually good for - the requested slot narrowed to the hours the
+   * freed desk is available. Set with the offer; this, not `time_slot`, is what acceptOffer books.
+   */
+  offered_time_slot?: string;
 }
 
 export type AuditCategory =
@@ -212,8 +251,8 @@ export interface HolidayEntry {
 }
 
 export interface ClosedDateEntry {
-  date: string; // 'YYYY-MM-DD' — start of the closure
-  endDate?: string; // optional — last day of the closure (inclusive), defaults to `date`
+  date: string; // 'YYYY-MM-DD' - start of the closure
+  endDate?: string; // optional - last day of the closure (inclusive), defaults to `date`
   reason?: string; // e.g. 'Maintenance électrique bâtiment'
 }
 
@@ -221,7 +260,7 @@ export interface SystemSettings {
   id?: string;
   bookingWindowDays: number; // e.g. 2 days delay window
   minReservationMinutes: number; // e.g. 30 min
-  maxReservationMinutes: number; // e.g. 480 min (8h) — max single slot duration
+  maxReservationMinutes: number; // e.g. 480 min (8h) - max single slot duration
   maxReservationDaysWithoutApproval: number; // e.g. 2 business days
   maxReservationsPerUserPerDay: number; // e.g. 2
   maxReservationsPerUserPerWeek: number; // e.g. 5
@@ -232,12 +271,14 @@ export interface SystemSettings {
   allowWeekendBooking: boolean;
   allowHolidayBooking: boolean;
   holidays: HolidayEntry[]; // Super Admin-managed public holidays (dates shift yearly, e.g. Islamic calendar)
-  closedDates: ClosedDateEntry[]; // Super Admin "lockdown" days — blocks new reservations only, rest of the site keeps working
+  closedDates: ClosedDateEntry[]; // Super Admin "lockdown" days - blocks new reservations only, rest of the site keeps working
   noShowDelayMinutes: number;
   extensionSeatsVisibleByDefault: boolean;
   managementClustersEnabled: boolean;
   theme: 'dark' | 'light';
   siteName: string;
+  /** Validated image data URI for the header mark. Null/absent falls back to the text initials. */
+  siteLogoDataUrl?: string | null;
   configVersion?: number;
   updated_at?: string;
   updated_by?: string;
@@ -261,6 +302,12 @@ export interface ApprovalRequest {
   start_time?: string;
   end_time?: string;
   duration_days?: number;
+  /**
+   * Occupancy hours the requester is asking for: the daily window multiplied by the number of
+   * days, NOT the wall-clock span. A 5-day booking of 08:00-18:00 is 50 hours of desk time, not
+   * 120 - the approver is deciding on occupancy, so that is the figure to show them.
+   */
+  total_hours?: number;
   workstation_code?: string;
   cluster_name?: string;
 }
@@ -284,7 +331,7 @@ export interface ClusterAuthorization {
   created_at: string;
 }
 
-// SRS §13 "Gérer rôles" — documented RBAC policy record (roles/permissions/role_permissions).
+// SRS §13 "Gérer rôles" - documented RBAC policy record (roles/permissions/role_permissions).
 export interface RoleWithCount {
   id: string;
   code: string;

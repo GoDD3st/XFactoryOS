@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { AIAssistantService } from '@/services/ai/aiAssistantService';
+import { getAssistantEnabledRoles } from '@/services/ai/aiRolePolicy';
 import { requireRole } from '../middleware/rbacMiddleware';
 import { validateBody } from '../middleware/validateBody';
 import { AIQuerySchema } from '../validators';
@@ -7,30 +8,23 @@ import { AIQuerySchema } from '../validators';
 export const aiRouter = Router();
 
 // SRS §22.2: Employee is an explicit actor ("Recommandation de poste", "Apprentissage habitudes"),
-// not just managers — the assistant itself isn't role-gated, only the DATA it can see is
-// (buildAIContext() withholds nominative reservation detail from non-privileged roles).
-const AI_ALLOWED_ROLES = [
-  'collaborator',
-  'receptionist',
-  'building_manager',
-  'gci_manager',
-  'executive_assistant',
-  'director',
-  'admin',
-  'super_admin',
-  'it_admin',
-] as const;
+// not just managers - the assistant itself isn't broadly role-gated, only the DATA it can see is
+// (buildAIContext() scopes retrieval by the role policy).
+//
+// Derived from the role policy rather than restated here: this list had already drifted from it,
+// granting security_guard assistant access in the policy while the route returned 403.
+const AI_ALLOWED_ROLES = getAssistantEnabledRoles();
 
-// POST /api/ai/ask — Restricted to Manager & Admin roles only
+// POST /api/ai/ask - Restricted to Manager & Admin roles only
 aiRouter.post('/ask', requireRole(...AI_ALLOWED_ROLES), validateBody(AIQuerySchema), async (req, res) => {
   try {
     const { query } = req.body;
-    // 🛡️ Role is derived from authenticated JWT user, not client body
+    // Role is derived from authenticated JWT user, not client body
     const userRole = req.user!.role;
     const userId = req.user!.id;
     const response = await AIAssistantService.askXFactoryAI(query, userRole, userId);
 
-    // FR-96 / §26.1 "Requête IA sensible" — SRS §22.5 requires every generated
+    // FR-96 / §26.1 "Requête IA sensible" - SRS §22.5 requires every generated
     // recommendation/report to be journaled. Was never logged at all despite AI_QUERY existing
     // in the audit_action enum since day one.
     const { AuditRepository } = await import('@/database/repositories/auditRepository');

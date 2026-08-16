@@ -7,9 +7,11 @@ import { logAuditEvent } from '../audit/auditService';
 import { UserRole } from '@/frontend/src/types';
 
 // BR-09 scopes this decision to GCI Manager and Building Manager (Administrator excluded despite
-// the §13 matrix's "A"; Super Admin kept as break-glass). Drives who gets notified of a new
-// request — keep in sync with CLUSTER_AUTH_DECIDER_ROLES in workspaces.routes.ts.
-const DECIDER_ROLES: UserRole[] = ['building_manager', 'gci_manager', 'super_admin'];
+// the §13 matrix's "A"; Super Admin's break-glass grant dropped for the same reason). Drives who
+// gets notified of a new request - keep in sync with CLUSTER_AUTH_DECIDER_ROLES in
+// workspaces.routes.ts. A role listed here but not granted the permission would be notified of
+// requests it cannot decide.
+const DECIDER_ROLES: UserRole[] = ['building_manager', 'gci_manager'];
 
 export class ClusterAuthorizationService {
   static async requestAccess(
@@ -36,7 +38,7 @@ export class ClusterAuthorizationService {
 
     // 'CLUSTER_ACCESS_REQUEST' isn't a valid audit_action enum value (only CREATE/UPDATE/DELETE/
     // APPROVE/REJECT/CHECK_IN/CHECK_OUT/NO_SHOW/CLUSTER_ACTIVATE/CLUSTER_DEACTIVATE/ROLE_CHANGE/
-    // SETTINGS_CHANGE/EXPORT/AI_QUERY/LOGIN exist) — CREATE is the closest accurate fit for
+    // SETTINGS_CHANGE/EXPORT/AI_QUERY/LOGIN exist) - CREATE is the closest accurate fit for
     // "a new request record was created" and avoids the invalid-enum write failure that a
     // previous session found on the reservation check-in path.
     logAuditEvent(
@@ -125,7 +127,7 @@ export class ClusterAuthorizationService {
     if (expired.length === 0) return 0;
 
     // A cluster can have more than one approved authorization overlapping (e.g. two people
-    // requested the same window) — only re-lock once none of its approved windows are still open.
+    // requested the same window) - only re-lock once none of its approved windows are still open.
     const stillOpenClusterIds = new Set(
       active.filter((a) => !a.ends_at || new Date(a.ends_at).getTime() > now).map((a) => a.cluster_id)
     );
@@ -133,8 +135,8 @@ export class ClusterAuthorizationService {
     const candidateClusterIds = new Set(expired.map((a) => a.cluster_id).filter((id) => !stillOpenClusterIds.has(id)));
     if (candidateClusterIds.size === 0) return 0;
 
-    // An expired APPROVED row keeps matching getActiveApproved() forever — there is no EXPIRED
-    // status to move it to — so without this guard the ticker re-locked an already-locked cluster
+    // An expired APPROVED row keeps matching getActiveApproved() forever - there is no EXPIRED
+    // status to move it to - so without this guard the ticker re-locked an already-locked cluster
     // on every pass, rewriting all its seats and appending a CLUSTER_DEACTIVATE audit entry every
     // 60s indefinitely. Only act on clusters that are actually still open.
     const { WorkstationRepository } = await import('@/database/repositories/workstationRepository');

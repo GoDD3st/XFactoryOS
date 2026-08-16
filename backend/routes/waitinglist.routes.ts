@@ -8,11 +8,11 @@ import { CreateWaitingListEntrySchema } from '../validators';
 export const waitingListRouter = Router();
 
 // Roles allowed to see/manage the whole waiting list (matches the p_waiting_list_read/
-// p_waiting_list_update RLS policies). Everyone else only sees/cancels their own entries —
+// p_waiting_list_update RLS policies). Everyone else only sees/cancels their own entries - 
 // SRS §11.14 "Sécurité: Visible uniquement au demandeur et admins".
 const WAITING_LIST_OPS_ROLES = ['super_admin', 'admin', 'building_manager', 'gci_manager', 'receptionist'];
 
-// GET /api/waiting-list — own entries only, unless an ops/admin role
+// GET /api/waiting-list - own entries only, unless an ops/admin role
 waitingListRouter.get('/', async (req, res) => {
   try {
     const data = await WaitingListRepository.getWaitingList();
@@ -24,7 +24,7 @@ waitingListRouter.get('/', async (req, res) => {
   }
 });
 
-// POST /api/waiting-list — Add to waiting list (user_id forced from req.user)
+// POST /api/waiting-list - Add to waiting list (user_id forced from req.user)
 waitingListRouter.post('/', validateBody(CreateWaitingListEntrySchema), async (req, res) => {
   try {
     const payload = {
@@ -36,11 +36,16 @@ waitingListRouter.post('/', validateBody(CreateWaitingListEntrySchema), async (r
     const entry = await WaitingListService.addToWaitingList(payload);
     res.status(201).json({ success: true, data: entry });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message || 'Échec de l\'ajout à la liste d\'attente' });
+    // Already queued for this desk is a client-side condition (usually a double click), not a
+    // server fault - a 500 here made a harmless repeat look like an outage.
+    const alreadyQueued = /déjà inscrit/i.test(err?.message || '');
+    res
+      .status(alreadyQueued ? 409 : 500)
+      .json({ success: false, error: err.message || 'Échec de l\'ajout à la liste d\'attente' });
   }
 });
 
-// DELETE /api/waiting-list/:id — Cancel waiting list entry (owner or admin only)
+// DELETE /api/waiting-list/:id - Cancel waiting list entry (owner or admin only)
 waitingListRouter.delete(
   '/:id',
   requireOwnerOrAdmin(async (req) => {
@@ -58,7 +63,7 @@ waitingListRouter.delete(
   }
 );
 
-// POST /api/waiting-list/:id/accept — BPMN D5 GWRESP "ACCEPTE" (owner only)
+// POST /api/waiting-list/:id/accept - BPMN D5 GWRESP "ACCEPTE" (owner only)
 waitingListRouter.post(
   '/:id/accept',
   requireOwnerOrAdmin(async (req) => {
@@ -76,7 +81,7 @@ waitingListRouter.post(
   }
 );
 
-// POST /api/waiting-list/:id/decline — BPMN D5 GWRESP "REFUSE" (owner only)
+// POST /api/waiting-list/:id/decline - BPMN D5 GWRESP "REFUSE" (owner only)
 waitingListRouter.post(
   '/:id/decline',
   requireOwnerOrAdmin(async (req) => {

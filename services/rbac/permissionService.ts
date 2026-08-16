@@ -3,7 +3,7 @@ import { UserRole } from '@/frontend/src/types';
 /**
  * Route-level enforcement backed by the `role_permissions` policy table.
  *
- * Before this, the Roles & Permissions screen was a documented policy record only — every route
+ * Before this, the Roles & Permissions screen was a documented policy record only - every route
  * gated on a hardcoded `requireRole(...)` list, so toggling a cell changed nothing. This service
  * makes the table authoritative.
  *
@@ -99,7 +99,7 @@ export class PermissionService {
       lastLoadFailed = true;
       if (!cache) {
         console.warn(
-          '[RBAC] Policy table could not be loaded — route guards are falling back to their hardcoded role lists.'
+          '[RBAC] Policy table could not be loaded - route guards are falling back to their hardcoded role lists.'
         );
       }
     }
@@ -120,7 +120,7 @@ export class PermissionService {
   }
 
   /**
-   * `true`/`false` when the policy is known, `null` when it isn't — callers must treat `null` as
+   * `true`/`false` when the policy is known, `null` when it isn't - callers must treat `null` as
    * "fall back", never as a denial.
    */
   static async can(role: UserRole, permissionCode: string, action: PermissionAction): Promise<boolean | null> {

@@ -11,6 +11,7 @@ import { waitingListRouter } from './routes/waitinglist.routes';
 import { auditRouter } from './routes/audit.routes';
 import { notificationsRouter } from './routes/notifications.routes';
 import { aiRouter } from './routes/ai.routes';
+import { aiConfigRouter } from './routes/aiConfig.routes';
 import { telemetryRouter } from './routes/telemetry.routes';
 import { hardwareRouter } from './routes/hardware.routes';
 import { securityRouter } from './routes/security.routes';
@@ -33,7 +34,7 @@ export function createExpressApp() {
   app.use(express.json());
 
   // Health check endpoint (Public).
-  // Previously returned status:'ok' unconditionally without touching anything — it would report
+  // Previously returned status:'ok' unconditionally without touching anything - it would report
   // healthy with Postgres completely down, which makes it useless as the IT console's signal.
   // Each component is now actually probed.
   app.get('/api/health', async (req, res) => {
@@ -46,7 +47,7 @@ export function createExpressApp() {
       const { getAdminClient } = await import('../database/serverClient');
       const admin = getAdminClient();
       if (!admin) {
-        components.database = { status: 'degraded', detail: 'Clé service-role absente — accès serveur limité.' };
+        components.database = { status: 'degraded', detail: 'Clé service-role absente - accès serveur limité.' };
       } else {
         const started = Date.now();
         const { error } = await admin.from('clusters').select('id', { head: true, count: 'exact' });
@@ -61,14 +62,14 @@ export function createExpressApp() {
     // Auth mode is a real configuration fact, not a probe.
     components.authentication =
       process.env.DEMO_MODE === 'true'
-        ? { status: 'degraded', detail: 'DEMO_MODE actif — authentification réelle contournée.' }
+        ? { status: 'degraded', detail: 'DEMO_MODE actif - authentification réelle contournée.' }
         : { status: 'ok', detail: 'Supabase Auth (JWT)' };
 
     try {
       const { PermissionService } = await import('../services/rbac/permissionService');
       components.rbac = PermissionService.isLoaded()
         ? { status: 'ok', detail: 'Politique role_permissions chargée' }
-        : { status: 'degraded', detail: 'Politique illisible — repli sur les rôles codés en dur.' };
+        : { status: 'degraded', detail: 'Politique illisible - repli sur les rôles codés en dur.' };
     } catch {
       components.rbac = { status: 'degraded', detail: 'État indéterminé' };
     }
@@ -85,7 +86,7 @@ export function createExpressApp() {
     });
   });
 
-  // 🛡️ ZERO-TRUST GLOBAL MIDDLEWARE: Rate limiting + JWT Verification for ALL /api/* routes
+  // ZERO-TRUST GLOBAL MIDDLEWARE: Rate limiting + JWT Verification for ALL /api/* routes
   app.use('/api', apiGeneralLimiter);
   app.use('/api', authenticateJWT);
 
@@ -98,6 +99,7 @@ export function createExpressApp() {
   app.use('/api/audit', auditRouter);
   app.use('/api/notifications', notificationsRouter);
   app.use('/api/ai', aiRouter);
+  app.use('/api/ai-config', aiConfigRouter);
   app.use('/api/telemetry', telemetryRouter);
   app.use('/api/hardware', hardwareRouter);
   app.use('/api/security', securityRouter);
@@ -122,14 +124,14 @@ async function startServer() {
   const { hasAdminClient } = await import('../database/serverClient');
   if (!hasAdminClient()) {
     console.warn('');
-    console.warn('⚠️  SUPABASE_SERVICE_ROLE_KEY is not set in .env');
+    console.warn('SUPABASE_SERVICE_ROLE_KEY is not set in .env');
     console.warn('   Backend DB operations (reservations, seed) will fail with "permission denied".');
     console.warn('   Fix: Supabase Dashboard → Project Settings → API → copy service_role key');
     console.warn('   Add to .env:  SUPABASE_SERVICE_ROLE_KEY=your_key_here');
     console.warn('   Then restart: npm run dev');
     console.warn('');
   } else {
-    console.log('✅ Supabase service role configured — backend DB access enabled.');
+    console.log('Supabase service role configured - backend DB access enabled.');
   }
 
   // Background No-Show Auto Detection Ticker (BPMN D4 / SRS BR-12)
@@ -157,7 +159,7 @@ async function startServer() {
     }
   }, 120000);
 
-  // Background Check-In Reminder Ticker (SRS FR-59) — nudges collaborators whose reservation
+  // Background Check-In Reminder Ticker (SRS FR-59) - nudges collaborators whose reservation
   // starts within 15 min and who haven't checked in yet.
   setInterval(async () => {
     try {
@@ -183,7 +185,7 @@ async function startServer() {
     }
   }, 60000);
 
-  // Background Temporary Seat Expiry Ticker — auto-disables extension seats added via the
+  // Background Temporary Seat Expiry Ticker - auto-disables extension seats added via the
   // "Ajouter un poste" form as temporary once their end-of-window is reached.
   const { WorkspaceService } = await import('../services/workspaces/workspaceService');
   setInterval(async () => {
@@ -197,7 +199,7 @@ async function startServer() {
     }
   }, 60000);
 
-  // Background Cluster Authorization Expiry Ticker (BR-09 / SRS §14.4) — re-locks a management
+  // Background Cluster Authorization Expiry Ticker (BR-09 / SRS §14.4) - re-locks a management
   // cluster once its approved temporary-access window has elapsed.
   const { ClusterAuthorizationService } = await import('../services/workspaces/clusterAuthorizationService');
   setInterval(async () => {
@@ -245,8 +247,8 @@ async function startServer() {
   await PermissionService.load();
   console.log(
     PermissionService.isLoaded()
-      ? '✅ RBAC policy loaded — route guards are enforced from role_permissions.'
-      : '⚠️  RBAC policy unavailable — route guards are using their hardcoded fallback role lists.'
+      ? 'RBAC policy loaded - route guards are enforced from role_permissions.'
+      :'RBAC policy unavailable - route guards are using their hardcoded fallback role lists.'
   );
 
   if (!process.env.VERCEL) {

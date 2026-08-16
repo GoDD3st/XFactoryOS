@@ -24,7 +24,7 @@ export interface OccupantRosterItem {
 }
 
 /**
- * Live evacuation roster (SRS §8.11) — who is physically checked in right now.
+ * Live evacuation roster (SRS §8.11) - who is physically checked in right now.
  *
  * Deliberately fetched from the server rather than the local reservation cache: the cache is
  * empty on a fresh session and stale otherwise, and this is the one list where being wrong has

@@ -48,7 +48,7 @@ export const ApprovalsView: React.FC = () => {
     setDecisionError(null);
     // Only the approval path gets a default. A refusal (or a request for more information) is
     // sent verbatim to the requester in the notification, so a canned "refusée pour dépassement
-    // de quota" would tell them nothing about the actual reason — the SRS workflow requires a
+    // de quota" would tell them nothing about the actual reason - the SRS workflow requires a
     // real motif here.
     setDecisionNote(type === 'approved' ? 'Extension accordée.' : '');
   };
@@ -61,7 +61,7 @@ export const ApprovalsView: React.FC = () => {
     if (requiresNote && decisionNote.trim().length < 5) {
       setDecisionError(
         decisionType === 'rejected'
-          ? 'Un motif de refus est obligatoire — il est transmis au demandeur.'
+          ? 'Un motif de refus est obligatoire - il est transmis au demandeur.'
           : "Précisez les informations attendues du demandeur."
       );
       return;
@@ -76,7 +76,7 @@ export const ApprovalsView: React.FC = () => {
       );
     } catch (err: any) {
       // Some pending requests are routed to a specific approver role (Director vs Executive
-      // Assistant) — a decider outside that role gets rejected server-side rather than silently.
+      // Assistant) - a decider outside that role gets rejected server-side rather than silently.
       setDecisionError(err?.message || 'Échec de la décision.');
       return;
     }
@@ -110,15 +110,15 @@ export const ApprovalsView: React.FC = () => {
         <div className="flex items-center gap-3">
           <div className="bg-slate-800 px-4 py-2 rounded-xl border border-slate-700 text-center min-w-[92px]">
             <div className="text-xs text-slate-400">En attente</div>
-            <div className="text-lg font-black text-purple-400">{loading ? '…' : pendingRequests.length}</div>
+            <div className="text-lg font-black text-purple-400">{loading ? '...' : pendingRequests.length}</div>
           </div>
           <div className="bg-slate-800 px-4 py-2 rounded-xl border border-slate-700 text-center min-w-[92px]">
             <div className="text-xs text-slate-400">Approuvées</div>
-            <div className="text-lg font-black text-emerald-400">{loading ? '…' : approvedCount}</div>
+            <div className="text-lg font-black text-emerald-400">{loading ? '...' : approvedCount}</div>
           </div>
           <div className="bg-slate-800 px-4 py-2 rounded-xl border border-slate-700 text-center min-w-[92px]">
             <div className="text-xs text-slate-400">Refusées</div>
-            <div className="text-lg font-black text-rose-400">{loading ? '…' : rejectedCount}</div>
+            <div className="text-lg font-black text-rose-400">{loading ? '...' : rejectedCount}</div>
           </div>
         </div>
       </div>
@@ -239,7 +239,7 @@ export const ApprovalsView: React.FC = () => {
                 rows={3}
                 value={decisionNote}
                 onChange={(e) => setDecisionNote(e.target.value)}
-                placeholder={requiresNote ? 'Obligatoire — expliquez la décision au demandeur.' : ''}
+                placeholder={requiresNote ? 'Obligatoire - expliquez la décision au demandeur.' : ''}
                 className="w-full p-3 text-xs rounded-xl border border-slate-300 bg-slate-50 focus:ring-2 focus:ring-purple-600 outline-none"
               />
             </div>

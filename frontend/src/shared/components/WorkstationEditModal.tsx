@@ -44,7 +44,7 @@ export const WorkstationEditModal: React.FC<WorkstationEditModalProps> = ({
     e.preventDefault();
     setIsSaving(true);
 
-    // Save via the backend (uses the service-role client server-side — a direct browser write
+    // Save via the backend (uses the service-role client server-side - a direct browser write
     // would silently no-op under RLS unless the session is a real authenticated admin).
     try {
       await apiUpdateWorkstation(workstation.id, {
@@ -111,10 +111,10 @@ export const WorkstationEditModal: React.FC<WorkstationEditModalProps> = ({
             </label>
             <div className="grid grid-cols-2 gap-2">
               {[
-                { id: 'disponible', label: '🟢 Disponible', color: 'border-emerald-300 bg-emerald-50 text-emerald-900' },
-                { id: 'maintenance', label: '🟡 Maintenance', color: 'border-amber-300 bg-amber-50 text-amber-900' },
-                { id: 'management_reserved', label: '🔒 Réservé Direction', color: 'border-purple-300 bg-purple-50 text-purple-900' },
-                { id: 'occupé', label: '🔵 Occupé (Check-in)', color: 'border-blue-300 bg-blue-50 text-blue-900' },
+                { id: 'disponible', label: 'Disponible', color: 'border-emerald-300 bg-emerald-50 text-emerald-900' },
+                { id: 'maintenance', label: 'Maintenance', color: 'border-amber-300 bg-amber-50 text-amber-900' },
+                { id: 'management_reserved', label: 'Réservé Direction', color: 'border-purple-300 bg-purple-50 text-purple-900' },
+                { id: 'occupé', label: 'Occupé (Check-in)', color: 'border-blue-300 bg-blue-50 text-blue-900' },
               ].map((item) => (
                 <button
                   key={item.id}
@@ -155,7 +155,7 @@ export const WorkstationEditModal: React.FC<WorkstationEditModalProps> = ({
             </label>
           </div>
           {/* Fenêtre/PMR/Zone calme fields are not applicable to this Open Space (single room, no
-              amenity distinctions) — hidden from the UI, but nearWindow/isPmr/isQuietZone state
+              amenity distinctions) - hidden from the UI, but nearWindow/isPmr/isQuietZone state
               still round-trips the existing stored values unchanged rather than wiping them. */}
 
           {/* Notes / Equipment description */}

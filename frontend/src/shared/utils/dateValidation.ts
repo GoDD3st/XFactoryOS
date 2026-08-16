@@ -1,12 +1,12 @@
 /**
- * Date & 24h Time Validation Utility for XFactory OS — Site Safi
+ * Date & 24h Time Validation Utility for XFactory OS - Site Safi
  */
 
 import { ClosedDateEntry, HolidayEntry, SystemSettings, UserRole } from '@/frontend/src/types';
 
-// Fallback seed only — used when settings.holidays hasn't been configured yet. Islamic holidays
+// Fallback seed only - used when settings.holidays hasn't been configured yet. Islamic holidays
 // (Aïd Al Fitr, Aïd Al Adha, 1er Moharram, Aïd Al Mawlid) shift ~11 days earlier every Gregorian
-// year, so these dates are NOT reliable beyond 2026 — the Super Admin should keep this list
+// year, so these dates are NOT reliable beyond 2026 - the Super Admin should keep this list
 // current via Paramètres > Jours Fériés rather than relying on this hardcoded fallback.
 export const OCP_SAFI_PUBLIC_HOLIDAYS_2026: HolidayEntry[] = [
   { date: '2026-01-01', label: "Jour de l'An" },
@@ -77,7 +77,7 @@ export function getHolidayName(dateStr: string, holidays: HolidayEntry[] = OCP_S
 }
 
 /**
- * Check if a date string falls within a Super Admin "lockdown" closure (settings.closedDates) —
+ * Check if a date string falls within a Super Admin "lockdown" closure (settings.closedDates) - 
  * the workspace is closed that day, so no new reservation may be created for it, but the rest
  * of the app (browsing, check-in on already-confirmed bookings, admin, etc.) keeps working.
  */
@@ -163,7 +163,7 @@ export interface ReservationValidationResult {
  *
  * Role bypass: if `userRole` is present in `settings.bypassRoles`, the booking-window
  * and weekend/holiday restrictions are skipped entirely (working hours and minimum
- * duration still apply — those are physical/operational constraints, not access rules).
+ * duration still apply - those are physical/operational constraints, not access rules).
  */
 export function validateReservationConstraints(
   startDateStr: string,
@@ -175,7 +175,7 @@ export function validateReservationConstraints(
 ): ReservationValidationResult {
   const isBypassRole = !!userRole && settings.bypassRoles.includes(userRole);
 
-  // 0. Anticipation delay check — reservation must start at least bookingWindowDays from today
+  // 0. Anticipation delay check - reservation must start at least bookingWindowDays from today
   if (!isBypassRole) {
     const todayStr = new Date().toISOString().split('T')[0];
     const today = new Date(todayStr + 'T00:00:00');
@@ -195,7 +195,7 @@ export function validateReservationConstraints(
     }
   }
 
-  // 1. Workspace lockdown check — ALWAYS enforced, even for bypass roles (BR-level physical
+  // 1. Workspace lockdown check - ALWAYS enforced, even for bypass roles (BR-level physical
   // closure, not an access-control rule: if the building is closed, nobody can reserve a desk).
   // The rest of the app keeps functioning; this only blocks NEW reservations on the closed date(s).
   const lockdownStart = isDateLockedDown(startDateStr, settings.closedDates);

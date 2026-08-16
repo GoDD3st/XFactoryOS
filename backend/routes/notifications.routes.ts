@@ -5,7 +5,7 @@ import { CreateNotificationSchema } from '../validators';
 
 export const notificationsRouter = Router();
 
-// GET /api/notifications — User's notifications
+// GET /api/notifications - User's notifications
 notificationsRouter.get('/', async (req, res) => {
   try {
     const userId = req.user!.id;
@@ -16,7 +16,7 @@ notificationsRouter.get('/', async (req, res) => {
   }
 });
 
-// POST /api/notifications — Send notification (user_id forced from req.user)
+// POST /api/notifications - Send notification (user_id forced from req.user)
 notificationsRouter.post('/', validateBody(CreateNotificationSchema), async (req, res) => {
   try {
     const { title, message, type } = req.body;
@@ -28,7 +28,7 @@ notificationsRouter.post('/', validateBody(CreateNotificationSchema), async (req
   }
 });
 
-// PUT /api/notifications/:id/read — Mark notification as read
+// PUT /api/notifications/:id/read - Mark notification as read
 notificationsRouter.put('/:id/read', async (req, res) => {
   try {
     await NotificationService.markAsRead(req.params.id);

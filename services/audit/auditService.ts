@@ -5,7 +5,7 @@ export class AuditService {
   /**
    * Server-side (backend route): reads straight from Supabase (service-role client), the
    * authoritative source. Browser-side: returns the cached list immediately for a fast paint,
-   * then refreshes the cache in the background — callers needing the live list from the browser
+   * then refreshes the cache in the background - callers needing the live list from the browser
    * should await AuditRepository.getAuditLogs() (or the /api/audit route) directly.
    */
   static getAuditLogs(): AuditLogEntry[] | Promise<AuditLogEntry[]> {

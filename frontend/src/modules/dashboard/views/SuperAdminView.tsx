@@ -12,7 +12,8 @@ import {
 } from 'lucide-react';
 import { DigitalTwin } from '../../../shared/components/DigitalTwin';
 import { ReservationsTable } from '../../../shared/components/ReservationsTable';
-import { getRealTimeTelemetry, SiteTelemetrySummary } from '@/services/telemetry/telemetryService';
+import { SiteTelemetrySummary } from '@/services/telemetry/telemetryService';
+import { apiFetchOccupancy } from '@/services/api/telemetryApi';
 import { apiFetchUsers } from '@/services/api/userApi';
 import { apiFetchRoles } from '@/services/api/rolesApi';
 import { apiFetchAuditLogs } from '@/services/api/auditApi';
@@ -27,7 +28,7 @@ export const SuperAdminView: React.FC = () => {
   const [settings, setSettings] = useState<SystemSettings>(SettingsService.getSettings() as SystemSettings);
 
   useEffect(() => {
-    getRealTimeTelemetry().then(setTelemetry);
+    apiFetchOccupancy().then(setTelemetry);
     apiFetchUsers().then(setUsers);
     apiFetchRoles().then(setRoles);
     apiFetchAuditLogs(true).then(({ data }) => {
@@ -54,7 +55,7 @@ export const SuperAdminView: React.FC = () => {
           </div>
           <h1 className="text-xl font-bold mt-1">Configuration de la Plateforme</h1>
           <p className="text-xs text-slate-400 mt-0.5">
-            Utilisateurs, rôles &amp; permissions, politiques de réservation et référentiels — la gouvernance fonctionnelle du site Safi.
+            Utilisateurs, rôles &amp; permissions, politiques de réservation et référentiels - la gouvernance fonctionnelle du site Safi.
           </p>
         </div>
         <div className="bg-slate-800 px-3.5 py-2 rounded-xl border border-slate-700 flex items-center space-x-2">
@@ -88,7 +89,7 @@ export const SuperAdminView: React.FC = () => {
             <span className="text-xs font-bold text-slate-500">Postes Configurés</span>
             <Wrench className="w-4 h-4 text-emerald-600" />
           </div>
-          <div className="text-2xl font-black text-slate-900">{telemetry?.totalCapacity ?? '—'}</div>
+          <div className="text-2xl font-black text-slate-900">{telemetry?.totalCapacity ?? ''}</div>
           <p className="text-[11px] text-slate-500">{telemetry?.clusters.length ?? 0} clusters</p>
         </div>
 
@@ -97,7 +98,7 @@ export const SuperAdminView: React.FC = () => {
             <span className="text-xs font-bold text-slate-500">Occupation Live</span>
             <BarChart3 className="w-4 h-4 text-amber-500" />
           </div>
-          <div className="text-2xl font-black text-slate-900">{telemetry?.overallOccupancyRate ?? '—'}%</div>
+          <div className="text-2xl font-black text-slate-900">{telemetry?.overallOccupancyRate ?? ''}%</div>
           <p className="text-[11px] text-slate-500">{telemetry?.activeOccupancy ?? 0} postes occupés/réservés</p>
         </div>
       </div>
@@ -127,7 +128,7 @@ export const SuperAdminView: React.FC = () => {
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
           <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
             <Settings className="w-4 h-4 text-slate-600" />
-            <span>Configuration Active</span>
+            <span>Paramètres en vigueur</span>
           </h3>
           <div className="grid grid-cols-2 gap-2 text-xs">
             <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">

@@ -2,7 +2,7 @@ import { Reservation, UserRole } from '@/frontend/src/types';
 import { supabase } from '@/database/client';
 import { isDemoMode } from '@/frontend/src/modules/auth/utils/demoMode';
 
-/** BPMN D1 ALT path — thrown on a 409 conflict, carries alternative desks the caller can offer. */
+/** BPMN D1 ALT path - thrown on a 409 conflict, carries alternative desks the caller can offer. */
 export class ReservationConflictError extends Error {
   alternatives: { code: string; cluster_name: string }[];
   constructor(message: string, alternatives: { code: string; cluster_name: string }[]) {
@@ -44,7 +44,7 @@ export async function apiCreateReservation(
 
     headers.Authorization = `Bearer ${token}`;
   }
-  // Demo mode: no Authorization header — AuthContext's global fetch interceptor
+  // Demo mode: no Authorization header - AuthContext's global fetch interceptor
   // injects X-Demo-Role, which authMiddleware.ts's DEMO_MODE branch honors.
 
   const response = await fetch('/api/reservations', {

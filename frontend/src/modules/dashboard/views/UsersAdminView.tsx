@@ -6,13 +6,14 @@ import {
   apiSetUserStatus,
   apiUpdateUser,
   apiResetUserPassword,
+  apiSetUserPassword,
   apiBulkImportUsers,
   ImportReport,
 } from '@/services/api/userApi';
 import { useAuth } from '../../auth/context/AuthContext';
 import { Search, UserPlus, X, Power, KeyRound, Pencil, RefreshCw, Filter, Upload } from 'lucide-react';
 
-// SRS §13 "Gérer utilisateurs": CRUD is Admin/Super Admin only — Building Manager, GCI Manager,
+// SRS §13 "Gérer utilisateurs": CRUD is Admin/Super Admin only - Building Manager, GCI Manager,
 // and IT Admin have R (read-only), matching the server-side gate already enforced on
 // POST/PATCH/reset-password in backend/routes/users.routes.ts (GET already allows all four).
 const USER_MANAGEMENT_ROLES: UserRole[] = ['admin', 'super_admin'];
@@ -71,7 +72,7 @@ const CreateUserModal: React.FC<{ onClose: () => void; onCreated: () => void }> 
         {created ? (
           <div className="space-y-3">
             <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800">
-              Compte créé pour <strong>{created.email}</strong>. Communiquez ce mot de passe temporaire — il ne sera plus affiché.
+              Compte créé pour <strong>{created.email}</strong>. Communiquez ce mot de passe temporaire - il ne sera plus affiché.
             </div>
             <div className="p-3 rounded-xl bg-slate-900 text-emerald-300 font-mono text-sm text-center flex items-center justify-center gap-2">
               <KeyRound className="w-4 h-4" /> {created.tempPassword}
@@ -133,7 +134,7 @@ const CreateUserModal: React.FC<{ onClose: () => void; onCreated: () => void }> 
               disabled={submitting}
               className="w-full px-4 py-2.5 rounded-xl bg-[#008751] hover:bg-emerald-600 disabled:opacity-50 text-white font-bold text-xs"
             >
-              {submitting ? 'Création…' : 'Créer le compte'}
+              {submitting ? 'Création...' : 'Créer le compte'}
             </button>
           </form>
         )}
@@ -143,6 +144,11 @@ const CreateUserModal: React.FC<{ onClose: () => void; onCreated: () => void }> 
 };
 
 const EditUserModal: React.FC<{ user: UserProfile; onClose: () => void; onSaved: () => void }> = ({ user, onClose, onSaved }) => {
+  // Password recovery is Super Admin only server-side (PASSWORD_RECOVERY_ROLES in
+  // backend/routes/users.routes.ts). Mirror that here so an Administrator isn't shown controls
+  // that can only answer 403.
+  const { currentRole } = useAuth();
+  const canRecoverPassword = currentRole === 'super_admin';
   const [fullName, setFullName] = useState(user.full_name);
   const [department, setDepartment] = useState(user.department);
   const [role, setRole] = useState<UserRole>(user.role);
@@ -150,6 +156,10 @@ const EditUserModal: React.FC<{ user: UserProfile; onClose: () => void; onSaved:
   const [submitting, setSubmitting] = useState(false);
   const [newPassword, setNewPassword] = useState<string | null>(null);
   const [resetting, setResetting] = useState(false);
+  // Admin-chosen password. Held only until submitted, then cleared.
+  const [manualPassword, setManualPassword] = useState('');
+  const [settingPassword, setSettingPassword] = useState(false);
+  const [passwordSet, setPasswordSet] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -176,6 +186,33 @@ const EditUserModal: React.FC<{ user: UserProfile; onClose: () => void; onSaved:
       setError(err.message);
     } finally {
       setResetting(false);
+    }
+  };
+
+  /**
+   * Admin sets a chosen password. Mirrors the server-side rules so the button is only enabled for
+   * a value the backend will accept - the backend remains the enforcement point.
+   */
+  const manualPasswordValid =
+    manualPassword.length >= 10 &&
+    /[a-z]/.test(manualPassword) &&
+    /[A-Z]/.test(manualPassword) &&
+    /[0-9]/.test(manualPassword) &&
+    /[^A-Za-z0-9]/.test(manualPassword);
+
+  const handleSetPassword = async () => {
+    if (!manualPasswordValid) return;
+    setError(undefined);
+    setSettingPassword(true);
+    try {
+      await apiSetUserPassword(user.id, manualPassword);
+      // Dropped from component state as soon as it has been sent.
+      setManualPassword('');
+      setPasswordSet(true);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setSettingPassword(false);
     }
   };
 
@@ -237,38 +274,99 @@ const EditUserModal: React.FC<{ user: UserProfile; onClose: () => void; onSaved:
             disabled={submitting}
             className="w-full px-4 py-2.5 rounded-xl bg-[#008751] hover:bg-emerald-600 disabled:opacity-50 text-white font-bold text-xs"
           >
-            {submitting ? 'Enregistrement…' : 'Enregistrer les modifications'}
+            {submitting ? 'Enregistrement...' : 'Enregistrer les modifications'}
           </button>
         </form>
 
+        {/* Recovery for a forgotten password. An existing password can never be displayed - only
+            a bcrypt hash is stored - so both paths REPLACE it, and both mark the account for
+            forced rotation, because the Super Admin knows the new value either way. */}
+        {canRecoverPassword && (
         <div className="pt-3 border-t border-slate-100 space-y-2">
-          <label className="text-xs font-bold text-slate-700 block">Mot de passe</label>
+          <label className="text-xs font-bold text-slate-700 block">
+            Récupération de mot de passe
+          </label>
+
           {newPassword ? (
-            <div className="p-3 rounded-xl bg-slate-900 text-emerald-300 font-mono text-sm text-center flex items-center justify-center gap-2">
-              <KeyRound className="w-4 h-4" /> {newPassword}
+            <div className="space-y-2">
+              <div className="p-3 rounded-xl bg-slate-900 text-emerald-300 font-mono text-sm text-center flex items-center justify-center gap-2 select-all">
+                <KeyRound className="w-4 h-4 shrink-0" /> {newPassword}
+              </div>
+              <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                Affiché une seule fois. Notez-le et remettez-le en main propre : il n'est
+                conservé nulle part et ne pourra pas être réaffiché. L'utilisateur devra le
+                changer à sa prochaine connexion.
+              </p>
             </div>
           ) : (
-            <button
-              type="button"
-              onClick={handleResetPassword}
-              disabled={resetting}
-              className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-700 font-bold text-xs"
-            >
-              <KeyRound className="w-3.5 h-3.5" />
-              {resetting ? 'Génération…' : 'Réinitialiser le mot de passe'}
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={handleResetPassword}
+                disabled={resetting || settingPassword}
+                className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-700 font-bold text-xs"
+              >
+                <KeyRound className="w-3.5 h-3.5" />
+                {resetting ? 'Génération...' : 'Générer un mot de passe temporaire'}
+              </button>
+
+              <div className="flex items-center gap-2 py-1">
+                <span className="flex-1 h-px bg-slate-100" />
+                <span className="text-[10px] text-slate-400 font-bold uppercase">ou définir</span>
+                <span className="flex-1 h-px bg-slate-100" />
+              </div>
+
+              <input
+                type="password"
+                autoComplete="new-password"
+                value={manualPassword}
+                onChange={(e) => {
+                  setManualPassword(e.target.value);
+                  setPasswordSet(false);
+                }}
+                placeholder="Nouveau mot de passe"
+                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono focus:outline-none focus:ring-2 focus:ring-emerald-200"
+              />
+
+              {manualPassword.length > 0 && !manualPasswordValid && (
+                <p className="text-[10px] text-amber-700 font-semibold">
+                  10 caractères minimum, avec majuscule, minuscule, chiffre et caractère spécial.
+                </p>
+              )}
+
+              <button
+                type="button"
+                onClick={handleSetPassword}
+                disabled={!manualPasswordValid || settingPassword || resetting}
+                className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-xs"
+              >
+                <KeyRound className="w-3.5 h-3.5" />
+                {settingPassword ? 'Enregistrement...' : 'Définir ce mot de passe'}
+              </button>
+
+              {passwordSet && (
+                <p className="text-[10px] text-emerald-700 font-semibold">
+                  Mot de passe défini. L'utilisateur devra le remplacer à sa prochaine connexion.
+                </p>
+              )}
+            </>
           )}
+
           <p className="text-[10px] text-slate-400">
-            Le mot de passe est régénéré et haché par Supabase Auth (bcrypt) — il n'est jamais stocké en clair et n'est affiché qu'une seule fois ici.
+            Le mot de passe est stocké sous forme hachée - il n'est jamais conservé en clair, jamais
+            renvoyé par l'API et jamais journalisé. Un mot de passe existant ne peut donc pas être
+            consulté : la récupération consiste à le remplacer. Chaque émission est tracée dans le
+            journal d'audit (émetteur, destinataire, horodatage).
           </p>
         </div>
+        )}
       </div>
     </div>
   );
 };
 
 /**
- * SRS §28.10 / FR-11 — "import massif d'utilisateurs".
+ * SRS §28.10 / FR-11 - "import massif d'utilisateurs".
  *
  * Always previews before writing: the same payload is sent once with dryRun:true (validates the
  * file against itself and against existing accounts, persists nothing) and only then, on explicit
@@ -508,7 +606,7 @@ const BulkImportModal: React.FC<{ onClose: () => void; onImported: () => void }>
                 <span className="px-2.5 py-1 rounded-lg bg-rose-100 text-rose-700">{report.failed} en échec</span>
               )}
               {report.dryRun && (
-                <span className="px-2.5 py-1 rounded-lg bg-slate-900 text-white">Aperçu — rien n'a été enregistré</span>
+                <span className="px-2.5 py-1 rounded-lg bg-slate-900 text-white">Aperçu - rien n'a été enregistré</span>
               )}
             </div>
 
@@ -536,7 +634,7 @@ const BulkImportModal: React.FC<{ onClose: () => void; onImported: () => void }>
                         <td className="py-1.5 px-2">
                           <span className={`px-1.5 py-0.5 rounded font-bold ${s.className}`}>{s.label}</span>
                         </td>
-                        <td className="py-1.5 px-2 text-slate-500">{r.message || '—'}</td>
+                        <td className="py-1.5 px-2 text-slate-500">{r.message || ''}</td>
                       </tr>
                     );
                   })}
@@ -547,10 +645,10 @@ const BulkImportModal: React.FC<{ onClose: () => void; onImported: () => void }>
             {createdRows.length > 0 && (
               <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[11px] space-y-2">
                 <p className="font-bold">
-                  {createdRows.length} mot(s) de passe temporaire(s) généré(s) — affichés une seule fois.
+                  {createdRows.length} mot(s) de passe temporaire(s) généré(s) - affichés une seule fois.
                 </p>
                 <p>
-                  Ils ne sont pas stockés en clair (Supabase Auth les hache en bcrypt). Téléchargez-les maintenant si vous
+                  Ils ne sont pas conservés en clair. Téléchargez-les maintenant si vous
                   devez les transmettre, puis supprimez le fichier après distribution.
                 </p>
                 <button
@@ -574,7 +672,7 @@ const BulkImportModal: React.FC<{ onClose: () => void; onImported: () => void }>
               disabled={busy || parsed.length === 0}
               className="px-5 py-2 text-xs font-bold text-white rounded-xl shadow-md bg-slate-800 hover:bg-slate-700 disabled:opacity-50"
             >
-              {busy ? 'Vérification…' : 'Vérifier le fichier'}
+              {busy ? 'Vérification...' : 'Vérifier le fichier'}
             </button>
           )}
           {!isDone && report?.dryRun && (
@@ -583,7 +681,7 @@ const BulkImportModal: React.FC<{ onClose: () => void; onImported: () => void }>
               disabled={busy || report.ready === 0}
               className="px-5 py-2 text-xs font-bold text-white rounded-xl shadow-md bg-[#008751] hover:bg-[#00703f] disabled:opacity-50"
             >
-              {busy ? 'Import…' : `Importer ${report.ready} utilisateur(s)`}
+              {busy ? 'Import...' : `Importer ${report.ready} utilisateur(s)`}
             </button>
           )}
         </div>
@@ -643,8 +741,8 @@ export const UsersAdminView: React.FC = () => {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-5 rounded-2xl bg-white border border-slate-200 shadow-sm">
         <div>
-          <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">Gestion des Comptes & Utilisateurs Supabase</h2>
-          <p className="text-xs text-slate-500 mt-0.5">Données chargées en temps réel depuis la table `users` de Supabase</p>
+          <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">Gestion des Comptes Utilisateurs</h2>
+          <p className="text-xs text-slate-500 mt-0.5">Annuaire des comptes du site</p>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
@@ -705,7 +803,7 @@ export const UsersAdminView: React.FC = () => {
 
       <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm overflow-x-auto">
         {loading ? (
-          <div className="p-6 text-center text-xs text-slate-400">Chargement des utilisateurs depuis Supabase...</div>
+          <div className="p-6 text-center text-xs text-slate-400">Chargement des utilisateurs...</div>
         ) : (
           <table className="w-full text-left text-xs border-collapse">
             <thead>
@@ -768,7 +866,7 @@ export const UsersAdminView: React.FC = () => {
       {showCreate && (
         <CreateUserModal
           // onCreated fires the moment the account is created, while the modal is still showing
-          // the temp-password screen — the admin can't see the table refresh at that point. If
+          // the temp-password screen - the admin can't see the table refresh at that point. If
           // that background fetch has any hiccup (network blip, timing), the table stayed stale
           // until a full page reload, even though the account was created correctly (verified:
           // it's the list not reliably re-fetching, not a backend/data issue). Refreshing again

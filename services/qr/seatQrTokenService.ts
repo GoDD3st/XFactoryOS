@@ -2,7 +2,7 @@ import crypto from 'crypto';
 
 /**
  * Seat Badge QR Token Service
- * Deterministic HMAC-SHA256 signature over a workstation id — no expiry, no nonce,
+ * Deterministic HMAC-SHA256 signature over a workstation id - no expiry, no nonce,
  * because this token is meant to be printed and taped to a desk for months at a time,
  * unlike the single-reservation, time-boxed tokens in qrTokenService.ts. Re-generating
  * the QR image for the same seat always reproduces the same token, so nothing needs to

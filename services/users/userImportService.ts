@@ -3,13 +3,13 @@ import { AuditRepository } from '@/database/repositories/auditRepository';
 import { UserRole } from '@/frontend/src/types';
 
 /**
- * SRS §28.10 / FR-11 — "import massif d'utilisateurs" for Administrator and Super Administrator.
+ * SRS §28.10 / FR-11 - "import massif d'utilisateurs" for Administrator and Super Administrator.
  *
  * Runs in two phases so an admin never discovers a problem halfway through a batch:
  *  1. `dryRun` validates every row against the file itself and against the live users table and
  *     reports what would happen, persisting nothing.
  *  2. the real run creates only the rows that pass, and reports the outcome of each one
- *     individually — one bad row does not abort the rest.
+ *     individually - one bad row does not abort the rest.
  */
 
 export interface ImportRow {
@@ -134,7 +134,7 @@ export class UserImportService {
       rows: results,
     };
 
-    // Only a real run is an auditable event — a dry run changes nothing.
+    // Only a real run is an auditable event - a dry run changes nothing.
     if (!options.dryRun) {
       await AuditRepository.logEvent(
         'CREATE',

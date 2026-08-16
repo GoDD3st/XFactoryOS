@@ -14,7 +14,7 @@ import { apiFetchAuditLogs } from '@/services/api/auditApi';
 import { AuditLogEntry } from '../../../types';
 
 /**
- * Security home — SRS §13 matrix, Security column: R on Audit logs and Analytics, R (view only)
+ * Security home - SRS §13 matrix, Security column: R on Audit logs and Analytics, R (view only)
  * on postes/clusters, and X on Dashboard exécutif, Réserver poste standard, Approuver, Autoriser
  * cluster management, Utilisateurs, Rôles, Paramètres and Administration technique.
  *
@@ -33,7 +33,7 @@ export const SecurityView: React.FC = () => {
     try {
       setRoster(await apiFetchEvacuationRoster());
     } catch (err: any) {
-      // Never fall back to an empty list here — "nobody is in the building" must not be the
+      // Never fall back to an empty list here - "nobody is in the building" must not be the
       // failure mode of an evacuation roster.
       setRoster(null);
       setRosterError(err?.message || "Registre indisponible.");
@@ -55,7 +55,7 @@ export const SecurityView: React.FC = () => {
     };
   }, [load]);
 
-  /** Opens a printable roster in a new window — replaces an alert() that produced nothing. */
+  /** Opens a printable roster in a new window - replaces an alert() that produced nothing. */
   const handlePrintEvacuationList = () => {
     if (!roster || roster.length === 0) return;
     const printed = new Date().toLocaleString('fr-FR');
@@ -71,7 +71,7 @@ export const SecurityView: React.FC = () => {
     const win = window.open('', '_blank');
     if (!win) return;
     win.document.write(`
-      <html><head><title>Registre d'évacuation — Site Safi</title>
+      <html><head><title>Registre d'évacuation - Site Safi</title>
       <style>
         body{font-family:system-ui,sans-serif;padding:24px;color:#0f172a}
         h1{font-size:18px;margin:0 0 4px}
@@ -81,7 +81,7 @@ export const SecurityView: React.FC = () => {
         th{background:#f1f5f9}
       </style></head>
       <body>
-        <h1>Registre d'évacuation d'urgence — Site Safi</h1>
+        <h1>Registre d'évacuation d'urgence - Site Safi</h1>
         <p>${roster.length} personne(s) présente(s) · édité le ${printed}</p>
         <table>
           <thead><tr><th>Poste</th><th>Nom</th><th>Département</th><th>Cluster</th><th>Check-in</th></tr></thead>
@@ -104,7 +104,7 @@ export const SecurityView: React.FC = () => {
             <span className="px-2.5 py-0.5 rounded bg-slate-700 text-slate-200 font-bold text-xs">
               Rôle : Sécurité
             </span>
-            <span className="text-xs text-slate-400">Contrôle d'accès — Site Safi</span>
+            <span className="text-xs text-slate-400">Contrôle d'accès - Site Safi</span>
           </div>
           <h1 className="text-xl font-bold mt-1">Surveillance &amp; registre de présence</h1>
           <p className="text-xs text-slate-400 mt-0.5">
@@ -126,7 +126,7 @@ export const SecurityView: React.FC = () => {
             className="bg-rose-700 hover:bg-rose-800 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-md flex items-center space-x-2"
           >
             <Printer className="w-4 h-4" />
-            <span>Registre d'évacuation ({roster?.length ?? '—'})</span>
+            <span>Registre d'évacuation ({roster?.length ?? ''})</span>
           </button>
         </div>
       </div>
@@ -135,7 +135,7 @@ export const SecurityView: React.FC = () => {
         <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 text-xs font-semibold flex items-start gap-2">
           <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
           <span>
-            Registre d'évacuation indisponible : {rosterError} — ne considérez pas le site comme vide.
+            Registre d'évacuation indisponible : {rosterError} - ne considérez pas le site comme vide.
           </span>
         </div>
       )}
@@ -148,7 +148,7 @@ export const SecurityView: React.FC = () => {
             <Radio className="w-4 h-4 text-emerald-400 animate-pulse" />
           </div>
           <div className="text-2xl font-black text-emerald-400">
-            {loading ? '…' : roster === null ? 'Indisponible' : `${roster.length} personne(s)`}
+            {loading ? '...' : roster === null ? 'Indisponible' : `${roster.length} personne(s)`}
           </div>
           <p className="text-[11px] text-slate-400">Check-in confirmé, non encore reparties</p>
         </div>
@@ -158,7 +158,7 @@ export const SecurityView: React.FC = () => {
             <span>Événements d'audit</span>
             <ShieldCheck className="w-4 h-4 text-cyan-400" />
           </div>
-          <div className="text-2xl font-black text-white">{loading ? '…' : auditLogs.length}</div>
+          <div className="text-2xl font-black text-white">{loading ? '...' : auditLogs.length}</div>
           <p className="text-[11px] text-slate-400">Consultables dans l'onglet Audit</p>
         </div>
       </div>
@@ -170,7 +170,7 @@ export const SecurityView: React.FC = () => {
           Registre de présence en direct
         </h3>
 
-        {loading && <p className="text-xs text-slate-400">Chargement…</p>}
+        {loading && <p className="text-xs text-slate-400">Chargement...</p>}
         {!loading && roster !== null && roster.length === 0 && (
           <p className="text-xs text-slate-400 italic">Aucune personne actuellement enregistrée sur site.</p>
         )}
@@ -230,7 +230,7 @@ export const SecurityView: React.FC = () => {
         )}
       </div>
 
-      {/* Seat map, read-only — this role is X on "Réserver poste standard" */}
+      {/* Seat map, read-only - this role is X on "Réserver poste standard" */}
       <div>
         <h3 className="text-sm font-bold text-slate-900 mb-2">Plan du site (consultation)</h3>
         <DigitalTwin readOnly />

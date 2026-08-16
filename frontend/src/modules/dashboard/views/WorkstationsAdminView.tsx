@@ -21,7 +21,7 @@ export const WorkstationsAdminView: React.FC = () => {
   const loadWorkstations = () => {
     // Read the live-fetched result directly rather than WorkspaceService.getSavedWorkstations(),
     // which returns its localStorage cache synchronously and only refreshes it in the
-    // background — that left this admin table permanently one fetch cycle stale.
+    // background - that left this admin table permanently one fetch cycle stale.
     WorkspaceService.fetchClustersWithOverlays().then((clusters) => {
       const map: Record<string, Workstation[]> = {};
       clusters.forEach((c) => { map[c.id] = c.workstations; });
@@ -109,7 +109,7 @@ export const WorkstationsAdminView: React.FC = () => {
   };
 
   // wsMap keys each workstation under both its cluster UUID and cluster code (for lookup
-  // flexibility elsewhere), so a naive flatten double-counts every seat — dedupe by id.
+  // flexibility elsewhere), so a naive flatten double-counts every seat - dedupe by id.
   const allWorkstations: Workstation[] = Array.from(
     new Map((Object.values(wsMap) as Workstation[][]).flat().map((w) => [w.id, w])).values()
   );
@@ -147,7 +147,7 @@ export const WorkstationsAdminView: React.FC = () => {
           <p className="text-xs text-slate-500 mt-0.5">
             {isAdminOrSuperAdmin
               ? 'Administration des postes Open Space, maintenance et statut extension'
-              : 'Supervision et gestion opérationnelle des postes Open Space — maintenance et visibilité'}
+              : 'Supervision et gestion opérationnelle des postes Open Space - maintenance et visibilité'}
           </p>
         </div>
         <div className="flex items-center space-x-2">
@@ -327,10 +327,10 @@ export const WorkstationsAdminView: React.FC = () => {
                 onChange={(e) => setCreateClusterId(e.target.value)}
                 className="w-full p-2.5 text-xs rounded-xl border border-slate-300 bg-slate-50 focus:ring-2 focus:ring-[#008751] outline-none"
               >
-                <option value="">Sélectionner un cluster…</option>
+                <option value="">Sélectionner un cluster...</option>
                 {clusterOptions.map((c) => (
                   <option key={c.id} value={c.id} disabled={c.seats >= 8}>
-                    {c.code} — {c.name} ({c.seats}/8 postes){c.seats >= 8 ? ' — complet' : ''}
+                    {c.code} - {c.name} ({c.seats}/8 postes){c.seats >= 8 ? ' - complet' : ''}
                   </option>
                 ))}
               </select>

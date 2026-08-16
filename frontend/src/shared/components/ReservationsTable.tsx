@@ -407,7 +407,7 @@ export const ReservationsTable: React.FC<ReservationsTableProps> = ({
                 onClick={() => setIsModalOpen(false)}
                 className="text-slate-400 hover:text-slate-600 font-bold p-1 rounded-lg"
               >
-                ✕
+
               </button>
             </div>
 

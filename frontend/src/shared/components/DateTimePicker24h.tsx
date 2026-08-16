@@ -171,7 +171,7 @@ export const DateTimePicker24h: React.FC<DateTimePicker24hProps> = ({
         <div className="flex items-center space-x-2">
           <CalendarIcon className="w-4 h-4 text-[#008751]" />
           <span className="text-xs font-bold text-slate-800 uppercase tracking-wide">
-            Planification 24H (08:00 – 18:00)
+            Planification 24H (08:00 - 18:00)
           </span>
         </div>
 
@@ -228,10 +228,10 @@ export const DateTimePicker24h: React.FC<DateTimePicker24hProps> = ({
             />
           </div>
           {startIsWeekend && (
-            <span className="text-[10px] text-red-600 font-bold block">⚠️ Week-end interdit</span>
+            <span className="text-[10px] text-red-600 font-bold block">Week-end interdit</span>
           )}
           {startHolidayName && (
-            <span className="text-[10px] text-amber-600 font-bold block">⚠️ Férié : {startHolidayName}</span>
+            <span className="text-[10px] text-amber-600 font-bold block">Férié : {startHolidayName}</span>
           )}
         </div>
 

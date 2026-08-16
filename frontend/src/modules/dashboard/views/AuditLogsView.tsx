@@ -11,13 +11,13 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 type EntityGroup = 'Clusters' | 'Postes' | 'Utilisateurs' | 'Autres';
 
 interface EntityLabel {
-  /** Raw value stored in audit_logs.target_resource — what we actually filter on. */
+  /** Raw value stored in audit_logs.target_resource - what we actually filter on. */
   value: string;
   label: string;
   group: EntityGroup;
 }
 
-// Mirrors backend/routes/audit.routes.ts's AUDIT_CATEGORY_VISIBILITY — display labels only,
+// Mirrors backend/routes/audit.routes.ts's AUDIT_CATEGORY_VISIBILITY - display labels only,
 // the actual filtering happens server-side (never trust the client to hide sensitive log rows).
 const CATEGORY_LABELS: Record<string, string> = {
   auth: 'Connexion',
@@ -64,7 +64,7 @@ export const AuditLogsView: React.FC = () => {
       const map = new Map<string, { label: string; group: EntityGroup }>();
 
       // /api/workspaces/clusters is open to any authenticated user; /api/users is role-gated and
-      // resolves to [] for roles without it (Receptionist, Director, Security…), which is fine —
+      // resolves to [] for roles without it (Receptionist, Director, Security...), which is fine - 
       // those ids simply fall through to "Autres".
       const [clusters, users] = await Promise.all([
         apiFetchClusters().catch(() => []),
@@ -83,7 +83,7 @@ export const AuditLogsView: React.FC = () => {
       });
 
       users.forEach((u) => {
-        const label = `${u.full_name}${u.email ? ` — ${u.email}` : ''}`;
+        const label = `${u.full_name}${u.email ? ` - ${u.email}` : ''}`;
         map.set(u.id, { label, group: 'Utilisateurs' });
       });
 
@@ -98,7 +98,7 @@ export const AuditLogsView: React.FC = () => {
 
   // LOGIN/LOGOUT rows store the actor's own user id as the entity, and every row already carries
   // actor_id + actor_name. Deriving names from the logs themselves means roles that cannot call
-  // /api/users (Director, Security, Receptionist…) still get readable labels instead of UUIDs.
+  // /api/users (Director, Security, Receptionist...) still get readable labels instead of UUIDs.
   const resolvedNames = useMemo(() => {
     const map = new Map(entityNames);
     logs.forEach((l) => {
@@ -114,7 +114,7 @@ export const AuditLogsView: React.FC = () => {
     (raw: string): string => {
       const hit = resolvedNames.get(raw);
       if (hit) return hit.label;
-      if (UUID_RE.test(raw)) return `Réf. technique ${raw.slice(0, 8)}…`;
+      if (UUID_RE.test(raw)) return `Réf. technique ${raw.slice(0, 8)}...`;
       return raw;
     },
     [resolvedNames]
@@ -136,7 +136,7 @@ export const AuditLogsView: React.FC = () => {
       const hit = resolvedNames.get(raw);
       groups[hit?.group ?? 'Autres'].push({
         value: raw,
-        label: hit?.label ?? (UUID_RE.test(raw) ? `Réf. technique ${raw.slice(0, 8)}…` : raw),
+        label: hit?.label ?? (UUID_RE.test(raw) ? `Réf. technique ${raw.slice(0, 8)}...` : raw),
         group: hit?.group ?? 'Autres',
       });
     });
@@ -202,7 +202,7 @@ export const AuditLogsView: React.FC = () => {
           {!showAll && (
             <p className="text-[11px] text-slate-400 mt-1 flex items-center gap-1">
               <Info className="w-3 h-3" />
-              Vue filtrée à votre périmètre de rôle — les autres catégories sont suivies par leurs responsables respectifs.
+              Vue filtrée à votre périmètre de rôle - les autres catégories sont suivies par leurs responsables respectifs.
             </p>
           )}
         </div>
@@ -342,7 +342,7 @@ export const AuditLogsView: React.FC = () => {
                 </td>
                 <td className="py-3 px-3">
                   <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600">
-                    {log.category ? CATEGORY_LABELS[log.category] || log.category : '—'}
+                    {log.category ? CATEGORY_LABELS[log.category] || log.category : ''}
                   </span>
                 </td>
                 <td className="py-3 px-3">

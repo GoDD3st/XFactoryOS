@@ -2,7 +2,7 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '../client';
 
 // Must match the Postgres enum check_event_type exactly (CHECK_IN, CHECK_OUT_MANUAL,
-// CHECK_OUT_AUTO, NO_SHOW_RELEASE) — any other value fails the insert with an invalid-enum error.
+// CHECK_OUT_AUTO, NO_SHOW_RELEASE) - any other value fails the insert with an invalid-enum error.
 export type CheckEventType = 'CHECK_IN' | 'CHECK_OUT_MANUAL' | 'CHECK_OUT_AUTO' | 'NO_SHOW_RELEASE';
 
 async function resolveClient(): Promise<SupabaseClient> {
