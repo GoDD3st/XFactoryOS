@@ -112,7 +112,7 @@ const CreateRoleModal: React.FC<{ onClose: () => void; onCreated: () => void }> 
             disabled={submitting}
             className="w-full px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold text-xs"
           >
-            {submitting ? 'Création…' : 'Créer le rôle'}
+            {submitting ? 'Création...' : 'Créer le rôle'}
           </button>
         </form>
       </div>
@@ -156,7 +156,7 @@ const DeleteRoleModal: React.FC<{ role: RoleWithCount; onClose: () => void; onDe
           </div>
           <div>
             <h3 className="text-sm font-black text-slate-800 uppercase tracking-tight">Supprimer "{role.name}"</h3>
-            <p className="text-[10px] text-slate-400">Action irréversible — clé de suppression requise</p>
+            <p className="text-[10px] text-slate-400">Action irréversible - clé de suppression requise</p>
           </div>
         </div>
 
@@ -181,7 +181,7 @@ const DeleteRoleModal: React.FC<{ role: RoleWithCount; onClose: () => void; onDe
             disabled={submitting}
             className="w-full px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white font-bold text-xs"
           >
-            {submitting ? 'Suppression…' : 'Confirmer la suppression'}
+            {submitting ? 'Suppression...' : 'Confirmer la suppression'}
           </button>
         </form>
       </div>
@@ -271,7 +271,7 @@ export const RolesAdminView: React.FC = () => {
           l'accès aux routes correspondantes, sans redémarrage. Chaque changement est journalisé dans l'Audit.
           <br />
           La lecture et la modification de « Gérer rôles &amp; permissions » pour le Super Administrateur ne peuvent
-          pas être retirées — ce serait un verrouillage définitif de cet écran.
+          pas être retirées - ce serait un verrouillage définitif de cet écran.
         </span>
       </div>
 
@@ -288,7 +288,7 @@ export const RolesAdminView: React.FC = () => {
       )}
 
       {loading ? (
-        <div className="p-8 text-center text-xs text-slate-400">Chargement des rôles…</div>
+        <div className="p-8 text-center text-xs text-slate-400">Chargement des rôles...</div>
       ) : (
         <div className="space-y-3">
           {roles.map((role) => {

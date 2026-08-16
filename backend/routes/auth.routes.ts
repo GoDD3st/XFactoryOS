@@ -10,7 +10,7 @@ import { requireRole } from '../middleware/rbacMiddleware';
 
 export const authRouter = Router();
 
-// GET /api/auth/roles — Public role configs
+// GET /api/auth/roles - Public role configs
 authRouter.get('/roles', (req, res) => {
   res.json({
     status: 'success',
@@ -18,7 +18,7 @@ authRouter.get('/roles', (req, res) => {
   });
 });
 
-// GET /api/auth/me — Return authenticated user profile from JWT session
+// GET /api/auth/me - Return authenticated user profile from JWT session
 authRouter.get('/me', (req, res) => {
   if (!req.user) {
     res.status(401).json({ status: 'error', message: 'Non authentifié' });
@@ -31,7 +31,7 @@ authRouter.get('/me', (req, res) => {
   });
 });
 
-// POST /api/auth/login — Supabase Password Authentication
+// POST /api/auth/login - Supabase Password Authentication
 authRouter.post('/login', validateBody(LoginSchema), async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -59,7 +59,7 @@ authRouter.post('/login', validateBody(LoginSchema), async (req, res) => {
   }
 });
 
-// POST /api/auth/register — Secure registration
+// POST /api/auth/register - Secure registration
 authRouter.post('/register', validateBody(RegisterSchema), async (req, res) => {
   try {
     const { email, password, full_name, department } = req.body;
@@ -105,7 +105,7 @@ authRouter.post('/register', validateBody(RegisterSchema), async (req, res) => {
   }
 });
 
-// GET /api/auth/user/:role — Admin diagnostic role lookup
+// GET /api/auth/user/:role - Admin diagnostic role lookup
 authRouter.get('/user/:role', requireRole('admin', 'super_admin'), (req, res) => {
   const role = req.params.role as UserRole;
   const user = AuthService.getUserForRole(role);
@@ -116,7 +116,7 @@ authRouter.get('/user/:role', requireRole('admin', 'super_admin'), (req, res) =>
   });
 });
 
-// GET /api/auth/users — Admin diagnostic user list
+// GET /api/auth/users - Admin diagnostic user list
 authRouter.get('/users', requireRole('admin', 'super_admin'), (req, res) => {
   res.json({
     status: 'success',

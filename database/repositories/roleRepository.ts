@@ -1,7 +1,7 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '../client';
 
-// role_permissions/permissions are the documented, editable RBAC policy record — see
+// role_permissions/permissions are the documented, editable RBAC policy record - see
 // roles.routes.ts header comment for the important distinction between this and actual
 // route-level enforcement (which stays on the existing hardcoded requireRole() guards).
 export interface RoleWithCount {
@@ -103,7 +103,7 @@ export class RoleRepository {
 
   /**
    * These cells are now enforced at the route level, so revoking the wrong one is not a
-   * documentation change — it removes real access. Super Admin's read/update on `manage_roles`
+   * documentation change - it removes real access. Super Admin's read/update on `manage_roles`
    * is the one combination that must never be revocable: it is the only way back, so losing it
    * would permanently freeze the whole policy table in whatever state it was left in.
    */
@@ -136,7 +136,7 @@ export class RoleRepository {
 
     if (error) return false;
 
-    // The guards read from an in-memory cache — without this the change wouldn't take effect
+    // The guards read from an in-memory cache - without this the change wouldn't take effect
     // until the next server restart.
     const { PermissionService } = await import('@/services/rbac/permissionService');
     PermissionService.invalidate();
@@ -162,7 +162,7 @@ export class RoleRepository {
       throw new Error(error?.message || 'Échec de la création du rôle.');
     }
 
-    // Every existing permission gets an explicit no-access row for the new role — matches the
+    // Every existing permission gets an explicit no-access row for the new role - matches the
     // shape getPermissionsMatrix() expects (one row per role x permission, not sparse).
     const { data: permissions } = await db.from('permissions').select('id');
     if (permissions && permissions.length > 0) {
@@ -194,7 +194,7 @@ export class RoleRepository {
   }
 
   /**
-   * Refuses to delete a role that's critical (Admin/Super Admin — deleting Super Admin itself
+   * Refuses to delete a role that's critical (Admin/Super Admin - deleting Super Admin itself
    * would be catastrophic) or that still has users assigned (would silently strand their
    * access). The master-key check happens in the route, before this is ever called.
    */
@@ -207,7 +207,7 @@ export class RoleRepository {
 
     const { count } = await db.from('user_roles').select('user_id', { count: 'exact', head: true }).eq('role_id', roleId);
     if (count && count > 0) {
-      throw new Error(`Le rôle "${role.name}" est encore assigné à ${count} utilisateur(s) — retirez-les avant suppression.`);
+      throw new Error(`Le rôle "${role.name}" est encore assigné à ${count} utilisateur(s) - retirez-les avant suppression.`);
     }
 
     await db.from('role_permissions').delete().eq('role_id', roleId);

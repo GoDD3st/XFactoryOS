@@ -15,7 +15,7 @@ import { DigitalTwin } from '../../../shared/components/DigitalTwin';
 import { ReservationsTable } from '../../../shared/components/ReservationsTable';
 
 /**
- * Administrator home — SRS §13 Administrator column: CRUD on postes/clusters/utilisateurs/
+ * Administrator home - SRS §13 Administrator column: CRUD on postes/clusters/utilisateurs/
  * paramètres, R on analytics/audit/roles. This is functional administration of the Open Space
  * referential, not technical administration (that is IT Admin's mandate, "X" for this role).
  *
@@ -93,7 +93,7 @@ export const AdminView: React.FC = () => {
           <span className="px-2.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-bold text-xs">
             Rôle : Administrator
           </span>
-          <span className="text-xs text-slate-400">Administration fonctionnelle — Site Safi</span>
+          <span className="text-xs text-slate-400">Administration fonctionnelle - Site Safi</span>
         </div>
         <h1 className="text-xl font-bold mt-1">Gestion des ressources &amp; règles Open Space</h1>
         <p className="text-xs text-slate-400 mt-0.5">
@@ -109,7 +109,7 @@ export const AdminView: React.FC = () => {
             <span className="text-xs font-bold text-slate-500">Postes</span>
             <Armchair className="w-4 h-4 text-slate-600" />
           </div>
-          <div className="text-2xl font-black text-slate-900">{loading ? '…' : stats.seatCount}</div>
+          <div className="text-2xl font-black text-slate-900">{loading ? '...' : stats.seatCount}</div>
           <p className="text-[11px] text-slate-500">
             {loading ? '' : `${stats.seatCount - stats.disabled} actifs`}
             {!loading && stats.disabled > 0 && <span className="text-slate-400"> · {stats.disabled} désactivés</span>}
@@ -121,7 +121,7 @@ export const AdminView: React.FC = () => {
             <span className="text-xs font-bold text-slate-500">Clusters</span>
             <Layers className="w-4 h-4 text-cyan-600" />
           </div>
-          <div className="text-2xl font-black text-slate-900">{loading ? '…' : stats.clusterCount}</div>
+          <div className="text-2xl font-black text-slate-900">{loading ? '...' : stats.clusterCount}</div>
           <p className="text-[11px] text-slate-500">{loading ? '' : `${stats.clustersEnabled} actifs`}</p>
         </div>
 
@@ -130,7 +130,7 @@ export const AdminView: React.FC = () => {
             <span className="text-xs font-bold text-slate-500">Utilisateurs</span>
             <Users className="w-4 h-4 text-indigo-600" />
           </div>
-          <div className="text-2xl font-black text-slate-900">{loading ? '…' : userCount?.total ?? '—'}</div>
+          <div className="text-2xl font-black text-slate-900">{loading ? '...' : userCount?.total ?? ''}</div>
           <p className="text-[11px] text-slate-500">
             {loading || !userCount ? '' : `${userCount.active} actifs`}
           </p>
@@ -145,7 +145,7 @@ export const AdminView: React.FC = () => {
             Occupation live
           </h3>
           <span className="text-xs font-bold text-slate-500">
-            Taux d'occupation : <span className="text-slate-900">{loading ? '…' : `${occupancy}%`}</span>
+            Taux d'occupation : <span className="text-slate-900">{loading ? '...' : `${occupancy}%`}</span>
           </span>
         </div>
 
@@ -158,7 +158,7 @@ export const AdminView: React.FC = () => {
             { label: 'Désactivés', value: stats.disabled, className: 'text-slate-600 bg-slate-50 border-slate-200' },
           ].map((s) => (
             <div key={s.label} className={`p-3 rounded-xl border text-center ${s.className}`}>
-              <div className="text-xl font-black">{loading ? '…' : s.value}</div>
+              <div className="text-xl font-black">{loading ? '...' : s.value}</div>
               <div className="text-[10px] font-bold uppercase tracking-wide">{s.label}</div>
             </div>
           ))}
@@ -169,7 +169,7 @@ export const AdminView: React.FC = () => {
         {/* Cluster usage */}
         <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-3">
           <h3 className="text-sm font-bold text-slate-900">Utilisation des clusters</h3>
-          {loading && <p className="text-xs text-slate-400">Chargement…</p>}
+          {loading && <p className="text-xs text-slate-400">Chargement...</p>}
           {!loading && clusterUsage.length === 0 && (
             <p className="text-xs text-slate-400 italic">Aucun cluster enregistré.</p>
           )}
@@ -201,7 +201,7 @@ export const AdminView: React.FC = () => {
             Alertes &amp; anomalies
           </h3>
           {loading ? (
-            <p className="text-xs text-slate-400">Chargement…</p>
+            <p className="text-xs text-slate-400">Chargement...</p>
           ) : (
             <div className="space-y-2">
               {stats.maintenance > 0 && (
@@ -236,7 +236,7 @@ export const AdminView: React.FC = () => {
       </div>
 
       <div>
-        <h2 className="text-sm font-bold text-slate-900 mb-2">Digital Twin — référentiel Open Space</h2>
+        <h2 className="text-sm font-bold text-slate-900 mb-2">Digital Twin - référentiel Open Space</h2>
         <DigitalTwin />
       </div>
 

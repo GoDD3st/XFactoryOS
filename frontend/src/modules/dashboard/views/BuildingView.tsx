@@ -12,7 +12,8 @@ import { DigitalTwin } from '../../../shared/components/DigitalTwin';
 import { ReservationsTable } from '../../../shared/components/ReservationsTable';
 import { WorkstationEditModal } from '../../../shared/components/WorkstationEditModal';
 import { Workstation, Cluster, ClusterAuthorization } from '../../../types';
-import { getRealTimeTelemetry, SiteTelemetrySummary } from '@/services/telemetry/telemetryService';
+import { SiteTelemetrySummary } from '@/services/telemetry/telemetryService';
+import { apiFetchOccupancy } from '@/services/api/telemetryApi';
 import { apiFetchNoShowStats, NoShowStats } from '@/services/api/noShowApi';
 import { apiFetchPendingClusterAccessRequests } from '@/services/api/workspaceApi';
 
@@ -24,7 +25,7 @@ export const BuildingView: React.FC = () => {
   const [actionMessage, setActionMessage] = useState<string | null>(null);
 
   const loadOverview = () => {
-    getRealTimeTelemetry().then(setTelemetry);
+    apiFetchOccupancy().then(setTelemetry);
     apiFetchNoShowStats().then(setNoShowStats);
     apiFetchPendingClusterAccessRequests().then(setPendingAccessRequests);
   };
@@ -55,14 +56,14 @@ export const BuildingView: React.FC = () => {
   const alerts: { key: string; label: string }[] = [
     ...pendingAccessRequests.map((r) => ({
       key: `req-${r.id}`,
-      label: `Cluster ${r.cluster_code || r.cluster_id} — accès demandé par ${r.requester_name || 'un collaborateur'}`,
+      label: `Cluster ${r.cluster_code || r.cluster_id} - accès demandé par ${r.requester_name || 'un collaborateur'}`,
     })),
     ...(noShowStats.today > 0
       ? [{ key: 'noshow', label: `${noShowStats.today} no-show${noShowStats.today > 1 ? 's' : ''} aujourd'hui` }]
       : []),
     ...clustersInMaintenance.map((c) => ({
       key: `maint-${c.clusterId}`,
-      label: `Cluster ${c.clusterCode} — ${c.maintenanceDesks} poste${c.maintenanceDesks > 1 ? 's' : ''} en maintenance`,
+      label: `Cluster ${c.clusterCode} - ${c.maintenanceDesks} poste${c.maintenanceDesks > 1 ? 's' : ''} en maintenance`,
     })),
   ];
 
@@ -79,7 +80,7 @@ export const BuildingView: React.FC = () => {
           </div>
           <h1 className="text-xl font-bold mt-1">Supervision de l'Occupation &amp; des Réservations</h1>
           <p className="text-xs text-slate-400 mt-0.5">
-            Disponibilité, discipline et reporting de l'Open Space — occupation, réservations, anomalies et clusters réservés.
+            Disponibilité, discipline et reporting de l'Open Space - occupation, réservations, anomalies et clusters réservés.
           </p>
         </div>
 
@@ -105,7 +106,7 @@ export const BuildingView: React.FC = () => {
             <span className="text-xs font-bold text-slate-500">Occupation</span>
             <Activity className="w-4 h-4 text-emerald-600" />
           </div>
-          <div className="text-2xl font-black text-slate-900">{telemetry?.overallOccupancyRate ?? '—'}%</div>
+          <div className="text-2xl font-black text-slate-900">{telemetry?.overallOccupancyRate ?? ''}%</div>
           <p className="text-[11px] text-slate-500">{telemetry?.activeOccupancy ?? 0}/{telemetry?.totalCapacity ?? 0} postes occupés ou réservés</p>
         </div>
 
@@ -142,7 +143,7 @@ export const BuildingView: React.FC = () => {
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
             <Wrench className="w-4 h-4 text-amber-600" />
-            <span>Digital Twin — Cliquez sur un poste pour le modifier</span>
+            <span>Digital Twin - Cliquez sur un poste pour le modifier</span>
           </h2>
         </div>
         <DigitalTwin onSelectSeat={handleSeatClick} adminEditMode />

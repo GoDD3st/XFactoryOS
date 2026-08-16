@@ -1,4 +1,4 @@
-import { WaitingListEntry } from '@/frontend/src/types';
+import { WaitingListEntry, WaitingListPreferences } from '@/frontend/src/types';
 import { supabase } from '@/database/client';
 import { isDemoMode } from '@/frontend/src/modules/auth/utils/demoMode';
 
@@ -24,9 +24,14 @@ export async function apiFetchWaitingList(): Promise<WaitingListEntry[]> {
 
 export async function apiJoinWaitingList(payload: {
   cluster_preference?: string;
+  /** Queue for one specific desk. Omit to queue for any desk in the cluster. */
+  requested_workstation_id?: string;
+  requested_workstation_code?: string;
   reservation_date: string;
   time_slot?: string;
   notes?: string;
+  /** Attributes the desk must have for the offer to be made. Omit for no attribute constraints. */
+  preferences?: WaitingListPreferences;
 }): Promise<WaitingListEntry> {
   const response = await fetch('/api/waiting-list', {
     method: 'POST',

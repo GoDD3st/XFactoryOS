@@ -17,20 +17,91 @@ export class ApprovalService {
     return list.filter((a) => a.status !== 'pending');
   }
 
+  /**
+   * The threshold is an administrator setting (§28 "Durée max sans approbation"), not a constant.
+   * MAX_DURATION_WITHOUT_APPROVAL_DAYS is only the fallback when settings can't be read, so
+   * changing the value in the Settings screen actually moves the approval boundary.
+   */
   public static async requiresApproval(durationDays: number): Promise<boolean> {
-    return durationDays > this.MAX_DURATION_WITHOUT_APPROVAL_DAYS;
+    let threshold = this.MAX_DURATION_WITHOUT_APPROVAL_DAYS;
+    try {
+      const { SettingsRepository } = await import('@/database/repositories/settingsRepository');
+      const settings = await SettingsRepository.getSettings();
+      threshold = settings?.maxReservationDaysWithoutApproval ?? threshold;
+    } catch {
+      /* keep the fallback */
+    }
+    return durationDays > threshold;
+  }
+
+  /**
+   * Everyone holding an approver role, as real user ids.
+   *
+   * Notifications are keyed on users.id. This used to be handed the ROLE STRING ('director') as
+   * the recipient, so the insert was attempted against a uuid column with the text 'director' and
+   * failed: no approver was ever told a request had arrived, and requests sat in the queue until
+   * somebody happened to open the Approvals screen.
+   */
+  public static async resolveApprovers(role: string): Promise<string[]> {
+    try {
+      const { getAdminClient } = await import('@/database/serverClient');
+      const admin = getAdminClient();
+      if (!admin) return [];
+
+      const dbCode = role === 'director' ? 'DIRECTOR' : 'EXECUTIVE_ASSISTANT';
+      const { data } = await admin
+        .from('user_roles')
+        .select('user_id, roles!inner(code)')
+        .eq('roles.code', dbCode);
+
+      return (data || []).map((r: any) => r.user_id).filter(Boolean);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Tells every holder of the routed approver role that a request is waiting, with the facts
+   * BR-06 expects them to weigh: who, which desk, the exact window, and the occupancy hours.
+   */
+  public static async notifyApprovers(request: ApprovalRequest): Promise<number> {
+    const approverIds = await this.resolveApprovers(request.approver_role);
+    if (approverIds.length === 0) {
+      console.warn(
+        `[Approvals] No user holds the role "${request.approver_role}" - request ${request.id} has no reachable approver.`
+      );
+      return 0;
+    }
+
+    const span =
+      request.reservation_date && request.end_date && request.end_date !== request.reservation_date
+        ? `du ${request.reservation_date} au ${request.end_date}`
+        : `le ${request.reservation_date || 'date à confirmer'}`;
+    const hours =
+      request.start_time && request.end_time ? ` (${request.start_time} - ${request.end_time})` : '';
+    const total = request.total_hours ? `, soit ${request.total_hours} h d'occupation` : '';
+    const days = request.duration_days ? ` sur ${request.duration_days} jour(s)` : '';
+
+    await Promise.all(
+      approverIds.map((id) =>
+        NotificationService.sendNotification(
+          id,
+          "Demande d'approbation longue durée",
+          `${request.requester_name} (${request.user_department || 'service non renseigné'}) demande ` +
+            `le poste ${request.workstation_code || 'à confirmer'} ${span}${hours}${days}${total}. ` +
+            `Motif : ${request.objective || request.reason}`,
+          'warning',
+          request.reservation_id
+        )
+      )
+    );
+
+    return approverIds.length;
   }
 
   public static async createApprovalRequest(payload: Omit<ApprovalRequest, 'id' | 'status' | 'created_at'>): Promise<ApprovalRequest> {
     const newRequest = await ApprovalRepository.createApproval(payload);
-
-    NotificationService.sendNotification(
-      payload.approver_role,
-      'Demande d\'Approbation Longue Durée',
-      `${payload.requester_name} a soumis une demande de réservation longue durée sur le site Safi.`,
-      'info'
-    );
-
+    await this.notifyApprovers(newRequest);
     return newRequest;
   }
 
@@ -42,7 +113,7 @@ export class ApprovalService {
     deciderRole?: string
   ): Promise<boolean> {
     // SRS 8.6/8.7: EA approves long/sensitive reservations, Director approves reservations
-    // exceeding the max configured duration — two distinct authorities, not an interchangeable
+    // exceeding the max configured duration - two distinct authorities, not an interchangeable
     // pool. Every request now carries the role it was actually routed to (approver_role); only
     // that role (or admin/super_admin, who can always act as a backstop) may decide it.
     const approvals = await ApprovalRepository.getApprovals();
@@ -56,7 +127,7 @@ export class ApprovalService {
       pending.approver_role !== deciderRole
     ) {
       throw new Error(
-        `Cette demande est réservée au rôle ${pending.approver_role} — vous ne pouvez pas la décider.`
+        `Cette demande est réservée au rôle ${pending.approver_role} - vous ne pouvez pas la décider.`
       );
     }
 
@@ -97,13 +168,34 @@ export class ApprovalService {
         );
       }
 
+      // BR-06 record. A bare "decision approved" is not auditable after the fact: an
+      // administrator reviewing why a desk was held for two weeks needs the requester, the
+      // window, the occupancy hours, the stated motive and who signed it off, in one entry.
+      const detail = target
+        ? [
+            `Décision ${decision.toUpperCase()} - réservation longue durée`,
+            `Demandeur : ${target.requester_name}${target.user_department ? ` (${target.user_department})` : ''}`,
+            `Poste : ${target.workstation_code || 'n/a'}${target.cluster_name ? ` / ${target.cluster_name}` : ''}`,
+            `Période : ${target.reservation_date || '?'}${
+              target.end_date && target.end_date !== target.reservation_date ? ` -> ${target.end_date}` : ''
+            }${target.start_time && target.end_time ? ` ${target.start_time}-${target.end_time}` : ''}`,
+            target.duration_days ? `Durée : ${target.duration_days} jour(s)` : null,
+            target.total_hours ? `Occupation : ${target.total_hours} h` : null,
+            `Motif : ${target.objective || target.reason}`,
+            `Validé par : ${deciderRole || target.approver_role}`,
+            `Note du valideur : ${decisionNote}`,
+          ]
+            .filter(Boolean)
+            .join(' | ')
+        : `Décision d'approbation ${decision}. Note: ${decisionNote}`;
+
       await AuditRepository.logEvent(
         decision === 'approved' ? 'APPROVE' : decision === 'rejected' ? 'REJECT' : 'UPDATE',
         deciderId,
         'Approbateur Direction Safi',
         target?.approver_role || 'director',
         target?.reservation_id || requestId,
-        `Décision d'approbation ${decision}. Note: ${decisionNote}`,
+        detail,
         '10.120.4.18',
         'approval'
       );

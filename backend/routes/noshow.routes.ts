@@ -4,7 +4,7 @@ import { requireRole } from '../middleware/rbacMiddleware';
 
 export const noShowRouter = Router();
 
-// GET /api/noshow/detect — Building Manager & Admin roles only
+// GET /api/noshow/detect - Building Manager & Admin roles only
 noShowRouter.get('/detect', requireRole('building_manager', 'admin', 'super_admin'), async (req, res) => {
   try {
     const count = await NoShowService.detectNoShows();
@@ -14,7 +14,7 @@ noShowRouter.get('/detect', requireRole('building_manager', 'admin', 'super_admi
   }
 });
 
-// POST /api/noshow/scan — Trigger manual scan (Building Manager, Admin, Super Admin)
+// POST /api/noshow/scan - Trigger manual scan (Building Manager, Admin, Super Admin)
 noShowRouter.post('/scan', requireRole('building_manager', 'admin', 'super_admin'), async (req, res) => {
   try {
     const count = await NoShowService.detectNoShows();
@@ -24,7 +24,7 @@ noShowRouter.post('/scan', requireRole('building_manager', 'admin', 'super_admin
   }
 });
 
-// GET /api/noshow/stats — Building Manager & Admin roles only
+// GET /api/noshow/stats - Building Manager & Admin roles only
 noShowRouter.get('/stats', requireRole('building_manager', 'admin', 'super_admin'), async (req, res) => {
   try {
     const stats = await NoShowService.getNoShowStats();

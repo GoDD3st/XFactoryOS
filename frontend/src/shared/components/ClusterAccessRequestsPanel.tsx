@@ -4,7 +4,7 @@ import { ClusterAuthorization } from '@/frontend/src/types';
 import { apiFetchPendingClusterAccessRequests, apiDecideClusterAccessRequest } from '@/services/api/workspaceApi';
 
 /**
- * BR-09 / SRS §14.4 — pending requests for locked management-cluster access, with
+ * BR-09 / SRS §14.4 - pending requests for locked management-cluster access, with
  * Autoriser/Refuser decisions. Shown to Building Manager / GCI Manager / Admin / Super Admin
  * (the same roles the backend's decision endpoint accepts).
  *
@@ -139,7 +139,7 @@ export const ClusterAccessRequestsPanel: React.FC<ClusterAccessRequestsPanelProp
   };
 
   if (loading) {
-    return <div className="p-4 text-center text-xs text-slate-400">Chargement des demandes…</div>;
+    return <div className="p-4 text-center text-xs text-slate-400">Chargement des demandes...</div>;
   }
 
   if (requests.length === 0) {
@@ -172,7 +172,7 @@ export const ClusterAccessRequestsPanel: React.FC<ClusterAccessRequestsPanelProp
           <div key={req.id} className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-3">
             <div className="text-xs">
               <div className="font-bold text-slate-800">
-                Cluster {req.cluster_code || req.cluster_id} — demandé par {req.requester_name || req.requested_by}
+                Cluster {req.cluster_code || req.cluster_id} - demandé par {req.requester_name || req.requested_by}
                 {req.requester_department && (
                   <span className="font-normal text-slate-400"> ({req.requester_department})</span>
                 )}
@@ -220,7 +220,7 @@ export const ClusterAccessRequestsPanel: React.FC<ClusterAccessRequestsPanelProp
                 <span className="font-bold text-slate-700">
                   Cluster {activeRequest.cluster_code || activeRequest.cluster_id}
                 </span>{' '}
-                — {activeRequest.requester_name || activeRequest.requested_by}
+ - {activeRequest.requester_name || activeRequest.requested_by}
               </div>
             )}
 

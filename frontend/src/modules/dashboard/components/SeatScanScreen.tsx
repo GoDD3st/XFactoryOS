@@ -14,7 +14,7 @@ type ScanState =
 
 /**
  * Full-screen result shown right after AuthGate detects a pending seat-badge scan
- * (see AuthGate.tsx). The QR printed on a desk just opens this site with `?scan=<token>` —
+ * (see AuthGate.tsx). The QR printed on a desk just opens this site with `?scan=<token>`
  * scanning it is the entire "check-in" action from the collaborator's side.
  */
 export const SeatScanScreen: React.FC<SeatScanScreenProps> = ({ seatToken, onDone }) => {
@@ -40,7 +40,7 @@ export const SeatScanScreen: React.FC<SeatScanScreenProps> = ({ seatToken, onDon
         {state.phase === 'loading' && (
           <>
             <div className="w-10 h-10 mx-auto border-2 border-slate-300 border-t-emerald-600 rounded-full animate-spin" />
-            <p className="text-sm font-bold text-slate-700">Validation du badge en cours…</p>
+            <p className="text-sm font-bold text-slate-700">Validation du badge en cours...</p>
           </>
         )}
 

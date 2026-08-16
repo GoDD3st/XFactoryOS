@@ -70,7 +70,7 @@ export async function getRealTimeTelemetry(): Promise<SiteTelemetrySummary> {
     : 0;
 
   return {
-    siteName: 'Site Safi — Smart Open Space',
+    siteName: 'Site Safi - Smart Open Space',
     totalCapacity,
     activeOccupancy: totalOccupied,
     overallOccupancyRate,
@@ -80,7 +80,7 @@ export async function getRealTimeTelemetry(): Promise<SiteTelemetrySummary> {
   };
 }
 
-/** FR-82 "Peak Hours" — real bucketing of the last 7 days' reservation start times, replacing
+/** FR-82 "Peak Hours" - real bucketing of the last 7 days' reservation start times, replacing
  * what used to be a hardcoded '09:30 - 11:30' string shown to every user regardless of actual usage. */
 async function computePeakHourWindow(): Promise<string> {
   try {
@@ -111,7 +111,7 @@ export interface DailyReservationTrend {
   noShows: number;
 }
 
-/** FR-86 "Reservation Trends" — daily reservation volume over the last N days. */
+/** FR-86 "Reservation Trends" - daily reservation volume over the last N days. */
 export async function getReservationTrends(days = 14): Promise<DailyReservationTrend[]> {
   const reservations = await ReservationRepository.getAllReservations();
   const startDate = new Date();
@@ -144,7 +144,7 @@ export interface UserDepartmentStats {
 
 const REAL_USAGE_STATUSES = ['confirmée', 'check-in', 'terminée'];
 
-/** SRS "User Statistics" / "Department Statistics" — distinct active users per period, and
+/** SRS "User Statistics" / "Department Statistics" - distinct active users per period, and
  * reservation share by department over the last 30 days. Both derived from real reservation
  * data already loaded elsewhere in this module (reservation_date, status, user_department). */
 export async function getUserDepartmentStats(): Promise<UserDepartmentStats> {
@@ -194,7 +194,7 @@ export interface OccupancyPrediction {
 const HIGH_DEMAND_THRESHOLD = 80;
 
 /**
- * SRS "AI Predictions" — a genuine statistical forecast (same-weekday historical average over
+ * SRS "AI Predictions" - a genuine statistical forecast (same-weekday historical average over
  * the last 8 weeks), not a hardcoded or LLM-fabricated number. Deliberately simple: with only a
  * few months of reservation history available, a weekday-seasonal average is honest about what
  * this data can actually support, rather than dressing up a guess as machine learning.
@@ -236,9 +236,22 @@ export async function predictTomorrowOccupancy(totalCapacity: number): Promise<O
   };
 }
 
+/**
+ * The prediction with its own capacity figure, so callers don't have to supply one.
+ *
+ * The route uses this rather than taking totalCapacity from the request: capacity is the
+ * denominator of the predicted rate, so accepting it from the client would let any caller with
+ * analytics access dictate the number the dashboard displays.
+ */
+export async function getOccupancyPrediction(): Promise<OccupancyPrediction> {
+  const telemetry = await getRealTimeTelemetry();
+  return predictTomorrowOccupancy(telemetry.totalCapacity);
+}
+
 export class TelemetryService {
   static getRealTimeTelemetry = getRealTimeTelemetry;
   static getReservationTrends = getReservationTrends;
   static getUserDepartmentStats = getUserDepartmentStats;
   static predictTomorrowOccupancy = predictTomorrowOccupancy;
+  static getOccupancyPrediction = getOccupancyPrediction;
 }

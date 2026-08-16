@@ -90,7 +90,7 @@ export const MyReservationsView: React.FC = () => {
     setLateError(null);
     try {
       await apiRequestLateCheckIn(lateTarget.id, justification.trim());
-      setMsg('Demande de check-in tardif envoyée — elle doit être approuvée par un responsable.');
+      setMsg('Demande de check-in tardif envoyée - elle doit être approuvée par un responsable.');
       setLateTarget(null);
       setJustification('');
       await loadReservations();
@@ -136,7 +136,7 @@ export const MyReservationsView: React.FC = () => {
       sortable: true,
       render: (r) => (
         <span className="font-mono text-slate-600 whitespace-nowrap">
-          {r.start_time} — {r.end_time}
+          {r.start_time} - {r.end_time}
         </span>
       ),
     },
@@ -271,13 +271,13 @@ export const MyReservationsView: React.FC = () => {
         error={loadError}
         onRetry={loadReservations}
         searchable
-        searchPlaceholder="Rechercher un poste, une date, un statut…"
+        searchPlaceholder="Rechercher un poste, une date, un statut..."
         pageSize={10}
         emptyMessage="Aucune réservation."
         emptyHint="Réservez un poste depuis le plan de l'Open Space."
       />
 
-      {/* Late check-in request — free-text justification, no predefined reasons. */}
+      {/* Late check-in request - free-text justification, no predefined reasons. */}
       {lateTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl p-6 space-y-4 relative">
@@ -295,7 +295,7 @@ export const MyReservationsView: React.FC = () => {
               </h3>
               <p className="text-[11px] text-slate-500 mt-1">
                 Poste <strong>{lateTarget.workstation_code}</strong> · {lateTarget.reservation_date} ·{' '}
-                {lateTarget.start_time} — {lateTarget.end_time}
+                {lateTarget.start_time} - {lateTarget.end_time}
               </p>
             </div>
 
@@ -335,7 +335,7 @@ export const MyReservationsView: React.FC = () => {
                 disabled={submittingLate || justification.trim().length < 10}
                 className="px-5 py-2 text-xs font-bold text-white rounded-xl shadow-md bg-amber-600 hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {submittingLate ? 'Envoi…' : 'Envoyer la demande'}
+                {submittingLate ? 'Envoi...' : 'Envoyer la demande'}
               </button>
             </div>
           </div>

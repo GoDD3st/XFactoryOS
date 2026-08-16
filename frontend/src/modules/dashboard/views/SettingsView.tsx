@@ -1,28 +1,65 @@
 import React, { useState, useEffect } from 'react';
 import { SystemSettings, HolidayEntry, ClosedDateEntry } from '@/frontend/src/types';
 import { SettingsService } from '@/services/settings/settingsService';
-import { Settings, Save, RotateCcw, CheckCircle, Clock, CalendarDays, BarChart3, Building2, ShieldCheck, Tag, KeyRound, History, X, AlertCircle, Plus, Trash2, Lock } from 'lucide-react';
+import { Settings, Save, RotateCcw, CheckCircle, Clock, CalendarDays, BarChart3, Building2, ShieldCheck, Tag, KeyRound, History, X, AlertCircle, Plus, Trash2, Lock, ChevronDown, ChevronUp, Bot } from 'lucide-react';
+import { AIConfigurationPanel } from '../components/AIConfigurationPanel';
+import { SiteLogoUploader } from '../components/SiteLogoUploader';
 
 /* ──────────────────────────────────────────────────────────────────
    Reusable: section card wrapper
    ────────────────────────────────────────────────────────────────── */
+/**
+ * Collapsible settings section, mirroring the accordion in RolesAdminView (RBAC): the page lists
+ * section names only, and pressing one reveals its options underneath. Every section used to be
+ * expanded at once, which made the page a very long scroll of unrelated controls.
+ *
+ * Collapsed sections unmount their inputs, which is safe here because the values live in the
+ * `settings` state object rather than in the DOM - saving still submits every field, whether or
+ * not its section happens to be open.
+ */
 const SectionCard: React.FC<{
   icon: React.ReactNode;
   title: string;
   subtitle: string;
+  isOpen: boolean;
+  onToggle: () => void;
+  /** Rendered on the right of the header, e.g. a status pill, while collapsed. */
+  badge?: React.ReactNode;
+  /** Escape hatch for sections that lay out their own body instead of the 2-column grid. */
+  bare?: boolean;
   children: React.ReactNode;
-}> = ({ icon, title, subtitle, children }) => (
-  <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-5">
-    <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
-      <div className="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600">
-        {icon}
+}> = ({ icon, title, subtitle, isOpen, onToggle, badge, bare = false, children }) => (
+  <div className="rounded-2xl bg-white border border-slate-200 shadow-sm overflow-hidden">
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={isOpen}
+      className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors text-left"
+    >
+      <div className="flex items-center gap-3">
+        <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600 shrink-0">
+          {icon}
+        </div>
+        <div>
+          <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wide">{title}</h3>
+          <p className="text-[11px] text-slate-400 mt-0.5">{subtitle}</p>
+        </div>
       </div>
-      <div>
-        <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wide">{title}</h3>
-        <p className="text-[10px] text-slate-400 mt-0.5">{subtitle}</p>
+      <div className="flex items-center gap-3 shrink-0">
+        {badge}
+        {isOpen ? (
+          <ChevronUp className="w-4 h-4 text-slate-400" />
+        ) : (
+          <ChevronDown className="w-4 h-4 text-slate-400" />
+        )}
       </div>
-    </div>
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">{children}</div>
+    </button>
+
+    {isOpen && (
+      <div className="px-5 pb-5 pt-1 border-t border-slate-100">
+        {bare ? children : <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-4">{children}</div>}
+      </div>
+    )}
   </div>
 );
 
@@ -114,7 +151,7 @@ const ToggleField: React.FC<{
 );
 
 /* ──────────────────────────────────────────────────────────────────
-   Password Confirmation Modal — step-up re-authentication. The admin re-enters their real
+   Password Confirmation Modal - step-up re-authentication. The admin re-enters their real
    password immediately before a sensitive settings change is applied; the server verifies it
    with a fresh signInWithPassword check. Replaces the old same-session OTP (delivered as an
    in-app notification to the very session requesting the change, so it proved nothing).
@@ -192,7 +229,7 @@ const PasswordConfirmModal: React.FC<{
               disabled={submitting || password.length === 0}
               className="flex-1 px-4 py-2.5 rounded-xl bg-[#008751] hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-xs transition-all"
             >
-              {submitting ? 'Vérification…' : 'Confirmer'}
+              {submitting ? 'Vérification...' : 'Confirmer'}
             </button>
           </div>
         </form>
@@ -207,6 +244,9 @@ const PasswordConfirmModal: React.FC<{
 const SettingsHistoryTable: React.FC<{ refreshKey: number }> = ({ refreshKey }) => {
   const [history, setHistory] = useState<Array<{ id: string; action: string; admin_name: string; details: string; created_at: string }>>([]);
   const [loading, setLoading] = useState(true);
+  // Own collapse state: this section sits outside the settings form, so it is not part of the
+  // parent's single-open-at-a-time group.
+  const [isOpen, setIsOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -227,19 +267,21 @@ const SettingsHistoryTable: React.FC<{ refreshKey: number }> = ({ refreshKey }) 
       icon={<History className="w-4 h-4" />}
       title="Historique des Modifications"
       subtitle="Chaque changement confirmé par mot de passe est journalisé avec un diff des valeurs"
+      isOpen={isOpen}
+      onToggle={() => setIsOpen((o) => !o)}
     >
       <div className="md:col-span-2">
         {loading ? (
-          <p className="text-xs text-slate-400">Chargement de l'historique…</p>
+          <p className="text-xs text-slate-400">Chargement de l'historique...</p>
         ) : history.length === 0 ? (
           <p className="text-xs text-slate-400">Aucune modification enregistrée pour le moment.</p>
         ) : (
           <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
             {history.map((h) => {
-              // Newer entries read "Paramètres mis à jour (vN) — champ : ancien → nouveau · ...".
-              // Older entries (logged before this formatting existed) are a raw JSON dump — fall
+              // Newer entries read "Paramètres mis à jour (vN) - champ : ancien → nouveau · ...".
+              // Older entries (logged before this formatting existed) are a raw JSON dump - fall
               // back to showing those as-is rather than mangling them.
-              const [header, diff] = h.details.includes(' — ') ? h.details.split(' — ') : [null, h.details];
+              const [header, diff] = h.details.includes(' - ') ? h.details.split(' - ') : [null, h.details];
               const changes = diff && diff.includes(' · ') ? diff.split(' · ') : diff ? [diff] : [];
 
               return (
@@ -267,7 +309,7 @@ const SettingsHistoryTable: React.FC<{ refreshKey: number }> = ({ refreshKey }) 
 };
 
 /* ──────────────────────────────────────────────────────────────────
-   Jours Fériés — editable list (Islamic holidays shift date every year,
+   Jours Fériés - editable list (Islamic holidays shift date every year,
    so this can't be a hardcoded calendar; Super Admin keeps it current)
    ────────────────────────────────────────────────────────────────── */
 const HolidaysEditor: React.FC<{
@@ -340,14 +382,14 @@ const HolidaysEditor: React.FC<{
         </button>
       </div>
       <p className="text-[10px] text-slate-400">
-        Les dates des fêtes religieuses (Aïd Al Fitr, Aïd Al Adha, 1er Moharram, Aïd Al Mawlid) avancent d'environ 11 jours chaque année du calendrier grégorien — mettez cette liste à jour annuellement.
+        Les dates des fêtes religieuses (Aïd Al Fitr, Aïd Al Adha, 1er Moharram, Aïd Al Mawlid) avancent d'environ 11 jours chaque année du calendrier grégorien - mettez cette liste à jour annuellement.
       </p>
     </div>
   );
 };
 
 /* ──────────────────────────────────────────────────────────────────
-   Fermeture Exceptionnelle (Lockdown) — blocks NEW reservations on the
+   Fermeture Exceptionnelle (Lockdown) - blocks NEW reservations on the
    given date(s) only; the rest of the app keeps functioning normally.
    ────────────────────────────────────────────────────────────────── */
 const ClosedDatesEditor: React.FC<{
@@ -451,10 +493,15 @@ export const SettingsView: React.FC = () => {
     e.preventDefault();
     setRequestError(undefined);
     // Server-managed metadata (id/configVersion/updated_at/updated_by) isn't part of the
-    // editable payload — SystemSettingsUpdateSchema is a strict Zod schema and rejects any
+    // editable payload - SystemSettingsUpdateSchema is a strict Zod schema and rejects any
     // unrecognized key with a 400, so submitting the full `settings` state object as-is
     // (which always carries these once loaded from the DB) made every save fail outright.
-    const { id, configVersion, updated_at, updated_by, ...editablePayload } = settings;
+    //
+    // siteLogoDataUrl is excluded for the same reason: GET /api/settings returns it so the form
+    // can preview the current mark, but it is saved through PUT /api/settings/logo, which runs
+    // the image validation. Leaving it in this payload made every settings save fail with
+    // 'Unrecognized key: "siteLogoDataUrl"'including saves that never touched the logo.
+    const { id, configVersion, updated_at, updated_by, siteLogoDataUrl, ...editablePayload } = settings;
     setPendingSettings(editablePayload);
   };
 
@@ -470,12 +517,17 @@ export const SettingsView: React.FC = () => {
 
   const handleReset = () => {
     // Local-only: resets the unsaved form back to defaults. Persisting still requires the
-    // password-confirmed save below — this button must never write to the database directly.
+    // password-confirmed save below - this button must never write to the database directly.
     setSettings(SettingsService.resetToDefaults());
   };
 
   const update = (field: keyof SystemSettings, value: any) =>
     setSettings((prev) => ({ ...prev, [field]: value }));
+
+  // One section open at a time, like the RBAC role list. Null = everything collapsed, which is
+  // the initial state so the page opens as a short list of section names.
+  const [openSection, setOpenSection] = useState<string | null>(null);
+  const toggle = (id: string) => setOpenSection((cur) => (cur === id ? null : id));
 
   return (
     <div className="space-y-6">
@@ -513,6 +565,8 @@ export const SettingsView: React.FC = () => {
         {/* ── Card 1: Fenêtre de Réservation & Durée ──────────────── */}
         <SectionCard
           icon={<Clock className="w-4 h-4" />}
+          isOpen={openSection === 'booking'}
+          onToggle={() => toggle('booking')}
           title="Fenêtre de Réservation & Durée"
           subtitle="Contrôlez le délai d'anticipation et les limites de durée des réservations"
         >
@@ -557,6 +611,8 @@ export const SettingsView: React.FC = () => {
         {/* ── Card 2: Quotas Utilisateur ──────────────────────────── */}
         <SectionCard
           icon={<BarChart3 className="w-4 h-4" />}
+          isOpen={openSection === 'quotas'}
+          onToggle={() => toggle('quotas')}
           title="Quotas Utilisateur par Période"
           subtitle="Limitez le nombre de réservations qu'un utilisateur peut effectuer"
         >
@@ -583,6 +639,8 @@ export const SettingsView: React.FC = () => {
         {/* ── Card 3: Heures d'Ouverture & No-Show ────────────────── */}
         <SectionCard
           icon={<Building2 className="w-4 h-4" />}
+          isOpen={openSection === 'hours'}
+          onToggle={() => toggle('hours')}
           title="Heures d'Ouverture & No-Show"
           subtitle="Configurez les horaires du bâtiment et le délai de tolérance No-Show"
         >
@@ -621,6 +679,8 @@ export const SettingsView: React.FC = () => {
         {/* ── Card 4: Jours Spéciaux & Permissions ────────────────── */}
         <SectionCard
           icon={<CalendarDays className="w-4 h-4" />}
+          isOpen={openSection === 'special-days'}
+          onToggle={() => toggle('special-days')}
           title="Jours Spéciaux & Permissions"
           subtitle="Autorisez ou bloquez les réservations pendant les week-ends et jours fériés"
         >
@@ -641,8 +701,10 @@ export const SettingsView: React.FC = () => {
         {/* ── Card 4b: Jours Fériés ────────────────────────────────── */}
         <SectionCard
           icon={<CalendarDays className="w-4 h-4" />}
+          isOpen={openSection === 'holidays'}
+          onToggle={() => toggle('holidays')}
           title="Jours Fériés"
-          subtitle="Liste des jours fériés du site — modifiable car les fêtes religieuses n'ont pas de date fixe"
+          subtitle="Liste des jours fériés du site - modifiable car les fêtes religieuses n'ont pas de date fixe"
         >
           <HolidaysEditor
             holidays={settings.holidays}
@@ -653,6 +715,8 @@ export const SettingsView: React.FC = () => {
         {/* ── Card 4c: Fermeture Exceptionnelle (Lockdown) ────────── */}
         <SectionCard
           icon={<Lock className="w-4 h-4" />}
+          isOpen={openSection === 'closures'}
+          onToggle={() => toggle('closures')}
           title="Fermeture Exceptionnelle de l'Open Space"
           subtitle="Verrouillez une date pour empêcher toute nouvelle réservation, sans affecter le reste du site"
         >
@@ -665,6 +729,8 @@ export const SettingsView: React.FC = () => {
         {/* ── Card 5: Informations Générales ──────────────────────── */}
         <SectionCard
           icon={<Tag className="w-4 h-4" />}
+          isOpen={openSection === 'general'}
+          onToggle={() => toggle('general')}
           title="Informations Générales"
           subtitle="Identité et branding du site"
         >
@@ -675,6 +741,16 @@ export const SettingsView: React.FC = () => {
               value={settings.siteName}
               onChange={(e) => update('siteName', e.target.value)}
               className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 transition-all"
+            />
+          </div>
+
+          {/* Logo, directly below the site name. Uploaded through its own endpoint rather than
+              the settings form: it is validated server-side and saved immediately, so it does not
+              go through the password-confirmation flow that guards the booking rules. */}
+          <div className="md:col-span-2">
+            <SiteLogoUploader
+              currentLogo={settings.siteLogoDataUrl || null}
+              onChanged={(logo) => update('siteLogoDataUrl', logo)}
             />
           </div>
         </SectionCard>
@@ -690,6 +766,20 @@ export const SettingsView: React.FC = () => {
           </button>
         </div>
       </form>
+
+      {/* Global AI configuration. Outside the settings <form> on purpose: it validates against
+          the provider and activates through its own endpoint, rather than being saved with the
+          rest of the system settings behind the password-confirm flow. */}
+      <SectionCard
+        icon={<Bot className="w-4 h-4" />}
+        isOpen={openSection === 'ai'}
+        onToggle={() => toggle('ai')}
+        title="Configuration IA Globale"
+        subtitle="Provider et modèle utilisés par l'assistant XFactory AI sur toute la plateforme"
+        bare
+      >
+        <AIConfigurationPanel embedded />
+      </SectionCard>
 
       <SettingsHistoryTable refreshKey={historyRefreshKey} />
 

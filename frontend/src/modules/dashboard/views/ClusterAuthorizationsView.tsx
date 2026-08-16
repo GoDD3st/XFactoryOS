@@ -5,7 +5,7 @@ import { apiFetchClusterAccessHistory, apiFetchClusters } from '@/services/api/w
 import { ClusterAccessRequestsPanel } from '../../../shared/components/ClusterAccessRequestsPanel';
 
 /**
- * BR-09 / SRS §14.4 + §2156-2158 — the GCI Manager's defining screen.
+ * BR-09 / SRS §14.4 + §2156-2158 - the GCI Manager's defining screen.
  *
  * Management clusters are locked by default; access is granted per request, for a bounded
  * window, and every decision is auditable. This view shows the three states that matter:
@@ -106,7 +106,7 @@ export const ClusterAuthorizationsView: React.FC = () => {
             <span className="text-xs font-bold text-slate-500">Demandes en attente</span>
             <Clock className="w-4 h-4 text-amber-600" />
           </div>
-          <div className="text-2xl font-black text-slate-900">{loading ? '…' : pendingCount}</div>
+          <div className="text-2xl font-black text-slate-900">{loading ? '...' : pendingCount}</div>
           <p className="text-[11px] text-slate-500">à traiter</p>
         </div>
 
@@ -115,7 +115,7 @@ export const ClusterAuthorizationsView: React.FC = () => {
             <span className="text-xs font-bold text-slate-500">Autorisations actives</span>
             <ShieldCheck className="w-4 h-4 text-emerald-600" />
           </div>
-          <div className="text-2xl font-black text-emerald-700">{loading ? '…' : active.length}</div>
+          <div className="text-2xl font-black text-emerald-700">{loading ? '...' : active.length}</div>
           <p className="text-[11px] text-slate-500">en cours de validité</p>
         </div>
 
@@ -124,7 +124,7 @@ export const ClusterAuthorizationsView: React.FC = () => {
             <span className="text-xs font-bold text-slate-500">Refusées aujourd'hui</span>
             <XCircle className="w-4 h-4 text-rose-600" />
           </div>
-          <div className="text-2xl font-black text-slate-900">{loading ? '…' : refusedToday}</div>
+          <div className="text-2xl font-black text-slate-900">{loading ? '...' : refusedToday}</div>
           <p className="text-[11px] text-slate-500">décisions négatives</p>
         </div>
 
@@ -133,7 +133,7 @@ export const ClusterAuthorizationsView: React.FC = () => {
             <span className="text-xs font-bold text-slate-500">Clusters Management</span>
             <Lock className="w-4 h-4 text-purple-600" />
           </div>
-          <div className="text-2xl font-black text-slate-900">{loading ? '…' : managementClusters.length}</div>
+          <div className="text-2xl font-black text-slate-900">{loading ? '...' : managementClusters.length}</div>
           <p className="text-[11px] text-slate-500">
             {loading ? '' : `${managementClusters.filter((c) => c.unlocked).length} actuellement déverrouillé(s)`}
           </p>
@@ -182,8 +182,8 @@ export const ClusterAuthorizationsView: React.FC = () => {
                       <div key={a.id} className="text-[11px] bg-white rounded-lg px-2.5 py-1.5 border border-emerald-200">
                         <div className="font-bold text-slate-800">{a.requester_name || a.requested_by}</div>
                         <div className="text-slate-500">
-                          {a.starts_at ? new Date(a.starts_at).toLocaleString('fr-FR') : '—'} →{' '}
-                          {a.ends_at ? new Date(a.ends_at).toLocaleString('fr-FR') : '—'}
+                          {a.starts_at ? new Date(a.starts_at).toLocaleString('fr-FR') : ''} →{' '}
+                          {a.ends_at ? new Date(a.ends_at).toLocaleString('fr-FR') : ''}
                         </div>
                         <div className="text-emerald-700 font-semibold mt-0.5">
                           {a.ends_at ? formatRemaining(a.ends_at) : ''}
@@ -193,7 +193,7 @@ export const ClusterAuthorizationsView: React.FC = () => {
                   </div>
                 ) : (
                   <p className="text-[11px] text-slate-400 italic mt-2">
-                    Aucune autorisation active — ce cluster n'est pas réservable.
+                    Aucune autorisation active - ce cluster n'est pas réservable.
                   </p>
                 )}
               </div>
@@ -208,7 +208,7 @@ export const ClusterAuthorizationsView: React.FC = () => {
           <History className="w-4 h-4 text-slate-500" />
           Historique des décisions
         </h3>
-        {loading && <p className="text-xs text-slate-400">Chargement…</p>}
+        {loading && <p className="text-xs text-slate-400">Chargement...</p>}
         {!loading && decided.length === 0 && (
           <p className="text-xs text-slate-400 italic">Aucune décision enregistrée pour l'instant.</p>
         )}
@@ -231,7 +231,7 @@ export const ClusterAuthorizationsView: React.FC = () => {
                   return (
                     <tr key={a.id} className="border-b border-slate-100 last:border-0">
                       <td className="py-2 pr-3 text-slate-500 whitespace-nowrap">
-                        {a.decided_at ? new Date(a.decided_at).toLocaleString('fr-FR') : '—'}
+                        {a.decided_at ? new Date(a.decided_at).toLocaleString('fr-FR') : ''}
                       </td>
                       <td className="py-2 pr-3 font-bold text-slate-800">{a.cluster_code || a.cluster_id}</td>
                       <td className="py-2 pr-3 text-slate-700">{a.requester_name || a.requested_by}</td>
@@ -242,10 +242,10 @@ export const ClusterAuthorizationsView: React.FC = () => {
                       </td>
                       <td className="py-2 pr-3 text-slate-500 whitespace-nowrap">
                         {a.status === 'APPROVED' && a.ends_at
-                          ? `${a.starts_at ? new Date(a.starts_at).toLocaleString('fr-FR') : '—'} → ${new Date(
+                          ? `${a.starts_at ? new Date(a.starts_at).toLocaleString('fr-FR') : ''} → ${new Date(
                               a.ends_at
                             ).toLocaleString('fr-FR')}`
-                          : '—'}
+                          : ''}
                       </td>
                       <td className="py-2 text-slate-500">{a.decision_note || a.reason}</td>
                     </tr>

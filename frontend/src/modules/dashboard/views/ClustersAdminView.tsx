@@ -38,17 +38,18 @@ import {
 } from 'lucide-react';
 
 // SRS 8.1/8.4/8.6/8.7: seat-adding authority mirrors the backend's VIP_ROLES gate
-// (backend/routes/workspaces.routes.ts) — Building Manager can view this screen but does not
+// (backend/routes/workspaces.routes.ts) - Building Manager can view this screen but does not
 // have this specific authority, so the button/form must not appear for them either.
-// Executive Assistant and Director removed — R only on postes/clusters per the §13 matrix.
+// Executive Assistant and Director removed - R only on postes/clusters per the §13 matrix.
 // Mirrors VIP_ROLES in backend/routes/workspaces.routes.ts, which enforces the same gate
 // server-side.
 const SEAT_MANAGEMENT_ROLES: UserRole[] = ['gci_manager', 'admin', 'super_admin'];
 
 // BR-09 scopes this decision to GCI Manager and Building Manager (Administrator excluded despite
-// the §13 matrix's "A"; Super Admin kept as break-glass). Matches the backend gate on
-// GET/PATCH /api/workspaces/clusters/access-requests/*.
-const CLUSTER_AUTH_DECIDER_ROLES: UserRole[] = ['building_manager', 'gci_manager', 'super_admin'];
+// the §13 matrix's "A"; Super Admin's break-glass grant dropped for the same reason). Matches the
+// backend gate on GET/PATCH /api/workspaces/clusters/access-requests/*. Leaving a role here that
+// the backend rejects would render a decision control that 403s on click.
+const CLUSTER_AUTH_DECIDER_ROLES: UserRole[] = ['building_manager', 'gci_manager'];
 
 // SRS §13 "Gérer clusters" = CRUD for Admin/Super Admin only (Building/GCI Manager are RU).
 // Mirrors the backend's RESOURCE_CRUD_ROLES gate on the create/enabled endpoints.
@@ -379,7 +380,7 @@ export const ClustersAdminView: React.FC = () => {
     {
       key: 'access',
       header: 'Accès',
-      value: (cl) => (cl.is_management_only ? (isClusterUnlocked(cl) ? 'Débloqué' : 'Verrouillé') : '—'),
+      value: (cl) => (cl.is_management_only ? (isClusterUnlocked(cl) ? 'Débloqué' : 'Verrouillé') : ''),
       sortable: true,
       render: (cl) =>
         cl.is_management_only ? (
@@ -389,7 +390,7 @@ export const ClustersAdminView: React.FC = () => {
             <StatusBadge label="VERROUILLÉ" tone="warning" />
           )
         ) : (
-          <span className="text-slate-300">—</span>
+          <span className="text-slate-300"> - </span>
         ),
     },
     {
@@ -429,7 +430,7 @@ export const ClustersAdminView: React.FC = () => {
                 onClick={() => toggleClusterLock(cl.id)}
                 disabled={pending === cl.id}
                 className="px-2.5 py-1 rounded-lg text-[10px] font-bold border bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100 disabled:opacity-50"
-                title="Déblocage manuel sans date de fin — préférez l'onglet Autorisations"
+                title="Déblocage manuel sans date de fin - préférez l'onglet Autorisations"
               >
                 {isClusterUnlocked(cl) ? 'Verrouiller' : 'Débloquer'}
               </button>
@@ -489,7 +490,7 @@ export const ClustersAdminView: React.FC = () => {
         <div>
           <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">Gestion des Clusters Management & Autorisations</h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            7 Clusters initiaux — activer un cluster Management, assigner des membres, ajouter des postes (max 8/cluster)
+            7 Clusters initiaux - activer un cluster Management, assigner des membres, ajouter des postes (max 8/cluster)
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -505,7 +506,7 @@ export const ClustersAdminView: React.FC = () => {
               <span>Créer un cluster</span>
             </button>
           )}
-          {/* "Gouvernance Safi Active" removed — a decorative status claim nothing verified,
+          {/* "Gouvernance Safi Active" removed - a decorative status claim nothing verified,
               shown to every role that can reach this screen. */}
         </div>
       </div>
@@ -530,18 +531,18 @@ export const ClustersAdminView: React.FC = () => {
         rows={clusters}
         rowKey={(c) => c.id}
         searchable
-        searchPlaceholder="Rechercher un cluster (code, nom, zone)…"
+        searchPlaceholder="Rechercher un cluster (code, nom, zone)..."
         emptyMessage="Aucun cluster enregistré."
       />
 
-      {/* Member allowlist — moved out of the old inline card expansion into a modal. */}
+      {/* Member allowlist - moved out of the old inline card expansion into a modal. */}
       {expandedClusterId && membersCluster && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
           <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2 font-bold text-slate-900">
                 <UserPlus className="w-5 h-5 text-purple-600" />
-                <span>Membres — {membersCluster.code}</span>
+                <span>Membres - {membersCluster.code}</span>
               </div>
               <button
                 onClick={() => setExpandedClusterId(null)}
@@ -581,7 +582,7 @@ export const ClustersAdminView: React.FC = () => {
                 type="text"
                 value={memberSearch}
                 onChange={(e) => setMemberSearch(e.target.value)}
-                placeholder="Rechercher un collaborateur à assigner…"
+                placeholder="Rechercher un collaborateur à assigner..."
                 className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-purple-400/40"
               />
               {memberSearch.trim() && (
@@ -693,7 +694,7 @@ export const ClustersAdminView: React.FC = () => {
               <div className="flex items-center gap-2 font-bold text-slate-900">
                 <Plus className="w-5 h-5 text-[#008751]" />
                 <span>
-                  Ajouter un poste — {clusters.find((c) => c.id === seatModalClusterId)?.name || ''}
+                  Ajouter un poste - {clusters.find((c) => c.id === seatModalClusterId)?.name || ''}
                 </span>
               </div>
               <button onClick={closeSeatModal} className="p-1 rounded hover:bg-slate-100 text-slate-400">

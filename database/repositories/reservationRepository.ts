@@ -6,7 +6,7 @@ import { WorkstationRepository } from './workstationRepository';
 import { isValidUuid } from '../utils/uuid';
 
 /**
- * `reservations` stores only foreign keys — there is no flat `workstation_code`, `user_name` or
+ * `reservations` stores only foreign keys - there is no flat `workstation_code`, `user_name` or
  * `cluster_name` column. Reading with a plain `select('*')` therefore left every one of those
  * fields undefined, and mapRowToReservation() silently substituted its placeholders
  * ("WS-SF" / "Collaborateur Safi" / "Cluster A"). It only ever looked correct for reservations
@@ -21,7 +21,7 @@ const RESERVATION_SELECT =
 
 /**
  * The module-level `supabase` client carries the anon key and is subject to RLS. Server-side
- * callers (routes, tickers) have no user JWT, so reads through it come back empty — which
+ * callers (routes, tickers) have no user JWT, so reads through it come back empty - which
  * surfaced as "Réservation introuvable" on the reception check-in path. Same resolveClient()
  * pattern the workstation/roles/clusterAuthorization repositories already use.
  */
@@ -107,7 +107,7 @@ export class ReservationRepository {
   }
 
   /**
-   * Find the reservation that lets `userId` check in/out of `workstationId` right now —
+   * Find the reservation that lets `userId` check in/out of `workstationId` right now - 
    * used by the seat-QR badge scan flow. Only CONFIRMED (not yet checked in) or OCCUPIED
    * (already checked in, scanning again checks out) reservations count; the current moment
    * must fall within [start_at, end_at] so a seat's badge doesn't check someone into a
@@ -116,9 +116,10 @@ export class ReservationRepository {
   static async getActiveReservationForUserAndSeat(
     userId: string,
     workstationId: string,
-    dbClient: SupabaseClient = supabase
+    client?: SupabaseClient
   ): Promise<Reservation | null> {
     if (!isValidUuid(userId) || !isValidUuid(workstationId)) return null;
+    const dbClient = client || (await resolveClient());
 
     try {
       const nowIso = new Date().toISOString();
@@ -145,8 +146,9 @@ export class ReservationRepository {
   /**
    * Fetch active reservations for a single user
    */
-  static async getUserReservations(userId: string, dbClient: SupabaseClient = supabase): Promise<Reservation[]> {
+  static async getUserReservations(userId: string, client?: SupabaseClient): Promise<Reservation[]> {
     if (!isValidUuid(userId)) return [];
+    const dbClient = client || (await resolveClient());
 
     try {
       const { data, error } = await dbClient
@@ -171,7 +173,7 @@ export class ReservationRepository {
   }
 
   /**
-   * Fetch all reservations from Supabase (throws on query error — never silently wipe cache)
+   * Fetch all reservations from Supabase (throws on query error - never silently wipe cache)
    */
 
   private static deriveReservationType(date?: string, startTime?: string, endTime?: string, endDate?: string): string {
@@ -183,8 +185,28 @@ export class ReservationRepository {
       return 'FULL_DAY';
   }
 
-  static async getAllReservations(dbClient: SupabaseClient = supabase): Promise<Reservation[]> {
-    const { data, error } = await dbClient
+  /**
+   * Every reservation the caller is allowed to see.
+   *
+   * `dbClient` defaults to resolveClient(), NOT to the module-level `supabase`. It used to default
+   * to `supabase`the anon-key client - and that made every bare server-side call return zero
+   * rows: on the server there is no session, so `p_reservations_owner_read` matches neither
+   * `user_id = auth.uid()` nor `has_role(...)`, and RLS filtered the table to nothing without
+   * raising an error. The callers this silently disabled were the ones that matter most:
+   *
+   *   - the no-show ticker (NoShowService.detectNoShows) never saw a reservation to expire, so
+   *     no-shows were never detected and the D5 waiting-list cascade they trigger never ran;
+   *   - the auto check-out ticker (CheckInOutService.autoCheckOutExpired) likewise;
+   *   - every telemetry aggregate - trends, department stats, peak hours, the occupancy
+   *     forecast - computed over an empty array and returned zeros.
+   *
+   * Browser behaviour is unchanged: resolveClient() returns the same `supabase` client there.
+   * Callers that deliberately want RLS scoping still pass their own client - backend/routes/
+   * reservations.routes.ts passes a user-scoped one, and an explicit argument always wins.
+   */
+  static async getAllReservations(dbClient?: SupabaseClient): Promise<Reservation[]> {
+    const db = dbClient || (await resolveClient());
+    const { data, error } = await db
       .from('reservations')
       .select(RESERVATION_SELECT)
       .order('created_at', { ascending: false });
@@ -203,17 +225,25 @@ export class ReservationRepository {
 
   /**
    * Create a new reservation in Supabase & log audit event.
-   * Throws if the insert fails — never returns a fake local-only reservation.
+   * Throws if the insert fails - never returns a fake local-only reservation.
+   *
+   * Falls back to resolveClient(), not the anon `supabase` client. Server-side callers that
+   * insert on a user's behalf have no session, so the anon client fails
+   * `p_reservations_owner_insert` with `42501 new row violates row-level security policy`. That
+   * broke the BPMN D5 "ACCEPTE" branch outright: WaitingListService.acceptOffer calls this
+   * without a client, so a correctly-made waiting-list offer could never be turned into a
+   * reservation. Routes still pass their own client and are unaffected.
    */
   static async createReservation(
     payload: Partial<Reservation>,
-    dbClient: SupabaseClient = supabase
+    client?: SupabaseClient
   ): Promise<Reservation> {
     if (!payload.user_id || !isValidUuid(payload.user_id)) {
       throw new Error(
         'Session utilisateur invalide. Déconnectez-vous puis reconnectez-vous avec votre compte Supabase.'
       );
     }
+    const dbClient = client || (await resolveClient());
 
     const workstationId = await WorkstationRepository.resolveWorkstationId(
       payload.workstation_id,
@@ -335,7 +365,7 @@ export class ReservationRepository {
 
   // Must match the Postgres enum reservation_status exactly: DRAFT, PENDING_APPROVAL,
   // CONFIRMED, CHECK_IN_PENDING, OCCUPIED, COMPLETED, CANCELLED, REJECTED, NO_SHOW,
-  // AVAILABLE_RELEASED. 'CHECKED_IN' is NOT a valid value — using it (as a previous version of
+  // AVAILABLE_RELEASED. 'CHECKED_IN' is NOT a valid value - using it (as a previous version of
   // this mapping did) makes every check-in write fail outright with an invalid-enum error.
   static mapDbStatusToDomain(dbStatus: string): ReservationStatus {
     if (dbStatus === 'OCCUPIED') return 'check-in';

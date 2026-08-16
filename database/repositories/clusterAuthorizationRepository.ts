@@ -25,7 +25,7 @@ export interface ClusterAuthorization {
 }
 
 // cluster_authorizations only grants INSERT to `requested_by = auth.uid()` and read/decide to
-// requester-or-privileged-role — server-side callers acting on behalf of the ticker or across
+// requester-or-privileged-role - server-side callers acting on behalf of the ticker or across
 // users need the service-role client to bypass RLS, matching every other repository here.
 async function resolveClient(): Promise<SupabaseClient> {
   if (typeof window === 'undefined') {
@@ -108,7 +108,7 @@ export class ClusterAuthorizationRepository {
     return mapRow(data);
   }
 
-  /** Approved-and-not-yet-expired authorizations — used by the auto-relock ticker. */
+  /** Approved-and-not-yet-expired authorizations - used by the auto-relock ticker. */
   static async getActiveApproved(dbClient?: SupabaseClient): Promise<ClusterAuthorization[]> {
     const db = dbClient || (await resolveClient());
     const { data, error } = await db.from('cluster_authorizations').select(SELECT_WITH_JOINS).eq('status', 'APPROVED');
@@ -134,7 +134,7 @@ export class ClusterAuthorizationRepository {
 
   /**
    * `startsAt`/`endsAt` are the *decider's* window, which overrides whatever the requester
-   * suggested — BR-09 requires the authorization to be temporary and the decider owns that call.
+   * suggested - BR-09 requires the authorization to be temporary and the decider owns that call.
    */
   static async decide(
     id: string,
@@ -160,7 +160,7 @@ export class ClusterAuthorizationRepository {
       .single();
 
     // Surface the real Postgres message instead of collapsing every failure into a null that the
-    // caller reports as a generic "Échec de la décision." — that hid an invalid-uuid error on
+    // caller reports as a generic "Échec de la décision." - that hid an invalid-uuid error on
     // decided_by for a full debugging cycle.
     if (error) throw new Error(`Échec de l'enregistrement de la décision : ${error.message}`);
     if (!data) return null;

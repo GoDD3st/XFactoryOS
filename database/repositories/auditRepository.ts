@@ -4,7 +4,7 @@ import { AuditLogEntry, AuditCategory, UserRole } from '@/frontend/src/types';
 
 // Default category per action, for the actions where the action alone is unambiguous. CREATE/
 // UPDATE are used across many different domains (reservations, workstations, user accounts...),
-// so those call sites must pass an explicit category — this table only covers the actions that
+// so those call sites must pass an explicit category - this table only covers the actions that
 // mean exactly one thing everywhere they're used.
 const ACTION_DEFAULT_CATEGORY: Partial<Record<string, AuditCategory>> = {
   LOGIN: 'auth',
@@ -58,7 +58,7 @@ export class AuditRepository {
         ip_address: l.ip_address || '10.120.4.18',
         // Rows written before the category column existed (or by a call site that predates a
         // given category) fall back to the action-based default, or 'reservation' as the last
-        // resort for legacy CREATE/UPDATE rows — better than leaving them uncategorized and
+        // resort for legacy CREATE/UPDATE rows - better than leaving them uncategorized and
         // invisible to everyone.
         category: (l.category as AuditCategory) || ACTION_DEFAULT_CATEGORY[l.action] || 'reservation',
       }));
@@ -79,7 +79,7 @@ export class AuditRepository {
     category?: AuditCategory
   ): Promise<AuditLogEntry> {
     // CREATE/UPDATE/DELETE are used across many domains (reservations, workstations, user
-    // accounts...) so those call sites must pass `category` explicitly — everything else has an
+    // accounts...) so those call sites must pass `category` explicitly - everything else has an
     // unambiguous default (see ACTION_DEFAULT_CATEGORY).
     const resolvedCategory = category || ACTION_DEFAULT_CATEGORY[action] || 'reservation';
 
@@ -87,7 +87,7 @@ export class AuditRepository {
       const db = await resolveClient();
       const { isValidUuid } = await import('../utils/uuid');
       await db.from('audit_logs').insert({
-        // actor_id is a uuid FK to users.id — callers sometimes pass placeholder strings like
+        // actor_id is a uuid FK to users.id - callers sometimes pass placeholder strings like
         // 'system' or 'admin-current' (not real user ids), which fail the FK/type constraint
         // outright if inserted as-is. Fall back to null for those instead of failing the write.
         actor_id: isValidUuid(actorId) ? actorId : null,

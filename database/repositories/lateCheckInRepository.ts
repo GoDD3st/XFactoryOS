@@ -117,7 +117,7 @@ export class LateCheckInRepository {
     return mapRow(data);
   }
 
-  /** Every request, most recent first — the reviewer queue and its history. */
+  /** Every request, most recent first - the reviewer queue and its history. */
   static async getAll(limit = 200, dbClient?: SupabaseClient): Promise<LateCheckInRequest[]> {
     const db = await resolveClient(dbClient);
     const { data, error } = await db
@@ -143,7 +143,7 @@ export class LateCheckInRepository {
 
   /**
    * Decide a request. The `.eq('status', 'PENDING')` is the concurrency guard: two reviewers
-   * acting at once both issue this UPDATE, but only the first matches a PENDING row — the
+   * acting at once both issue this UPDATE, but only the first matches a PENDING row - the
    * second returns no rows and is reported as already handled, so approval cannot run twice.
    */
   static async decide(

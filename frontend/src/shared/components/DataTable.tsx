@@ -42,7 +42,7 @@ interface DataTableProps<T> {
   searchPlaceholder?: string;
   /** 0 disables pagination. */
   pageSize?: number;
-  /** Rendered above the table, right of the search box (filters, actions…). */
+  /** Rendered above the table, right of the search box (filters, actions...). */
   toolbar?: React.ReactNode;
   onRetry?: () => void;
 }
@@ -56,7 +56,7 @@ export function DataTable<T>({
   emptyMessage = 'Aucun élément à afficher.',
   emptyHint,
   searchable = false,
-  searchPlaceholder = 'Rechercher…',
+  searchPlaceholder = 'Rechercher...',
   pageSize = 0,
   toolbar,
   onRetry,
@@ -176,7 +176,7 @@ export function DataTable<T>({
             {loading && (
               <tr>
                 <td colSpan={colCount} className="py-10 text-center text-slate-400">
-                  Chargement…
+                  Chargement...
                 </td>
               </tr>
             )}
@@ -237,7 +237,7 @@ export function DataTable<T>({
       {pageSize > 0 && !loading && !error && sorted.length > pageSize && (
         <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-slate-100 text-[11px] text-slate-500">
           <span>
-            {safePage * pageSize + 1}–{Math.min((safePage + 1) * pageSize, sorted.length)} sur {sorted.length}
+            {safePage * pageSize + 1} - {Math.min((safePage + 1) * pageSize, sorted.length)} sur {sorted.length}
           </span>
           <div className="flex items-center gap-1">
             <button
@@ -290,9 +290,9 @@ const TONE_STYLES: Record<StatusTone, string> = {
 const TONE_GLYPH: Record<StatusTone, string> = {
   success: '●',
   warning: '◐',
-  danger: '✕',
+  danger:'',
   info: '◆',
-  accent: '★',
+  accent:'',
   neutral: '○',
 };
 

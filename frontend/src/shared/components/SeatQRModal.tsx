@@ -39,7 +39,7 @@ export const SeatQRModal: React.FC<SeatQRModalProps> = ({ workstation, onClose }
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
             <QrCode className="w-4 h-4 text-teal-600" />
-            Badge QR — {workstation.code}
+            Badge QR - {workstation.code}
           </h3>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-700 cursor-pointer">
             <X className="w-4 h-4" />
@@ -53,7 +53,7 @@ export const SeatQRModal: React.FC<SeatQRModalProps> = ({ workstation, onClose }
         {error && <p className="text-xs text-red-600 font-semibold">{error}</p>}
 
         {!dataUrl && !error && (
-          <div className="h-64 flex items-center justify-center text-xs text-slate-400">Génération du QR code…</div>
+          <div className="h-64 flex items-center justify-center text-xs text-slate-400">Génération du QR code...</div>
         )}
 
         {dataUrl && (

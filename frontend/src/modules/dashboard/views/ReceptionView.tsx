@@ -20,13 +20,13 @@ import { Reservation, SystemSettings } from '../../../types';
 import { useAuth } from '../../auth/context/AuthContext';
 
 /**
- * Receptionist home — SRS §8.5: front-office support. The §13 matrix makes this role X on
+ * Receptionist home - SRS §8.5: front-office support. The §13 matrix makes this role X on
  * Dashboard exécutif, Analytics and Audit logs, so this screen deliberately carries no KPI/
  * heatmap/trend content. It answers only the three questions the desk actually needs:
  * who is expected today, who has arrived, and which seats are free to offer someone.
  *
  * Reservations are fetched from the database here. The previous version read
- * getLocalReservations(), which only returns the localStorage cache and never fetches — on a
+ * getLocalReservations(), which only returns the localStorage cache and never fetches - on a
  * fresh session this screen showed "Aucune réservation aujourd'hui" even when the day was full.
  */
 
@@ -113,7 +113,7 @@ export const ReceptionView: React.FC = () => {
   const awaiting = todaysReservations.filter((r) => AWAITING_STATUSES.has(r.status));
   const noShows = todaysReservations.filter((r) => r.status === 'no-show');
 
-  /** Awaiting arrivals, most urgent first — the desk's actual work queue. */
+  /** Awaiting arrivals, most urgent first - the desk's actual work queue. */
   const actionQueue = useMemo(
     () =>
       awaiting
@@ -146,7 +146,7 @@ export const ReceptionView: React.FC = () => {
             <span className="px-2.5 py-0.5 rounded bg-teal-500/20 text-teal-300 font-bold text-xs">
               Rôle : Réceptionniste
             </span>
-            <span className="text-xs text-slate-400">Accueil — Site Safi</span>
+            <span className="text-xs text-slate-400">Accueil - Site Safi</span>
           </div>
           <h1 className="text-xl font-bold mt-1">Bonjour, {currentUser.full_name?.split(' ')[0] || 'Réception'}</h1>
           <p className="text-xs text-slate-400 mt-0.5 capitalize">{today}</p>
@@ -193,7 +193,7 @@ export const ReceptionView: React.FC = () => {
             <span className="text-xs font-bold text-slate-500">Réservations aujourd'hui</span>
             <CalendarDays className="w-4 h-4 text-slate-600" />
           </div>
-          <div className="text-2xl font-black text-slate-900">{loading ? '…' : todaysReservations.length}</div>
+          <div className="text-2xl font-black text-slate-900">{loading ? '...' : todaysReservations.length}</div>
           <p className="text-[11px] text-slate-500">{loading ? '' : `${noShows.length} no-show`}</p>
         </div>
 
@@ -202,7 +202,7 @@ export const ReceptionView: React.FC = () => {
             <span className="text-xs font-bold text-slate-500">Arrivées</span>
             <Users className="w-4 h-4 text-emerald-600" />
           </div>
-          <div className="text-2xl font-black text-emerald-700">{loading ? '…' : arrived.length}</div>
+          <div className="text-2xl font-black text-emerald-700">{loading ? '...' : arrived.length}</div>
           <p className="text-[11px] text-slate-500">check-in effectué</p>
         </div>
 
@@ -212,7 +212,7 @@ export const ReceptionView: React.FC = () => {
             <Clock className="w-4 h-4 text-amber-600" />
           </div>
           <div className={`text-2xl font-black ${awaiting.length > 0 ? 'text-amber-600' : 'text-slate-900'}`}>
-            {loading ? '…' : awaiting.length}
+            {loading ? '...' : awaiting.length}
           </div>
           <p className="text-[11px] text-slate-500">à accueillir</p>
         </div>
@@ -230,7 +230,7 @@ export const ReceptionView: React.FC = () => {
           )}
         </h3>
 
-        {loading && <p className="text-xs text-slate-400">Chargement…</p>}
+        {loading && <p className="text-xs text-slate-400">Chargement...</p>}
         {!loading && actionQueue.length === 0 && (
           <p className="text-xs text-slate-400 italic py-4 text-center">
             Personne en attente de check-in. Tout le monde attendu est arrivé.
@@ -266,7 +266,7 @@ export const ReceptionView: React.FC = () => {
                   >
                     <AlertTriangle className="w-3 h-3" />
                     {overdue
-                      ? `Délai dépassé — passage en no-show imminent`
+                      ? `Délai dépassé - passage en no-show imminent`
                       : `Il reste ${minutesLeft} min avant le no-show`}
                   </div>
                 </div>
@@ -277,7 +277,7 @@ export const ReceptionView: React.FC = () => {
                   className="shrink-0 bg-[#008751] hover:bg-[#005f38] disabled:opacity-60 text-white px-3.5 py-2 rounded-lg text-xs font-bold transition-all shadow-sm flex items-center gap-1.5"
                 >
                   <Check className="w-3.5 h-3.5" />
-                  {pendingId === res.id ? 'Enregistrement…' : 'Check-in'}
+                  {pendingId === res.id ? 'Enregistrement...' : 'Check-in'}
                 </button>
               </div>
             );
@@ -310,7 +310,7 @@ export const ReceptionView: React.FC = () => {
                     return (
                       <tr key={r.id}>
                         <td className="py-2 pr-3 font-mono text-slate-500">{r.start_time}</td>
-                        <td className="py-2 pr-3 font-semibold text-slate-800">{r.user_name || '—'}</td>
+                        <td className="py-2 pr-3 font-semibold text-slate-800">{r.user_name || ''}</td>
                         <td className="py-2 pr-3 text-slate-600">{r.workstation_code}</td>
                         <td className="py-2">
                           <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${pill.className}`}>
@@ -329,7 +329,7 @@ export const ReceptionView: React.FC = () => {
           <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
             <Armchair className="w-4 h-4 text-emerald-600" />
             Postes disponibles
-            <span className="ml-auto text-lg font-black text-emerald-700">{loading ? '…' : totalAvailable}</span>
+            <span className="ml-auto text-lg font-black text-emerald-700">{loading ? '...' : totalAvailable}</span>
           </h3>
           <div className="space-y-1.5">
             {clusters.map((c) => (
@@ -347,11 +347,11 @@ export const ReceptionView: React.FC = () => {
         </div>
       </div>
 
-      {/* Seat map — selectable: the §13 matrix gives this role "C" on Réserver poste standard,
+      {/* Seat map - selectable: the §13 matrix gives this role "C" on Réserver poste standard,
           and the UML use-case diagram gives it "Réserver un poste". It was rendered read-only,
           which blocked exactly that. */}
       <div>
-        <h3 className="text-sm font-bold text-slate-900 mb-3">Plan des postes — réserver pour un collaborateur</h3>
+        <h3 className="text-sm font-bold text-slate-900 mb-3">Plan des postes - réserver pour un collaborateur</h3>
         <DigitalTwin />
       </div>
 

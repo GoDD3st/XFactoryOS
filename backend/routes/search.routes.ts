@@ -3,7 +3,7 @@ import { SearchService } from '../../services/search/searchService';
 
 export const searchRouter = Router();
 
-// POST /api/search/workstations — Search workstations
+// POST /api/search/workstations - Search workstations
 searchRouter.post('/workstations', async (req, res) => {
   try {
     const results = await SearchService.searchWorkstations(req.body);
@@ -13,7 +13,7 @@ searchRouter.post('/workstations', async (req, res) => {
   }
 });
 
-// POST /api/search/reservations — Search reservations (scoped to own unless an ops role)
+// POST /api/search/reservations - Search reservations (scoped to own unless an ops role)
 searchRouter.post('/reservations', async (req, res) => {
   try {
     const results = await SearchService.searchReservations(req.body, req.user!.id, req.user!.role);

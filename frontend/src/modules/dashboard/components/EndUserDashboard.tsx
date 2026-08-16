@@ -24,6 +24,8 @@ import { ExtensionRequestModal } from '../../../shared/components/ExtensionReque
 import { Workstation, Cluster, Reservation, ApprovalRequest, SystemSettings } from '../../../types';
 import { createReservation, syncReservationsFromDb } from '@/services/reservations/reservationService';
 import { apiCheckIn, apiCheckOut } from '@/services/api/checkinoutApi';
+import { apiJoinWaitingList } from '@/services/api/waitingListApi';
+import { apiCompleteApprovalRequest } from '@/services/api/approvalApi';
 import { ReservationConflictError } from '@/services/api/reservationApi';
 import { ApprovalService } from '@/services/approval/approvalService';
 import { SettingsService } from '@/services/settings/settingsService';
@@ -135,7 +137,7 @@ export const EndUserDashboard: React.FC = () => {
     (r) => r.reservation_date === todayKey && (r.status === 'confirmée' || r.status === 'check-in')
   );
 
-  // The no-show window is configured by the Super Admin (settings.noShowDelayMinutes) — read it
+  // The no-show window is configured by the Super Admin (settings.noShowDelayMinutes) - read it
   // rather than assuming the SRS default of 30.
   const noShowDelay = (settings as SystemSettings)?.noShowDelayMinutes ?? 30;
 
@@ -154,10 +156,10 @@ export const EndUserDashboard: React.FC = () => {
     try {
       if (todayPresence.status === 'check-in') {
         await apiCheckOut(todayPresence.id);
-        setPresenceMsg('Check-out effectué — le poste est libéré.');
+        setPresenceMsg('Check-out effectué - le poste est libéré.');
       } else {
         await apiCheckIn(todayPresence.id);
-        setPresenceMsg('Check-in effectué — bonne journée !');
+        setPresenceMsg('Check-in effectué - bonne journée !');
       }
       await loadMyData();
     } catch (err: any) {
@@ -188,6 +190,35 @@ export const EndUserDashboard: React.FC = () => {
     setBusinessDaysCount(data.businessDays);
     setRequiresExtension(data.requiresExtensionApproval);
     setValidationError(data.errorMessage);
+  };
+
+  /**
+   * Queue for a desk that can't be booked for the selected window - either taken all day, or
+   * taken for exactly these hours. If the holder never checks in, the no-show sweep offers this
+   * desk to the queue in order, and the first person to accept gets it.
+   */
+  const handleQueueSeat = async (
+    workstation: Workstation,
+    cluster: Cluster,
+    slot: { date: string; startTime: string; endTime: string }
+  ) => {
+    setValidationError(undefined);
+    try {
+      await apiJoinWaitingList({
+        cluster_preference: cluster.code,
+        requested_workstation_id: workstation.id,
+        requested_workstation_code: workstation.code,
+        reservation_date: slot.date,
+        time_slot: `${slot.startTime} - ${slot.endTime}`,
+        notes: `Attente du poste ${workstation.code} (${slot.startTime} - ${slot.endTime})`,
+      });
+      setBookingSuccessMsg(
+        `Vous êtes inscrit sur la liste d'attente pour ${workstation.code}. En cas de no-show, l'offre vous sera proposée en priorité.`
+      );
+      window.dispatchEvent(new CustomEvent('xfactory_waiting_list_changed'));
+    } catch (err: any) {
+      setValidationError(err?.message || "Échec de l'inscription en liste d'attente.");
+    }
   };
 
   const handleConfirmBookingClick = (e: React.FormEvent) => {
@@ -245,7 +276,7 @@ export const EndUserDashboard: React.FC = () => {
     }
 
     // If extension required (> 2 business days), the server already created the Director-routed
-    // approval request as part of createReservation (see ReservationService.createReservation) —
+    // approval request as part of createReservation (see ReservationService.createReservation) - 
     // it has the objective/motif too, since they're threaded through via notes/purpose above.
     // A second client-side call here used to create a duplicate approval row for the same
     // reservation, tagged the same way, which duplicated the approver's queue.
@@ -266,9 +297,15 @@ export const EndUserDashboard: React.FC = () => {
 
   const handleReLoopSubmit = async (data: { objective: string; motif: string }) => {
     if (!reLoopRequest) return;
-    await ApprovalService.updateExtensionRequest(reLoopRequest.id, data.objective, data.motif);
-    setBookingSuccessMsg('Votre nouvelle description à bien été re-soumise aux valideurs pour examen.');
-    loadMyData();
+    try {
+      // Via the API: calling the service directly persisted to localStorage only, so the success
+      // message below was shown for a re-submission the approver could never see.
+      await apiCompleteApprovalRequest(reLoopRequest.id, data.objective, data.motif);
+      setBookingSuccessMsg('Votre nouvelle description a bien été re-soumise aux valideurs pour examen.');
+      loadMyData();
+    } catch (err: any) {
+      setValidationError(err?.message || 'Échec de la re-soumission de la demande.');
+    }
   };
 
   return (
@@ -310,7 +347,7 @@ export const EndUserDashboard: React.FC = () => {
               Bienvenue, {currentUser.full_name}
             </h1>
             <p className="text-xs sm:text-sm text-slate-600 leading-relaxed font-medium">
-              Réservez votre poste de travail Smart Open Space. (08:00 – 18:00).
+              Réservez votre poste de travail Smart Open Space. (08:00 - 18:00).
             </p>
           </div>
 
@@ -342,7 +379,7 @@ export const EndUserDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Ma présence — check-in/check-out for today's reservation.
+      {/* Ma présence - check-in/check-out for today's reservation.
           FR-59: the collaborator must be warned before the check-in window expires, and after
           noShowDelayMinutes the reservation auto-flips to no-show and the seat is released.
           This action previously lived only in "Mes Réservations", so the single most
@@ -361,7 +398,7 @@ export const EndUserDashboard: React.FC = () => {
             <div className="text-sm">
               <div className="font-bold text-slate-900 flex items-center gap-2">
                 <Clock className="w-4 h-4" />
-                Ma présence — {todayPresence.workstation_code}
+                Ma présence - {todayPresence.workstation_code}
                 {todayPresence.cluster_name && (
                   <span className="font-normal text-slate-500 text-xs">({todayPresence.cluster_name})</span>
                 )}
@@ -372,16 +409,16 @@ export const EndUserDashboard: React.FC = () => {
 
               {todayPresence.status === 'check-in' ? (
                 <p className="text-xs font-bold text-emerald-700 mt-1">
-                  Check-in effectué — vous occupez ce poste.
+                  Check-in effectué - vous occupez ce poste.
                 </p>
               ) : presenceMinutesLeft === null ? null : presenceMinutesLeft > 0 ? (
                 <p className="text-xs font-bold text-amber-700 mt-1">
-                  Check-in possible encore {presenceMinutesLeft} min — au-delà, la réservation
+                  Check-in possible encore {presenceMinutesLeft} min - au-delà, la réservation
                   passe en no-show et le poste est libéré.
                 </p>
               ) : (
                 <p className="text-xs font-bold text-rose-700 mt-1">
-                  Délai de check-in dépassé — la réservation va passer en no-show.
+                  Délai de check-in dépassé - la réservation va passer en no-show.
                 </p>
               )}
             </div>
@@ -396,7 +433,7 @@ export const EndUserDashboard: React.FC = () => {
               }`}
             >
               {presenceBusy
-                ? 'Enregistrement…'
+                ? 'Enregistrement...'
                 : todayPresence.status === 'check-in'
                 ? 'Check-out'
                 : 'Check-in'}
@@ -482,7 +519,7 @@ export const EndUserDashboard: React.FC = () => {
                   </span>
                 </div>
                 <p className="text-xs text-slate-300 mt-0.5">
-                  Du <strong>{resDate}</strong> au <strong>{endDate || resDate}</strong> ({startTime} – {endTime}) | {businessDaysCount} jour{businessDaysCount > 1 ? 's' : ''} ouvré{businessDaysCount > 1 ? 's' : ''}
+                  Du <strong>{resDate}</strong> au <strong>{endDate || resDate}</strong> ({startTime} - {endTime}) | {businessDaysCount} jour{businessDaysCount > 1 ? 's' : ''} ouvré{businessDaysCount > 1 ? 's' : ''}
                 </p>
                 {validationError && (
                   <p className="text-xs font-bold text-red-300 mt-1.5 flex items-center gap-1.5">
@@ -542,9 +579,15 @@ export const EndUserDashboard: React.FC = () => {
         )}
 
         {/* Digital Twin 2D Floor Plan */}
+        {/* Slot is controlled by the booking form above, so the floor recolours as the user
+            changes date or hours instead of the screen carrying two pickers that can disagree. */}
         <DigitalTwin
           onSelectSeat={handleSeatClickFromTwin}
           selectedSeatCode={selectedSeat?.workstation.code || null}
+          slotDate={resDate}
+          slotStart={startTime}
+          slotEnd={endTime}
+          onQueueSeat={handleQueueSeat}
         />
       </div>
 

@@ -12,7 +12,7 @@ async function authHeaders(extra?: Record<string, string>): Promise<Record<strin
     if (!token) throw new Error('Vous devez être connecté pour effectuer cette action.');
     headers.Authorization = `Bearer ${token}`;
   }
-  // Demo mode: no Authorization header — AuthContext's global fetch interceptor
+  // Demo mode: no Authorization header - AuthContext's global fetch interceptor
   // injects X-Demo-Role, which authMiddleware.ts's DEMO_MODE branch honors.
 
   return headers;
@@ -22,7 +22,7 @@ export class SettingsService {
   /**
    * Server (backend/routes/settings.routes.ts): reads live from Supabase.
    * Browser: returns the cached value immediately for a fast paint, then refreshes the cache
-   * in the background — callers needing the live value from the browser should await
+   * in the background - callers needing the live value from the browser should await
    * SettingsRepository.getSettings() (or the password-confirmed /api/settings flow) directly.
    */
   static getSettings(): SystemSettings | Promise<SystemSettings> {
@@ -39,14 +39,24 @@ export class SettingsService {
     return SettingsRepository.DEFAULT_SETTINGS;
   }
 
-  /** Server-only direct write (bypasses password re-verification — used by the legacy
+  /** Server-only direct write (bypasses password re-verification - used by the legacy
    * PUT /api/settings route only; the Super Admin/Admin UI goes through confirmWithPassword). */
   static async updateSettings(partial: Partial<SystemSettings>): Promise<SystemSettings> {
     return SettingsRepository.updateSettings(partial);
   }
 
   /**
-   * Pure local helper for the Settings form's "Réinitialiser" button — resets the in-progress,
+   * Persists the site mark. `null` clears it and the UI falls back to the text initials.
+   *
+   * Takes an already-validated data URI - the route runs validateLogoDataUrl first. This method
+   * does not re-validate, so it must never be called with raw user input from anywhere else.
+   */
+  static async updateSiteLogo(dataUrl: string | null, adminId?: string): Promise<void> {
+    return SettingsRepository.updateSiteLogo(dataUrl, adminId);
+  }
+
+  /**
+   * Pure local helper for the Settings form's "Réinitialiser" button - resets the in-progress,
    * unsaved form back to defaults. Deliberately does NOT write to the database: persisting a
    * reset still has to go through the password-confirmed save flow like any other settings change.
    */
@@ -76,10 +86,10 @@ export class SettingsService {
    * Step-up re-authentication: the admin re-enters their password, the server verifies it with
    * a fresh signInWithPassword check (never touches the caller's real session), then applies and
    * persists the settings change. Replaces the old same-session OTP, which was delivered as an
-   * in-app notification to the very session making the request — no real second factor — and had
+   * in-app notification to the very session making the request - no real second factor - and had
    * a client-only fallback that stored the "OTP" in sessionStorage (trivially readable via
    * devtools). A genuine network failure here is a real failure now, not a silent security
-   * downgrade — no offline fallback.
+   * downgrade - no offline fallback.
    */
   static async confirmWithPassword(
     password: string,

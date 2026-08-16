@@ -4,7 +4,7 @@ import { requireRole } from '../middleware/rbacMiddleware';
 
 export const securityRouter = Router();
 
-// GET /api/security/evacuation-roster — Security Guard & Admin roles only
+// GET /api/security/evacuation-roster - Security Guard & Admin roles only
 securityRouter.get('/evacuation-roster', requireRole('security_guard', 'admin', 'super_admin'), async (req, res) => {
   try {
     const data = await SecurityService.getEvacuationRoster();

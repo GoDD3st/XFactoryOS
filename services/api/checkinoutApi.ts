@@ -61,7 +61,7 @@ export async function apiFetchMyLateCheckIns(): Promise<LateCheckInRequest[]> {
   return (await response.json()).data || [];
 }
 
-/** Full queue + history. Reviewer roles only — the server returns 403 otherwise. */
+/** Full queue + history. Reviewer roles only - the server returns 403 otherwise. */
 export async function apiFetchLateCheckInRequests(): Promise<LateCheckInRequest[]> {
   const response = await fetch('/api/checkinout/late-check-in', { headers: await authHeaders() });
   if (!response.ok) return [];
@@ -85,7 +85,7 @@ export async function apiDecideLateCheckIn(
 
 /**
  * Self-service check-in / check-out. The server forces the user id from the session, so these
- * can only ever act on the caller's own reservation — which is exactly the collaborator flow.
+ * can only ever act on the caller's own reservation - which is exactly the collaborator flow.
  * Using them instead of the client-side CheckInOutService keeps the write behind the API's
  * ownership guard rather than relying on RLS alone, and makes failures explicit.
  */
@@ -134,7 +134,7 @@ export async function apiCheckInForReservation(
 }
 
 /**
- * Fetch the static, printable badge token for a seat (admin/building/GCI manager only —
+ * Fetch the static, printable badge token for a seat (admin/building/GCI manager only - 
  * enforced server-side). The token itself never changes for a given seat.
  */
 export async function apiFetchSeatQrToken(workstationId: string): Promise<string> {
@@ -148,7 +148,7 @@ export async function apiFetchSeatQrToken(workstationId: string): Promise<string
 }
 
 /**
- * Read-only decode of a scanned seat token — receptionist/manager roles only. Used to figure
+ * Read-only decode of a scanned seat token - receptionist/manager roles only. Used to figure
  * out which seat was scanned before committing to a check-in/out on someone's behalf.
  */
 export async function apiDecodeSeatToken(seatToken: string): Promise<{ workstationId: string; workstationCode: string }> {

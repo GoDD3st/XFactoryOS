@@ -16,7 +16,7 @@ function extractSeatToken(rawText: string): string {
     const token = url.searchParams.get('scan');
     if (token) return token;
   } catch {
-    // Not a URL — assume the raw scanned text is the token itself.
+    // Not a URL - assume the raw scanned text is the token itself.
   }
   return rawText.trim();
 }
@@ -155,7 +155,7 @@ export const ReceptionSeatScanModal: React.FC<ReceptionSeatScanModalProps> = ({
                 <UserCheck className="w-3.5 h-3.5" />
               )}
               {submitting
-                ? 'Traitement…'
+                ? 'Traitement...'
                 : selectedReservation?.status === 'check-in'
                 ? 'Valider le check-out'
                 : "Valider l'entrée"}

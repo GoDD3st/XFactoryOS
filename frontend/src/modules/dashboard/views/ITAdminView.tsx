@@ -18,10 +18,10 @@ import { HardwareDiagnosticsInfo, AuditLogEntry } from '@/frontend/src/types';
 /**
  * SRS §8: the IT Administrator owns "Administration technique" (CRUD) and is read-only on every
  * business domain. This screen therefore covers platform health, security-relevant activity,
- * integrations and the hardware estate — not postes/clusters/reservations management.
+ * integrations and the hardware estate - not postes/clusters/reservations management.
  *
  * Deliberately NOT shown: CPU/RAM/latency gauges and integration uptime. The SRS defines no such
- * metrics, and the CDVI/Hager/Philips integrations are explicitly future scope for Module 1 —
+ * metrics, and the CDVI/Hager/Philips integrations are explicitly future scope for Module 1 - 
  * inventing green "Online" badges for them would misrepresent the system.
  */
 const HEALTH_LABELS: Record<string, string> = {
@@ -37,7 +37,7 @@ const HEALTH_STYLES: Record<HealthStatus, { label: string; dot: string; classNam
   down: { label: 'Hors service', dot: 'bg-rose-500', className: 'text-rose-700' },
 };
 
-// SRS-declared future integrations — surfaced so the scope is visible, labelled honestly.
+// SRS-declared future integrations - surfaced so the scope is visible, labelled honestly.
 const FUTURE_INTEGRATIONS = [
   { name: 'CDVI Centaur', purpose: 'Contrôle d\'accès / badges' },
   { name: 'Hager', purpose: 'Domotique bâtiment' },
@@ -69,7 +69,7 @@ export const ITAdminView: React.FC = () => {
 
   useEffect(() => {
     loadDiagnostics();
-    // Health is a live signal — poll it rather than showing a boot-time snapshot forever.
+    // Health is a live signal - poll it rather than showing a boot-time snapshot forever.
     const id = setInterval(() => apiFetchHealth().then(setHealth), 60000);
     return () => clearInterval(id);
   }, []);
@@ -102,7 +102,7 @@ export const ITAdminView: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header Banner — IT/hardware scope only per SRS RBAC (Administration technique = CRUD
+      {/* Header Banner - IT/hardware scope only per SRS RBAC (Administration technique = CRUD
           for IT Admin); reservations/occupancy are out of scope for this role's home view. */}
       <div className="bg-slate-900 text-white rounded-2xl p-6 border border-slate-800 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -110,11 +110,11 @@ export const ITAdminView: React.FC = () => {
             <span className="px-2.5 py-0.5 rounded bg-blue-500/20 text-blue-300 font-bold text-xs">
               Rôle : IT Admin Infrastructure
             </span>
-            <span className="text-xs text-slate-400">Administration Technique — Site Safi</span>
+            <span className="text-xs text-slate-400">Administration Technique - Site Safi</span>
           </div>
           <h1 className="text-xl font-bold mt-1">Supervision du Parc Matériel</h1>
           <p className="text-xs text-slate-400 mt-0.5">
-            État des ports réseau par poste — {diagnostics.length} poste(s) supervisé(s).
+            État des ports réseau par poste - {diagnostics.length} poste(s) supervisé(s).
           </p>
         </div>
 
@@ -127,7 +127,7 @@ export const ITAdminView: React.FC = () => {
         </button>
       </div>
 
-      {/* Platform health — every line comes from an actual probe in /api/health */}
+      {/* Platform health - every line comes from an actual probe in /api/health */}
       <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
@@ -151,7 +151,7 @@ export const ITAdminView: React.FC = () => {
         </div>
 
         {!health ? (
-          <p className="text-xs text-slate-400">Vérification en cours…</p>
+          <p className="text-xs text-slate-400">Vérification en cours...</p>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {Object.entries(health.components).map(([key, comp]) => {
@@ -202,7 +202,7 @@ export const ITAdminView: React.FC = () => {
           </p>
         </div>
 
-        {/* Integrations — future scope, labelled as such rather than faked green */}
+        {/* Integrations - future scope, labelled as such rather than faked green */}
         <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-3">
           <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
             <Network className="w-4 h-4 text-purple-600" />

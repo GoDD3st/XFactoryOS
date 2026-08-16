@@ -15,7 +15,7 @@
  * the value correctly.
  */
 export function isDemoMode(): boolean {
-  // Direct static access — Vite replaces this at transform time
+  // Direct static access - Vite replaces this at transform time
   const value = import.meta.env.VITE_DEMO_MODE;
   return value === 'true';
 }

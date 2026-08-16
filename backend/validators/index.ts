@@ -5,7 +5,7 @@ import { sanitizedString, sanitizedOptionalString } from '../utils/sanitize';
  * Zod Input Validation Schemas for XFactory OS API
  * All schemas use `.strict()` to reject unknown/injected fields (mass assignment prevention).
  * Every free-text field (names, reasons, notes, questions...) uses sanitizedString/
- * sanitizedOptionalString — see backend/utils/sanitize.ts — which strips HTML/script markup
+ * sanitizedOptionalString - see backend/utils/sanitize.ts - which strips HTML/script markup
  * before the value is ever persisted, so nothing a user submits can later render as markup
  * regardless of where it's displayed (dashboard, export, notification, AI chat...).
  */
@@ -62,6 +62,63 @@ export const ApprovalDecisionSchema = z
   .strict();
 
 // 4. Approval Request Creation Schema
+/**
+ * Password strength, enforced server-side.
+ *
+ * Deliberately NOT run through sanitizedString: the sanitiser strips/escapes characters, which
+ * would silently alter a password before it reaches GoTrue and leave the user unable to sign in
+ * with what they typed. Passwords are never rendered as HTML, so escaping buys nothing here.
+ */
+const passwordField = z
+  .string()
+  .min(10, 'Le mot de passe doit contenir au moins 10 caractères')
+  .max(200, 'Mot de passe trop long')
+  .refine((v) => /[a-z]/.test(v), 'Ajoutez au moins une minuscule')
+  .refine((v) => /[A-Z]/.test(v), 'Ajoutez au moins une majuscule')
+  .refine((v) => /[0-9]/.test(v), 'Ajoutez au moins un chiffre')
+  .refine((v) => /[^A-Za-z0-9]/.test(v), 'Ajoutez au moins un caractère spécial');
+
+/** Admin sets a specific password for another account. */
+export const SetUserPasswordSchema = z.object({ password: passwordField }).strict();
+
+/**
+ * The account holder changes their own password.
+ *
+ * `current_password` is mandatory and is verified against the auth provider before anything is
+ * written. Without it, anyone holding a hijacked session token could silently take over the
+ * account by setting a new password - the session proves "this browser was logged in", not
+ * "this is still the account owner". Not run through the strength rules: it is an existing
+ * credential being checked, not a new one being set, and older passwords may predate the policy.
+ */
+export const ChangeOwnPasswordSchema = z
+  .object({
+    current_password: z.string().min(1, 'Mot de passe actuel requis').max(200),
+    password: passwordField,
+  })
+  .strict();
+
+/** A user asks an administrator to change their password for them. */
+export const RequestPasswordChangeSchema = z
+  .object({ message: sanitizedOptionalString(500) })
+  .strict();
+
+/** Site logo upload. The data URI is validated by services/settings/logoValidation.ts. */
+export const SiteLogoSchema = z
+  .object({
+    // ~1.4x the 512 KB binary cap, allowing for base64 expansion; the real check is downstream.
+    logo: z.string().max(750_000, 'Image trop volumineuse').nullable(),
+  })
+  .strict();
+
+// BPMN D2: the requester completes a request returned with "DEMANDER INFO". Both fields are
+// mandatory - an empty re-submission would put the same incomplete request back in the queue.
+export const CompleteApprovalRequestSchema = z
+  .object({
+    objective: sanitizedString({ min: 5, max: 2000 }),
+    reason: sanitizedString({ min: 5, max: 1000 }),
+  })
+  .strict();
+
 export const CreateApprovalRequestSchema = z
   .object({
     reservation_id: z.string().min(1),
@@ -87,7 +144,7 @@ export const ScanSeatSchema = z
   })
   .strict();
 
-// 5c. Seat Badge Decode Schema (receptionist scan-assist — read-only, no state change)
+// 5c. Seat Badge Decode Schema (receptionist scan-assist - read-only, no state change)
 export const DecodeSeatSchema = z
   .object({
     seatToken: z.string().min(1, 'Jeton QR de poste requis'),
@@ -162,7 +219,7 @@ export const VisibilityToggleSchema = z
   })
   .strict();
 
-// 9b. Cluster Management Lock Toggle Schema (BR-09 — CL-F/CL-G unlock)
+// 9b. Cluster Management Lock Toggle Schema (BR-09 - CL-F/CL-G unlock)
 export const ManagementLockSchema = z
   .object({
     unlocked: z.boolean(),
@@ -170,12 +227,45 @@ export const ManagementLockSchema = z
   .strict();
 
 // 10. Waiting List Entry Schema
+// AI configuration. The api_key is write-only: it is accepted here and never returned by any
+// endpoint. Optional so an admin can switch model on an already-configured provider without
+// re-entering the credential.
+export const AIConfigActivateSchema = z
+  .object({
+    provider: z.enum(['openai', 'gemini', 'anthropic']),
+    model: z.string().min(1, 'Modèle requis').max(200),
+    api_key: z.string().min(8, 'Clé API invalide').max(400).optional(),
+  })
+  .strict();
+
+export const AIModelListSchema = z
+  .object({
+    provider: z.enum(['openai', 'gemini', 'anthropic']),
+    api_key: z.string().min(8, 'Clé API invalide').max(400).optional(),
+  })
+  .strict();
+
 export const CreateWaitingListEntrySchema = z
   .object({
     cluster_preference: sanitizedOptionalString(100),
+    // Queue for one specific desk (a seat booked all day, whose only route in is the no-show
+    // cascade). Omitted = queue for any desk in cluster_preference, the original behaviour.
+    requested_workstation_id: z.string().uuid('Poste invalide').optional(),
+    requested_workstation_code: sanitizedOptionalString(50),
     reservation_date: z.string().min(1, 'Date requise'),
     time_slot: sanitizedOptionalString(50),
     notes: sanitizedOptionalString(500),
+    // BPMN D5 "zone / equipement" preferences. The matching engine treats only `true` as a
+    // constraint, so the schema accepts booleans and nothing else - a string "false" reaching
+    // the matcher would read as truthy and silently narrow who can be offered a desk.
+    preferences: z
+      .object({
+        nearWindow: z.boolean().optional(),
+        isPMR: z.boolean().optional(),
+        isQuietZone: z.boolean().optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -215,7 +305,7 @@ export const SystemSettingsUpdateSchema = z
   })
   .strict();
 
-// 11b. Step-up re-authentication for settings changes — replaces the old same-session OTP
+// 11b. Step-up re-authentication for settings changes - replaces the old same-session OTP
 // (delivered as an in-app notification, i.e. to the very session making the request, which
 // provided no real second factor) with a password re-entry, proving the admin still knows the
 // credential right now rather than just holding an open tab.
@@ -281,7 +371,7 @@ export const WorkstationUpdateSchema = z
   })
   .strict();
 
-// 18. Extension Seat Creation Schema — motif + visibility + permanent/temporary window
+// 18. Extension Seat Creation Schema - motif + visibility + permanent/temporary window
 export const ExtensionSeatSchema = z
   .object({
     reason: sanitizedString({ min: 3, max: 500, minMessage: 'Motif requis (3 caractères minimum)', maxMessage: 'Motif trop long (max 500 caractères)' }),
@@ -327,11 +417,11 @@ export const LateCheckInDecisionSchema = z
   })
   .strict()
   .refine((d) => d.decision !== 'REJECTED' || !!d.reviewerComment?.trim(), {
-    message: 'Un motif est obligatoire en cas de refus — il est transmis au demandeur.',
+    message: 'Un motif est obligatoire en cas de refus - il est transmis au demandeur.',
     path: ['reviewerComment'],
   });
 
-// 18a. Bulk user import (SRS §28.10 / FR-11 — "import massif d'utilisateurs", Admin/Super Admin).
+// 18a. Bulk user import (SRS §28.10 / FR-11 - "import massif d'utilisateurs", Admin/Super Admin).
 // `dryRun` runs validation only and persists nothing, backing the preview step.
 const IMPORT_ROLES = [
   'collaborator',
@@ -434,12 +524,12 @@ export const ClusterAccessDecisionSchema = z
     path: ['endsAt'],
   });
 
-// 20. Role Creation Schema (SRS §13 "Gérer rôles" — Super Admin only)
+// 20. Role Creation Schema (SRS §13 "Gérer rôles" - Super Admin only)
 export const CreateRoleSchema = z
   .object({
     code: z
       .string()
-      .regex(/^[A-Z][A-Z0-9_]{1,49}$/, 'Code invalide (majuscules, chiffres, underscore — ex: FACILITY_LEAD)'),
+      .regex(/^[A-Z][A-Z0-9_]{1,49}$/, 'Code invalide (majuscules, chiffres, underscore - ex: FACILITY_LEAD)'),
     name: sanitizedString({ min: 2, max: 100, minMessage: 'Nom du rôle requis' }),
     description: sanitizedOptionalString(500),
   })
@@ -456,7 +546,7 @@ export const UpdateRolePermissionSchema = z
   })
   .strict();
 
-// 22. Role Deletion Schema — requires the server-side master key, not just the caller's own
+// 22. Role Deletion Schema - requires the server-side master key, not just the caller's own
 // session/password, since deleting a role is far more destructive than a settings change.
 export const DeleteRoleSchema = z
   .object({

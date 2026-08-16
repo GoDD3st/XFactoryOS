@@ -6,7 +6,7 @@ import { HardwareResetSchema } from '../validators';
 
 export const hardwareRouter = Router();
 
-// GET /api/hardware/diagnostics — IT Admin & Admin roles only
+// GET /api/hardware/diagnostics - IT Admin & Admin roles only
 hardwareRouter.get('/diagnostics', requirePermission('technical_administration', 'read', ['it_admin', 'admin', 'super_admin']), async (req, res) => {
   try {
     const data = await HardwareService.getHardwareDiagnostics();
@@ -16,7 +16,7 @@ hardwareRouter.get('/diagnostics', requirePermission('technical_administration',
   }
 });
 
-// POST /api/hardware/reset-port — IT Admin & Admin roles only (Zod validated)
+// POST /api/hardware/reset-port - IT Admin & Admin roles only (Zod validated)
 hardwareRouter.post('/reset-port', requirePermission('technical_administration', 'update', ['it_admin', 'admin', 'super_admin']), validateBody(HardwareResetSchema), async (req, res) => {
   try {
     const { workstation_code } = req.body;

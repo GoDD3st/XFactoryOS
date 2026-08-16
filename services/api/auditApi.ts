@@ -18,7 +18,7 @@ export async function apiFetchAuditLogs(showAll: boolean = false): Promise<{ dat
   return { data: body.data || [], canSeeAll: !!body.canSeeAll };
 }
 
-/** FR-96 / §26.1 "Export de données" — logs a data export from the client (dashboard/audit CSV
+/** FR-96 / §26.1 "Export de données" - logs a data export from the client (dashboard/audit CSV
  * & Excel exports have no other server round-trip to hang the audit call off of). */
 export async function apiLogExport(target_resource: string, details: string): Promise<void> {
   try {
@@ -35,6 +35,6 @@ export async function apiLogExport(target_resource: string, details: string): Pr
       body: JSON.stringify({ action: 'EXPORT', target_resource, details }),
     });
   } catch {
-    // Non-blocking — a failed audit call must never prevent the export itself.
+    // Non-blocking - a failed audit call must never prevent the export itself.
   }
 }

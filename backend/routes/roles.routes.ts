@@ -20,12 +20,12 @@ export const rolesRouter = Router();
  *    the policy table can't be read, so a DB outage degrades to the old behaviour instead of
  *    locking every user out;
  *  - Super Admin's read/update on `manage_roles` cannot be revoked (enforced in
- *    requirePermission and again in RoleRepository.updateRolePermission) — without that, one
+ *    requirePermission and again in RoleRepository.updateRolePermission) - without that, one
  *    toggle would remove the only route able to undo it.
  */
 const ROLE_READERS = ['super_admin', 'admin', 'it_admin'] as const;
 
-// GET /api/roles — role list with live user counts
+// GET /api/roles - role list with live user counts
 rolesRouter.get('/', requirePermission('manage_roles', 'read', ROLE_READERS), async (req, res) => {
   try {
     const roles = await RoleRepository.getRolesWithUserCounts();
@@ -35,7 +35,7 @@ rolesRouter.get('/', requirePermission('manage_roles', 'read', ROLE_READERS), as
   }
 });
 
-// GET /api/roles/permissions-matrix — full role x permission grid
+// GET /api/roles/permissions-matrix - full role x permission grid
 rolesRouter.get('/permissions-matrix', requirePermission('manage_roles', 'read', ROLE_READERS), async (req, res) => {
   try {
     const matrix = await RoleRepository.getPermissionsMatrix();
@@ -45,7 +45,7 @@ rolesRouter.get('/permissions-matrix', requirePermission('manage_roles', 'read',
   }
 });
 
-// POST /api/roles — create a new role (Super Admin only per matrix; Admin is R-only)
+// POST /api/roles - create a new role (Super Admin only per matrix; Admin is R-only)
 rolesRouter.post('/', requirePermission('manage_roles', 'create', ['super_admin']), validateBody(CreateRoleSchema), async (req, res) => {
   try {
     const { code, name, description } = req.body;
@@ -66,7 +66,7 @@ rolesRouter.post('/', requirePermission('manage_roles', 'create', ['super_admin'
   }
 });
 
-// PATCH /api/roles/:roleId/permissions/:permissionId — update one policy cell
+// PATCH /api/roles/:roleId/permissions/:permissionId - update one policy cell
 rolesRouter.patch(
   '/:roleId/permissions/:permissionId',
   requirePermission('manage_roles', 'update', ['super_admin']),
@@ -91,16 +91,16 @@ rolesRouter.patch(
 
       res.json({ status: 'success' });
     } catch (error: any) {
-      // The anti-lockout guard in the repository rejects with a message meant for the admin —
+      // The anti-lockout guard in the repository rejects with a message meant for the admin - 
       // that's a bad request, not a server fault.
       res.status(400).json({ status: 'error', message: error.message });
     }
   }
 );
 
-// DELETE /api/roles/:roleId — requires a server-side master key (never shipped to the
+// DELETE /api/roles/:roleId - requires a server-side master key (never shipped to the
 // frontend), on top of the repository's critical-role/still-assigned guards. Fails closed if
-// ROLE_DELETION_MASTER_KEY isn't configured — no default key committed to source.
+// ROLE_DELETION_MASTER_KEY isn't configured - no default key committed to source.
 rolesRouter.delete('/:roleId', requirePermission('manage_roles', 'delete', ['super_admin']), validateBody(DeleteRoleSchema), async (req, res) => {
   try {
     const configuredKey = process.env.ROLE_DELETION_MASTER_KEY;

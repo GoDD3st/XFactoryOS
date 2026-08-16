@@ -4,14 +4,14 @@ import { X, Clock, ArrowLeft } from 'lucide-react';
 /**
  * Schematic room map derived from the real Site Safi Module 1 floor plan blueprint.
  * Coordinates are percentages of the building canvas (left, top, width, height), traced by eye
- * from the blueprint — not architectural precision, but real room names/relative positions/
+ * from the blueprint - not architectural precision, but real room names/relative positions/
  * proportions instead of an invented layout.
  *
  * Only the Open Space zone is part of Module 1 (the scope currently being built/validated).
  * `interactive: false` rooms (WCs, kitchens, storage, corridors, prayer room, smoking area) never
- * become clickable — there's nothing to click into, ever, even once other modules ship.
+ * become clickable - there's nothing to click into, ever, even once other modules ship.
  * `interactive: true` non-openspace rooms (meeting rooms, focus rooms) are plausible future
- * features — clicking shows a "Coming Soon" placeholder rather than faking it.
+ * features - clicking shows a "Coming Soon" placeholder rather than faking it.
  */
 interface ZoneDef {
   id: string;
@@ -22,7 +22,7 @@ interface ZoneDef {
   height: number;
   kind: 'utility' | 'meeting' | 'relax' | 'circulation' | 'openspace';
   interactive: boolean;
-  /** Rotates the label 90° — for tall narrow zones (corridors, right-hand column). */
+  /** Rotates the label 90° - for tall narrow zones (corridors, right-hand column). */
   vertical?: boolean;
 }
 
@@ -46,7 +46,7 @@ const ZONES: ZoneDef[] = [
   { id: 'vestiaires-2', label: 'Vestiaires', left: 0, top: 13.5, width: 8.3, height: 13.5, kind: 'utility', interactive: false },
   { id: 'kitchenette-1', label: 'Kitchenette', left: 0, top: 27, width: 8.3, height: 13.5, kind: 'utility', interactive: false },
   { id: 'salle-priere', label: 'Salle de prière', left: 0, top: 40.5, width: 8.3, height: 21, kind: 'relax', interactive: false },
-  // Bottom-left is now sanitaires (was "Cour" — absent from the reference plan).
+  // Bottom-left is now sanitaires (was "Cour" - absent from the reference plan).
   { id: 'sanitaire-pmr', label: 'Sanitaire 3H + 3F + PMR', left: 0, top: 61.5, width: 8.3, height: 38.5, kind: 'utility', interactive: false },
 
   // ── Vertical corridor, left ────────────────────────────────────────────────────────────────
@@ -99,9 +99,9 @@ interface DoorDef {
 }
 
 const DOORS: DoorDef[] = [
-  { id: 'door-exterior-hall', left: 24, top: 100, rotation: 0, label: "Porte principale — accès extérieur vers l'Espace de repos / Accueil" },
-  { id: 'door-hall-openspace', left: 39.88, top: 82, rotation: 90, label: "Porte d'accès — Accueil vers l'Open Space" },
-  { id: 'door-exterior-openspace', left: 57.5, top: 100, rotation: 0, label: 'Porte principale — accès extérieur direct vers l\'Open Space' },
+  { id: 'door-exterior-hall', left: 24, top: 100, rotation: 0, label: "Porte principale - accès extérieur vers l'Espace de repos / Accueil" },
+  { id: 'door-hall-openspace', left: 39.88, top: 82, rotation: 90, label: "Porte d'accès - Accueil vers l'Open Space" },
+  { id: 'door-exterior-openspace', left: 57.5, top: 100, rotation: 0, label: 'Porte principale - accès extérieur direct vers l\'Open Space' },
 ];
 
 const DoorSymbol: React.FC<DoorDef> = ({ left, top, rotation, label }) => (
@@ -122,7 +122,7 @@ const DoorSymbol: React.FC<DoorDef> = ({ left, top, rotation, label }) => (
 );
 
 interface BuildingFloorPlanProps {
-  /** Full interactive cluster cards for a given Open Space zone — shown only in the zoomed-in view */
+  /** Full interactive cluster cards for a given Open Space zone - shown only in the zoomed-in view */
   renderOpenSpaceDetail: (zoneId: string) => React.ReactNode;
   /** Lightweight stats for the compact building-overview tile */
   getOpenSpaceSummary: (zoneId: string) => { clusterCount: number; seatCount: number };
@@ -176,7 +176,7 @@ export const BuildingFloorPlan: React.FC<BuildingFloorPlanProps> = ({ renderOpen
         <>
           <p className="text-[11px] text-slate-500 flex items-center gap-1.5">
             <Clock className="w-3.5 h-3.5 text-emerald-600" />
-            Plan réel du site Safi — cliquez sur l'<strong className="text-emerald-700">Open Space (Module 1)</strong> pour voir les postes. Les autres salles seront activées aux modules suivants.
+            Plan réel du site Safi - cliquez sur l'<strong className="text-emerald-700">Open Space (Module 1)</strong> pour voir les postes. Les autres salles seront activées aux modules suivants.
           </p>
 
           <div

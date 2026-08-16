@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { WaitingListEntry } from '@/frontend/src/types';
+import { WaitingListEntry, WaitingListPreferences } from '@/frontend/src/types';
 import {
   apiFetchWaitingList,
   apiJoinWaitingList,
@@ -9,12 +9,26 @@ import {
 } from '@/services/api/waitingListApi';
 import { Clock, Layers, Plus, Trash2, CheckCircle, Users, Check, X } from 'lucide-react';
 
+const PREFERENCE_LABELS: Record<keyof WaitingListPreferences, string> = {
+  nearWindow: 'fenêtre',
+  isPMR: 'PMR',
+  isQuietZone: 'zone calme',
+};
+
+/** "fenêtre, zone calme"the attribute constraints an entry is queued with. */
+const describePreferences = (prefs: WaitingListPreferences): string =>
+  (Object.keys(prefs) as (keyof WaitingListPreferences)[])
+    .filter((k) => prefs[k])
+    .map((k) => PREFERENCE_LABELS[k])
+    .join(', ');
+
 export const WaitingListView: React.FC = () => {
   const [list, setList] = useState<WaitingListEntry[]>([]);
   const [showAdd, setShowAdd] = useState(false);
   const [clusterPref, setClusterPref] = useState('CL-A');
   const [timeSlot, setTimeSlot] = useState('09:00 - 17:00');
   const [notes, setNotes] = useState('');
+  const [preferences, setPreferences] = useState<WaitingListPreferences>({});
 
   const loadList = async () => {
     setList(await apiFetchWaitingList());
@@ -33,11 +47,23 @@ export const WaitingListView: React.FC = () => {
       reservation_date: new Date().toISOString().split('T')[0],
       time_slot: timeSlot,
       notes,
+      // Send nothing rather than {} when no box is ticked - an empty object and "no preferences"
+      // mean the same thing to the matcher, and omitting it keeps the stored row honest.
+      preferences: Object.keys(preferences).length > 0 ? preferences : undefined,
     });
     setShowAdd(false);
     setNotes('');
+    setPreferences({});
     loadList();
   };
+
+  const togglePreference = (key: keyof WaitingListPreferences) =>
+    setPreferences((prev) => {
+      const next = { ...prev };
+      if (next[key]) delete next[key];
+      else next[key] = true;
+      return next;
+    });
 
   const handleCancel = async (id: string) => {
     await apiCancelWaitingListEntry(id);
@@ -123,6 +149,37 @@ export const WaitingListView: React.FC = () => {
           </div>
 
           <div>
+            <label className="font-semibold text-slate-700 text-xs block mb-1">Préférences de poste</label>
+            <p className="text-[11px] text-slate-500 mb-2">
+              Un poste libéré ne vous sera proposé que s'il remplit ces critères. Sans critère, tout
+              poste du cluster convient.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {(
+                [
+                  ['nearWindow', 'Près d’une fenêtre'],
+                  ['isPMR', 'Accessible PMR'],
+                  ['isQuietZone', 'Zone calme'],
+                ] as [keyof WaitingListPreferences, string][]
+              ).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => togglePreference(key)}
+                  aria-pressed={!!preferences[key]}
+                  className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all cursor-pointer ${
+                    preferences[key]
+                      ? 'bg-[#008751] border-[#008751] text-white shadow-xs'
+                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:border-slate-300'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
             <label className="font-semibold text-slate-700 text-xs block mb-1">Notes / Raison</label>
             <input
               type="text"
@@ -175,10 +232,16 @@ export const WaitingListView: React.FC = () => {
                     <div className="font-bold text-slate-800">{item.user_name} ({item.user_department})</div>
                     <div className="text-[10px] text-slate-500">
                       Cluster: <span className="font-semibold text-[#008751]">{item.cluster_preference}</span> • Créneau: {item.time_slot}
+                      {item.preferences && (
+                        <> • Critères: {describePreferences(item.preferences)}</>
+                      )}
                     </div>
                     {isOffered && (
                       <div className="text-[10px] text-emerald-700 font-bold mt-0.5">
-                        Poste proposé{item.offered_workstation_code ? ` : ${item.offered_workstation_code}` : ''} — expire dans {countdown}
+                        Poste proposé{item.offered_workstation_code ? ` : ${item.offered_workstation_code}` : ''}
+                        {/* The offer can cover only part of the requested slot, so the hours have
+                            to be on screen before someone accepts it. */}
+                        {item.offered_time_slot ? ` (${item.offered_time_slot})` : ''} - expire dans {countdown}
                       </div>
                     )}
                   </div>

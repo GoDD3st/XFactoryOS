@@ -7,18 +7,18 @@ export const auditRouter = Router();
 
 // Who sees which category of log by default. Per-user request: routine operational logs
 // (connexion, réservations, check-in/out, no-show, approbations) go to the roles who actually
-// own that domain day-to-day, not to Super Admin/Admin by default — those two only get the
+// own that domain day-to-day, not to Super Admin/Admin by default - those two only get the
 // governance-critical categories (role changes, settings, AI usage) automatically, plus the
 // "voir tout" override below since they're the top of the system.
 const AUDIT_CATEGORY_VISIBILITY: Record<AuditCategory, UserRole[]> = {
   auth: ['it_admin'],
   reservation: ['receptionist', 'building_manager', 'it_admin', 'gci_manager'],
   checkinout: ['receptionist', 'it_admin', 'security_guard'],
-  // "No-show automatique... Director mais seulement si l'utilisateur exagère" — abuse-pattern
+  // "No-show automatique... Director mais seulement si l'utilisateur exagère" - abuse-pattern
   // detection (repeat no-shows) isn't implemented, so Director sees all no-shows for now rather
   // than a filtered subset; flagged as a simplification, not the literal spec.
   noshow: ['receptionist', 'building_manager', 'it_admin', 'director'],
-  // "Approbation/refus... end user s'il est concerné" — the requester's own decisions are
+  // "Approbation/refus... end user s'il est concerné" - the requester's own decisions are
   // already pushed to them via NotificationService, not through this audit list (they don't have
   // an Audit tab at all), so that half of the rule is covered by a different surface.
   approval: ['receptionist', 'gci_manager'],
@@ -29,19 +29,19 @@ const AUDIT_CATEGORY_VISIBILITY: Record<AuditCategory, UserRole[]> = {
   ai_query: ['super_admin', 'admin', 'building_manager', 'gci_manager'],
 };
 
-// Roles that may request the unfiltered log via ?all=true — "il ne devra voir que ce qui est
+// Roles that may request the unfiltered log via ?all=true - "il ne devra voir que ce qui est
 // essentiel mais a accès a voir tous car il est le haut niveau du système".
 const CAN_SEE_ALL = ['super_admin'] as const;
 
-// GET /api/audit — SRS §13 matrix "Audit logs": R = Super Admin, Admin, Building Manager,
+// GET /api/audit - SRS §13 matrix "Audit logs": R = Super Admin, Admin, Building Manager,
 // GCI Manager, Director, IT Admin, Security. Receptionist added on top of that base matrix: the
 // per-category visibility breakdown above explicitly routes 5 of the 10 categories to them
-// (reservations, check-in/out, no-show, approvals, cluster ops) — without route access none of
+// (reservations, check-in/out, no-show, approvals, cluster ops) - without route access none of
 // that would ever be reachable.
 // This list must match the policy table, or the fallback would silently re-grant access the
 // policy denies whenever the policy can't be read. Receptionist is X in the §13 matrix.
 // Director is excluded on a deliberate override: the matrix row grants it R, but the SRS section
-// naming the audit-log actors lists only Super Administrator, Security and IT Administrator —
+// naming the audit-log actors lists only Super Administrator, Security and IT Administrator - 
 // the two contradict each other and the narrative section was chosen.
 auditRouter.get('/', requirePermission('audit_logs', 'read', ['super_admin', 'admin', 'building_manager', 'gci_manager', 'it_admin', 'security_guard']), async (req, res) => {
   try {
@@ -62,7 +62,7 @@ auditRouter.get('/', requirePermission('audit_logs', 'read', ['super_admin', 'ad
   }
 });
 
-// POST /api/audit — System audit log entry (Actor info extracted directly from authenticated JWT session)
+// POST /api/audit - System audit log entry (Actor info extracted directly from authenticated JWT session)
 auditRouter.post('/', async (req, res) => {
   try {
     const { action, target_resource, details } = req.body;

@@ -3,7 +3,7 @@ import { Workstation, Cluster } from '@/frontend/src/types';
 import { SupabaseClient } from '@supabase/supabase-js';
 
 // Falls back to the service-role client on the server when the caller didn't pass one
-// explicitly — most callers (check-in/out, no-show release) update workstation status on
+// explicitly - most callers (check-in/out, no-show release) update workstation status on
 // behalf of the acting user rather than as that user, and only admin/building/GCI-manager
 // roles have a direct write RLS policy on this table.
 async function resolveClient(explicit?: SupabaseClient): Promise<SupabaseClient> {
@@ -45,7 +45,7 @@ export class WorkstationRepository {
   }
 
   /**
-   * Resolve a workstation's code from its UUID — used by the receptionist's seat-badge
+   * Resolve a workstation's code from its UUID - used by the receptionist's seat-badge
    * scan-assist flow, which needs to know which seat a scanned QR decoded to before it
    * can filter today's reservations down to that seat.
    */
@@ -84,7 +84,7 @@ export class WorkstationRepository {
         id: c.id,
         code: c.code,
         name: c.name,
-        description: `Cluster ${c.code} — ${c.name}`,
+        description: `Cluster ${c.code} - ${c.name}`,
         desk_count: c.desk_count || 4,
         is_management_only: c.management_reserved || false,
         enabled: c.enabled !== false,
@@ -93,7 +93,7 @@ export class WorkstationRepository {
         vipMemberIds: vipByCluster.get(c.id) || [],
       }));
     } catch (err) {
-      console.warn('⚠️ Fetching clusters fallback:', err);
+      console.warn('Fetching clusters fallback:', err);
       return [];
     }
   }
@@ -159,20 +159,20 @@ export class WorkstationRepository {
 
       return map;
     } catch (err) {
-      console.warn('⚠️ Fetching workstations fallback:', err);
+      console.warn('Fetching workstations fallback:', err);
       return {};
     }
   }
 
   /**
    * Update seat status in Supabase. Matches by UUID `id` first, falling back to `code`
-   * (some callers pass a workstation code instead of its UUID). Returns false — instead of
-   * silently reporting success — when neither match updates a row, so callers can surface
+   * (some callers pass a workstation code instead of its UUID). Returns false - instead of
+   * silently reporting success - when neither match updates a row, so callers can surface
    * a real failure rather than assuming the write landed.
    */
   /**
    * SRS §13 "Gérer postes" = CRUD for Administrator/Super Admin. Creating a workstation had no
-   * implementation anywhere before this — the only insert path was addExtensionSeat, which is
+   * implementation anywhere before this - the only insert path was addExtensionSeat, which is
    * scoped to extension seats and capped at 8/cluster.
    *
    * `code` is auto-derived from the cluster code + next free seat number when not supplied.
@@ -329,7 +329,7 @@ export class WorkstationRepository {
   private static mapDomainStatusToDb(domainStatus: string): string {
     if (domainStatus === 'disabled') return 'DISABLED';
     if (domainStatus === 'maintenance') return 'MAINTENANCE';
-    // 'MANAGEMENT_RESERVED' is not a workstation_status enum value — callers also set
+    // 'MANAGEMENT_RESERVED' is not a workstation_status enum value - callers also set
     // `reservable: false` alongside this, which mapDbStatusToDomain reads back correctly.
     if (domainStatus === 'management_reserved') return 'AVAILABLE';
     if (domainStatus === 'occupé' || domainStatus === 'check-in') return 'OCCUPIED';

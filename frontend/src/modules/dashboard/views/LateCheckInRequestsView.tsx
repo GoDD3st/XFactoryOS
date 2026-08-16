@@ -13,7 +13,7 @@ import {
 } from '../../../shared/components/DataTable';
 
 /**
- * Late check-in review queue — Building Manager / Admin / Super Admin only.
+ * Late check-in review queue - Building Manager / Admin / Super Admin only.
  *
  * The role gate here is presentational; the server rejects unauthorised decisions and RLS
  * restricts the table itself, so hiding this screen is not what protects the workflow.
@@ -53,7 +53,7 @@ export const LateCheckInRequestsView: React.FC = () => {
     if (!target) return;
     // A refusal is sent to the requester, so it must explain itself.
     if (target.decision === 'REJECTED' && comment.trim().length < 5) {
-      setDecisionError('Un motif de refus est obligatoire — il est transmis au demandeur.');
+      setDecisionError('Un motif de refus est obligatoire - il est transmis au demandeur.');
       return;
     }
     setSubmitting(true);
@@ -62,7 +62,7 @@ export const LateCheckInRequestsView: React.FC = () => {
       await apiDecideLateCheckIn(target.req.id, target.decision, comment.trim() || undefined);
       setMessage(
         target.decision === 'APPROVED'
-          ? `Check-in tardif approuvé pour ${target.req.requester_name || 'le collaborateur'} — la réservation est désormais en check-in.`
+          ? `Check-in tardif approuvé pour ${target.req.requester_name || 'le collaborateur'} - la réservation est désormais en check-in.`
           : 'Demande refusée. Aucun check-in n\'a été créé.'
       );
       setTarget(null);
@@ -76,9 +76,9 @@ export const LateCheckInRequestsView: React.FC = () => {
   };
 
   const fmtDateTime = (iso?: string | null) =>
-    iso ? new Date(iso).toLocaleString('fr-FR') : '—';
+    iso ? new Date(iso).toLocaleString('fr-FR') : '';
   const fmtTime = (iso?: string | null) =>
-    iso ? new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '—';
+    iso ? new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '';
 
   const columns: DataTableColumn<LateCheckInRequest>[] = [
     {
@@ -88,7 +88,7 @@ export const LateCheckInRequestsView: React.FC = () => {
       sortable: true,
       render: (r) => (
         <div>
-          <div className="font-bold text-slate-800">{r.requester_name || '—'}</div>
+          <div className="font-bold text-slate-800">{r.requester_name || ''}</div>
           <div className="text-[10px] text-slate-400">{r.requester_email}</div>
           {r.requester_department && (
             <div className="text-[10px] text-slate-400">{r.requester_department}</div>
@@ -103,7 +103,7 @@ export const LateCheckInRequestsView: React.FC = () => {
       sortable: true,
       render: (r) => (
         <div>
-          <div className="font-bold text-slate-800">{r.workstation_code || '—'}</div>
+          <div className="font-bold text-slate-800">{r.workstation_code || ''}</div>
           <div className="text-[10px] text-slate-400">{r.cluster_name}</div>
         </div>
       ),
@@ -116,10 +116,10 @@ export const LateCheckInRequestsView: React.FC = () => {
       render: (r) => (
         <div className="whitespace-nowrap">
           <div className="font-mono text-slate-600">
-            {r.reservation_start ? new Date(r.reservation_start).toLocaleDateString('fr-FR') : '—'}
+            {r.reservation_start ? new Date(r.reservation_start).toLocaleDateString('fr-FR') : ''}
           </div>
           <div className="text-[10px] font-mono text-slate-400">
-            {fmtTime(r.reservation_start)} — {fmtTime(r.reservation_end)}
+            {fmtTime(r.reservation_start)} - {fmtTime(r.reservation_end)}
           </div>
           <div className="text-[9px] font-mono text-slate-300" title={r.reservation_id}>
             #{r.reservation_id.slice(0, 8)}
@@ -157,7 +157,7 @@ export const LateCheckInRequestsView: React.FC = () => {
             <StatusBadge label={badge.label} tone={badge.tone} />
             {r.status !== 'PENDING' && (
               <span className="text-[10px] text-slate-400 whitespace-nowrap">
-                {r.reviewer_name || '—'} · {fmtDateTime(r.reviewed_at)}
+                {r.reviewer_name || ''} · {fmtDateTime(r.reviewed_at)}
               </span>
             )}
             {r.reviewer_comment && (
@@ -183,7 +183,7 @@ export const LateCheckInRequestsView: React.FC = () => {
                 setDecisionError(null);
               }}
               className="p-1.5 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-700"
-              title="Approuver — accorde le check-in"
+              title="Approuver - accorde le check-in"
             >
               <Check className="w-3.5 h-3.5" />
             </button>
@@ -219,7 +219,7 @@ export const LateCheckInRequestsView: React.FC = () => {
         </p>
       </div>
 
-      {/* KPI cards stay cards — they are summaries, not a list. */}
+      {/* KPI cards stay cards - they are summaries, not a list. */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-1">
           <div className="flex items-center justify-between">
@@ -227,7 +227,7 @@ export const LateCheckInRequestsView: React.FC = () => {
             <Clock className="w-4 h-4 text-amber-600" />
           </div>
           <div className={`text-2xl font-black ${pending.length > 0 ? 'text-amber-600' : 'text-slate-900'}`}>
-            {loading ? '…' : pending.length}
+            {loading ? '...' : pending.length}
           </div>
         </div>
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-1">
@@ -235,14 +235,14 @@ export const LateCheckInRequestsView: React.FC = () => {
             <span className="text-xs font-bold text-slate-500">Approuvées</span>
             <Check className="w-4 h-4 text-emerald-600" />
           </div>
-          <div className="text-2xl font-black text-emerald-700">{loading ? '…' : approved.length}</div>
+          <div className="text-2xl font-black text-emerald-700">{loading ? '...' : approved.length}</div>
         </div>
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-1">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-500">Refusées</span>
             <X className="w-4 h-4 text-rose-600" />
           </div>
-          <div className="text-2xl font-black text-slate-900">{loading ? '…' : rejected.length}</div>
+          <div className="text-2xl font-black text-slate-900">{loading ? '...' : rejected.length}</div>
         </div>
       </div>
 
@@ -266,7 +266,7 @@ export const LateCheckInRequestsView: React.FC = () => {
         error={loadError}
         onRetry={load}
         searchable
-        searchPlaceholder="Rechercher un demandeur, un poste, une justification…"
+        searchPlaceholder="Rechercher un demandeur, un poste, une justification..."
         pageSize={10}
         emptyMessage="Aucune demande de check-in tardif."
         emptyHint="Les demandes des collaborateurs apparaîtront ici."
@@ -307,7 +307,7 @@ export const LateCheckInRequestsView: React.FC = () => {
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
                 placeholder={
-                  target.decision === 'REJECTED' ? 'Obligatoire — expliquez la décision.' : ''
+                  target.decision === 'REJECTED' ? 'Obligatoire - expliquez la décision.' : ''
                 }
                 className="w-full p-3 text-xs rounded-xl border border-slate-300 bg-slate-50 focus:ring-2 focus:ring-[#008751] outline-none"
               />
@@ -336,7 +336,7 @@ export const LateCheckInRequestsView: React.FC = () => {
                     : 'bg-rose-600 hover:bg-rose-700'
                 }`}
               >
-                {submitting ? 'Traitement…' : target.decision === 'APPROVED' ? 'Approuver' : 'Refuser'}
+                {submitting ? 'Traitement...' : target.decision === 'APPROVED' ? 'Approuver' : 'Refuser'}
               </button>
             </div>
           </div>

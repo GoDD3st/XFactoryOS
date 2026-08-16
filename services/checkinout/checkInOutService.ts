@@ -58,7 +58,7 @@ export class CheckInOutService {
    * Check someone in at the reception desk (SRS §8.5 / UML "Receptionist → Effectuer Check-in").
    *
    * performCheckIn() requires the caller to BE the reservation holder, so a receptionist could
-   * never use it on a collaborator's behalf, and POST /check-in forces userId from the session —
+   * never use it on a collaborator's behalf, and POST /check-in forces userId from the session - 
    * together that left the desk's check-in button unable to work at all outside the QR-scan flow.
    * This resolves the holder from the reservation itself and records who actually performed it.
    */
@@ -189,8 +189,17 @@ export class CheckInOutService {
       workstation_code: reservation.workstation_code,
     });
 
-    const todayDate = new Date().toISOString().split('T')[0];
-    await processWaitingListFIFO(reservation.cluster_id, todayDate, reservation.workstation_id);
+    // Leaving early frees the desk from now until the booking would have ended - not the whole
+    // day. Matched against the reservation's own date rather than today's, so a check-out
+    // recorded either side of midnight still offers the desk to the right day's queue.
+    const now = new Date();
+    const freedFrom = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    await processWaitingListFIFO(
+      reservation.cluster_id,
+      reservation.reservation_date,
+      reservation.workstation_id,
+      { start: freedFrom, end: reservation.end_time }
+    );
 
     logAuditEvent(
       'CHECK_OUT',
@@ -227,7 +236,12 @@ export class CheckInOutService {
             workstation_code: res.workstation_code,
           });
 
-          await processWaitingListFIFO(res.cluster_id, todayDate, res.workstation_id);
+          // This sweep only fires once the booking's end time has passed, so what is free is the
+          // rest of the day after it - offering the booked hours here would offer hours already
+          // gone. The open end is clamped to the business day by processWaitingListFIFO.
+          await processWaitingListFIFO(res.cluster_id, res.reservation_date, res.workstation_id, {
+            start: res.end_time,
+          });
           checkedOut++;
         }
       }
@@ -257,7 +271,7 @@ export class CheckInOutService {
   /**
    * FR-59: push a reminder notification for reservations starting within 15 minutes that
    * haven't checked in yet. Meant to be called from a server ticker (see backend/server.ts);
-   * each reservation gets at most one reminder — re-running this on the same candidate is
+   * each reservation gets at most one reminder - re-running this on the same candidate is
    * deduped via NotificationRepository.hasNotificationForReservation, since the ticker
    * re-evaluates "starts within 15 min" on every tick until the window closes.
    */

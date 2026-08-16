@@ -32,25 +32,27 @@ export class NoShowService {
             await WorkstationRepository.updateWorkstationStatus(res.workstation_id, 'disponible', true);
           }
 
-          // Trigger FIFO waiting list auto-fulfillment for the released cluster
-          const waitingMatch = await WaitingListService.processWaitingListFIFO(
+          // Offer the freed desk to the queue. processWaitingListFIFO resolves whichever cluster
+          // identifier this reservation carries (uuid or name) to the cluster code that entries
+          // are stored with, and prefers anyone queuing for this exact desk.
+          //
+          // It sends its own notification naming the seat and the 15-minute expiry, so the extra
+          // generic "Poste Libéré" message that used to fire here was removed - it duplicated the
+          // offer for the same user with strictly less information.
+          //
+          // A no-show forfeits the whole booked slot, so that slot is exactly what the desk is
+          // free for - the matcher needs it to avoid offering these hours to someone who queued
+          // for a different part of the day.
+          await WaitingListService.processWaitingListFIFO(
             res.cluster_id || res.cluster_name,
             res.reservation_date,
-            res.workstation_id
+            res.workstation_id,
+            { start: res.start_time, end: res.end_time }
           );
-
-          if (waitingMatch) {
-            NotificationService.sendNotification(
-              waitingMatch.user_id,
-              'Poste Libéré — Offre Liste d\'Attente',
-              `Un poste dans le cluster ${res.cluster_name || res.cluster_id} s'est libéré suite à un no-show pour le ${res.reservation_date}. Offre envoyée (priorité FIFO).`,
-              'info'
-            );
-          }
 
           NotificationService.sendNotification(
             res.user_id,
-            'No-Show Détecté — Clean Desk Policy',
+            'No-Show Détecté - Clean Desk Policy',
             `Votre réservation sur ${res.workstation_code} a été annulée suite à un no-show après ${noShowDelay} minutes sans check-in.`,
             'warning'
           );
@@ -76,7 +78,7 @@ export class NoShowService {
   }
 
   /**
-   * FR-67 "alimenter le KPI no-show" — was previously synchronous and, on the server
+   * FR-67 "alimenter le KPI no-show" - was previously synchronous and, on the server
    * (GET /api/noshow/stats), always returned zeros: it read `ReservationRepository
    * .getAllReservations()` without awaiting it, then computed from `localStorage`, which
    * doesn't exist server-side. Now a proper async live query, usable from both contexts.

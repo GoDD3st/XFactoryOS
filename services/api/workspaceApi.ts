@@ -11,7 +11,7 @@ async function authHeaders(extra?: Record<string, string>): Promise<Record<strin
     if (!token) throw new Error('Vous devez être connecté pour effectuer cette action.');
     headers.Authorization = `Bearer ${token}`;
   }
-  // Demo mode: no Authorization header — AuthContext's global fetch interceptor
+  // Demo mode: no Authorization header - AuthContext's global fetch interceptor
   // injects X-Demo-Role, which authMiddleware.ts's DEMO_MODE branch honors.
 
   return headers;
@@ -125,7 +125,7 @@ export interface ClusterAccessRequestPayload {
   endsAt?: string; // ISO 8601
 }
 
-// BR-09 / SRS §14.4 — collaborator requests temporary access to a locked management cluster.
+// BR-09 / SRS §14.4 - collaborator requests temporary access to a locked management cluster.
 export async function apiRequestClusterAccess(clusterId: string, payload: ClusterAccessRequestPayload): Promise<void> {
   const response = await fetch(`/api/workspaces/clusters/${clusterId}/access-requests`, {
     method: 'POST',
@@ -164,7 +164,7 @@ export async function apiCreateCluster(payload: {
   }
 }
 
-/** Soft delete / restore — the cluster keeps its reservation and audit history. */
+/** Soft delete / restore - the cluster keeps its reservation and audit history. */
 export async function apiSetClusterEnabled(clusterId: string, enabled: boolean): Promise<void> {
   const response = await fetch(`/api/workspaces/clusters/${clusterId}/enabled`, {
     method: 'PATCH',
@@ -192,7 +192,7 @@ export async function apiCreateWorkstation(
   }
 }
 
-/** Soft delete / restore — the seat keeps its reservation and audit history. */
+/** Soft delete / restore - the seat keeps its reservation and audit history. */
 export async function apiSetWorkstationEnabled(
   clusterId: string,
   seatId: string,
@@ -219,7 +219,7 @@ export async function apiFetchClusterAccessHistory(): Promise<ClusterAuthorizati
 
 export interface ClusterAccessDecisionPayload {
   note?: string;
-  /** BR-09: required when approving — the authorization window the decider grants. */
+  /** BR-09: required when approving - the authorization window the decider grants. */
   startsAt?: string; // ISO 8601
   endsAt?: string; // ISO 8601
 }
