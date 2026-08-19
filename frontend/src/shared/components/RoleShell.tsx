@@ -195,6 +195,10 @@ const ROLE_TABS: Record<UserRole, TabDef[]> = {
     { key: 'users', label: 'Utilisateurs', icon: <Users className="w-3.5 h-3.5" /> },
     { key: 'audit', label: 'Audit', icon: <FileText className="w-3.5 h-3.5" /> },
   ],
+  // SRS §13 matrix, Security column: R on analytics/audit, and X on "Réserver poste standard" -
+  // a guard supervises the floor, it does not occupy a desk on it. Confirmed as intended rather
+  // than an oversight, so there is no "Réserver" tab here and reservations.routes.ts leaves the role
+  // out of RESERVE_FALLBACK_ROLES; changing it means amending the SRS, not patching this list.
   security_guard: [
     { key: 'home', label: 'Sécurité', icon: <Shield className="w-3.5 h-3.5" /> },
     { key: 'audit', label: 'Audit', icon: <FileText className="w-3.5 h-3.5" /> },

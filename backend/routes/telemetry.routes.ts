@@ -8,6 +8,19 @@ export const telemetryRouter = Router();
 // Executive Assistant, Director, IT Admin, Security - X for Receptionist/Employee/Visitor. These
 // routes had no role check at all, so any authenticated collaborator could hit occupancy/trend
 // data the UI never surfaces to them.
+//
+// IT Admin and Security keep their R here even though neither has a Dashboard tab in RoleShell -
+// that omission is deliberate (see the it_admin block there: the executive KPI view is the
+// business roles' surface, not technical operations). The permission is not dead: requirePermission
+// reads role_permissions and only falls back to this list when the table is unreadable, so a Super
+// Admin can grant or revoke analytics for these roles from the Roles & Permissions screen and the
+// API follows immediately. Narrowing this list would contradict the SRS row above AND take that
+// toggle away, so it stays.
+//
+// Caveat, if you are here because a Super Admin granted analytics and "nothing happened": the
+// toggle moves the API only. The tab lists in RoleShell are a hardcoded Record<UserRole, Tab[]>
+// and read no permission at all, so the Dashboard tab will not appear. Making the menu follow the
+// policy table is unbuilt work, not a bug in this file.
 const ANALYTICS_ROLES = [
   'super_admin',
   'admin',
