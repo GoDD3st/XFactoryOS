@@ -88,13 +88,23 @@ touching it. Two rules matter most:
   dropped in SQL but left in a route's `fallbackRoles` regains the permission the moment the
   policy table cannot be read.
 
-### The sequence does not build a database from empty
+### Building a database from empty
 
 Supabase's recorded history begins at a *correction* (`20260806160035`), not a schema creation.
-Nothing in the directory issues a `CREATE TABLE`, defines the `has_role()` helper, or declares the
-enum types - the first file assumes all of it exists. Standing up a fresh environment still
-requires cloning the schema out of the hosted project first. Closing this needs a baseline file
-ordered ahead of `20260806160035`.
+Nothing in the recorded history issues a `CREATE TABLE`, defines the `has_role()` helper, or
+declares the enum types - the first file assumes all of it exists.
+
+`00000000000000_baseline_schema.sql` supplies the missing first step. It holds the schema as of
+just before `20260806160035`, so the recorded migrations still replay meaningfully on top of it,
+and every statement in it is guarded so re-running it against an existing database is a no-op.
+Order for a fresh project: baseline, then the ten `roles` rows, then the remaining migrations in
+filename order, then `database/seeder.ts`.
+
+**The `roles` rows are still not automated.** They exist only in the hosted project, and both
+`handle_new_auth_user()` and the RBAC matrix migration depend on them - a database built without
+them comes up serving every request on the route guards' hardcoded fallback lists, with one
+`[RBAC]` warning as the only signal. `database/migrations/README.md` lists the ten codes and the
+full bootstrap order.
 
 ---
 
