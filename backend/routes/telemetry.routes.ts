@@ -32,7 +32,12 @@ telemetryRouter.get('/occupancy', requirePermission('analytics', 'read', ANALYTI
 // GET /api/telemetry/trends - FR-86 daily reservation volume (last N days)
 telemetryRouter.get('/trends', requirePermission('analytics', 'read', ANALYTICS_ROLES), async (req, res) => {
   try {
-    const days = Math.min(60, Math.max(7, parseInt(String(req.query.days || '14'), 10) || 14));
+    // The window is the caller's choice. It used to be clamped to 7..60, which silently
+    // rewrote any request outside that band - asking for a year returned two months with no
+    // indication the answer was not what was asked. The remaining bounds only stop a degenerate
+    // request (0 or negative) and an unbounded scan.
+    const requested = parseInt(String(req.query.days ?? '14'), 10);
+    const days = Math.min(730, Math.max(1, Number.isFinite(requested) ? requested : 14));
     const data = await TelemetryService.getReservationTrends(days);
     res.json({ success: true, data });
   } catch (err) {

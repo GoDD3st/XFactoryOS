@@ -22,6 +22,18 @@ export async function apiFetchPendingApprovals(): Promise<ApprovalRequest[]> {
 }
 
 /** Decided requests (approved/refused), for the approver's counters and history view. */
+/**
+ * The signed-in user's own approval requests, any status.
+ *
+ * Owner-scoped server-side from the JWT, so it needs no approver permission - a requester is
+ * entitled to see the state of their own request, including one sent back for clarification.
+ */
+export async function apiFetchMyApprovalRequests(): Promise<ApprovalRequest[]> {
+  const response = await fetch('/api/approvals/mine', { headers: await authHeaders() });
+  if (!response.ok) return [];
+  return (await response.json()) || [];
+}
+
 export async function apiFetchApprovalHistory(): Promise<ApprovalRequest[]> {
   const response = await fetch('/api/approvals/history', { headers: await authHeaders() });
   if (!response.ok) return [];

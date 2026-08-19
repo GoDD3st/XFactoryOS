@@ -6,8 +6,10 @@ import {
   SystemSettings
 } from '../../types';
 import { apiFetchNotifications, apiMarkNotificationRead } from '@/services/api/notificationApi';
+// Settings come from the service (API-backed), not the repository: importing a database
+// repository into a browser component pulls the server-side data layer - and its Supabase admin
+// client wiring - into the client bundle.
 import { SettingsService } from '@/services/settings/settingsService';
-import { SettingsRepository } from '@/database/repositories/settingsRepository';
 import { useAuth, ROLE_CONFIGS } from '../../modules/auth/context/AuthContext';
 import { EndUserDashboard } from '../../modules/dashboard/components/EndUserDashboard';
 import { ReceptionView } from '../../modules/dashboard/views/ReceptionView';
@@ -64,11 +66,11 @@ import {
   Wrench,
   ListOrdered,
   History,
-  KeyRound
+  KeyRound, CalendarPlus
 } from 'lucide-react';
 
 // RBAC Tab definitions per role (SRS Section 13 Matrix)
-type TabKey = 'home' | 'digital-twin' | 'reservations' | 'calendar' | 'waiting-list' | 'dashboard-exec' | 'workstations' | 'clusters' | 'users' | 'roles' | 'settings' | 'audit' | 'approvals' | 'cluster-auth' | 'late-checkin' | 'notifications';
+type TabKey = 'home' | 'digital-twin' | 'reserve' | 'reservations' | 'calendar' | 'waiting-list' | 'dashboard-exec' | 'workstations' | 'clusters' | 'users' | 'roles' | 'settings' | 'audit' | 'approvals' | 'cluster-auth' | 'late-checkin' | 'notifications';
 
 interface TabDef {
   key: TabKey;
@@ -90,12 +92,14 @@ const ROLE_TABS: Record<UserRole, TabDef[]> = {
   // role no audit_logs read, so the endpoint answered 403 and the tab was dead.
   receptionist: [
     { key: 'home', label: 'Réception', icon: <Layers className="w-3.5 h-3.5" /> },
+    { key: 'reserve', label: 'Réserver', icon: <CalendarPlus className="w-3.5 h-3.5" /> },
     { key: 'reservations', label: 'Réservations', icon: <Calendar className="w-3.5 h-3.5" /> },
     { key: 'calendar', label: 'Calendrier', icon: <Clock className="w-3.5 h-3.5" /> },
     { key: 'waiting-list', label: 'Liste d\'Attente', icon: <ListOrdered className="w-3.5 h-3.5" /> },
   ],
   building_manager: [
     { key: 'home', label: 'Bâtiment', icon: <Building className="w-3.5 h-3.5" /> },
+    { key: 'reserve', label: 'Réserver', icon: <CalendarPlus className="w-3.5 h-3.5" /> },
     { key: 'dashboard-exec', label: 'Dashboard', icon: <BarChart3 className="w-3.5 h-3.5" /> },
     { key: 'reservations', label: 'Mes Réservations', icon: <Calendar className="w-3.5 h-3.5" /> },
     { key: 'calendar', label: 'Calendrier', icon: <Clock className="w-3.5 h-3.5" /> },
@@ -112,6 +116,7 @@ const ROLE_TABS: Record<UserRole, TabDef[]> = {
   // Administration technique are X - they must stay absent from this menu.
   gci_manager: [
     { key: 'home', label: 'GCI', icon: <Shield className="w-3.5 h-3.5" /> },
+    { key: 'reserve', label: 'Réserver', icon: <CalendarPlus className="w-3.5 h-3.5" /> },
     { key: 'dashboard-exec', label: 'Dashboard', icon: <BarChart3 className="w-3.5 h-3.5" /> },
     { key: 'cluster-auth', label: 'Autorisations', icon: <KeyRound className="w-3.5 h-3.5" /> },
     { key: 'clusters', label: 'Clusters', icon: <Layers className="w-3.5 h-3.5" /> },
@@ -129,6 +134,7 @@ const ROLE_TABS: Record<UserRole, TabDef[]> = {
   // extension seats) and this role is read-only on the seat referential.
   executive_assistant: [
     { key: 'home', label: 'Approbations', icon: <CheckCircle2 className="w-3.5 h-3.5" /> },
+    { key: 'reserve', label: 'Réserver', icon: <CalendarPlus className="w-3.5 h-3.5" /> },
     { key: 'dashboard-exec', label: 'Dashboard', icon: <BarChart3 className="w-3.5 h-3.5" /> },
     { key: 'approvals', label: 'Longue Durée', icon: <Clock className="w-3.5 h-3.5" /> },
     { key: 'reservations', label: 'Mes Réservations', icon: <Calendar className="w-3.5 h-3.5" /> },
@@ -141,6 +147,7 @@ const ROLE_TABS: Record<UserRole, TabDef[]> = {
   // referential. "Audit" removed on a deliberate override - see audit.routes.ts.
   director: [
     { key: 'home', label: 'Direction', icon: <Sparkles className="w-3.5 h-3.5" /> },
+    { key: 'reserve', label: 'Réserver', icon: <CalendarPlus className="w-3.5 h-3.5" /> },
     { key: 'dashboard-exec', label: 'Dashboard', icon: <BarChart3 className="w-3.5 h-3.5" /> },
     { key: 'approvals', label: 'Approbations', icon: <CheckCircle2 className="w-3.5 h-3.5" /> },
     { key: 'reservations', label: 'Mes Réservations', icon: <Calendar className="w-3.5 h-3.5" /> },
@@ -150,6 +157,7 @@ const ROLE_TABS: Record<UserRole, TabDef[]> = {
   // it stays absent (that is IT Admin's mandate).
   admin: [
     { key: 'home', label: 'Admin', icon: <Settings className="w-3.5 h-3.5" /> },
+    { key: 'reserve', label: 'Réserver', icon: <CalendarPlus className="w-3.5 h-3.5" /> },
     { key: 'dashboard-exec', label: 'Dashboard', icon: <BarChart3 className="w-3.5 h-3.5" /> },
     { key: 'workstations', label: 'Postes', icon: <Wrench className="w-3.5 h-3.5" /> },
     { key: 'clusters', label: 'Clusters', icon: <Layers className="w-3.5 h-3.5" /> },
@@ -163,6 +171,7 @@ const ROLE_TABS: Record<UserRole, TabDef[]> = {
   ],
   super_admin: [
     { key: 'home', label: 'Console', icon: <ShieldCheck className="w-3.5 h-3.5" /> },
+    { key: 'reserve', label: 'Réserver', icon: <CalendarPlus className="w-3.5 h-3.5" /> },
     { key: 'dashboard-exec', label: 'Dashboard', icon: <BarChart3 className="w-3.5 h-3.5" /> },
     { key: 'reservations', label: 'Réservations', icon: <Calendar className="w-3.5 h-3.5" /> },
     { key: 'late-checkin', label: 'Check-in tardif', icon: <Clock className="w-3.5 h-3.5" /> },
@@ -182,6 +191,7 @@ const ROLE_TABS: Record<UserRole, TabDef[]> = {
   // is exactly the R the matrix grants - useful for application support.
   it_admin: [
     { key: 'home', label: 'IT Admin', icon: <Wrench className="w-3.5 h-3.5" /> },
+    { key: 'reserve', label: 'Réserver', icon: <CalendarPlus className="w-3.5 h-3.5" /> },
     { key: 'users', label: 'Utilisateurs', icon: <Users className="w-3.5 h-3.5" /> },
     { key: 'audit', label: 'Audit', icon: <FileText className="w-3.5 h-3.5" /> },
   ],
@@ -255,7 +265,7 @@ export const RoleShell: React.FC = () => {
 
     const refresh = () => {
       applyBranding(SettingsService.getSettings() as SystemSettings);
-      SettingsRepository.getSettings().then(applyBranding).catch(() => {});
+      Promise.resolve(SettingsService.getSettings()).then(applyBranding).catch(() => {});
     };
 
     refresh();
@@ -344,6 +354,11 @@ export const RoleShell: React.FC = () => {
         return renderHomeView();
       case 'dashboard-exec':
         return <ExecutiveDashboard />;
+      case 'reserve':
+        // Same two-path booking workspace the collaborator gets: Digital Twin first, form below.
+        // Every role here is also a person who books a desk, so the surface is identical rather
+        // than a reduced copy that would drift from it.
+        return <EndUserDashboard />;
       case 'reservations':
         return <MyReservationsView />;
       case 'calendar':

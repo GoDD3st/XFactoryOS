@@ -182,6 +182,12 @@ export interface UserNotification {
   type: 'info' | 'warning' | 'success' | 'alert';
   read: boolean;
   created_at: string;
+  /**
+   * Reservation this notification is about, when there is one. notifications.reservation_id has
+   * always been populated by sendNotification but was dropped on the way to the client, so the
+   * UI had no way to turn a message into an action.
+   */
+  reservation_id?: string;
 }
 
 export interface AIAssistantMessage {

@@ -12,9 +12,19 @@ import {
   apiFetchOccupancy,
   apiFetchDepartmentStats,
   apiFetchOccupancyPrediction,
+  getLastTelemetryFailure,
 } from '@/services/api/telemetryApi';
 import { apiLogExport } from '@/services/api/auditApi';
 import { BarChart3, TrendingUp, Clock, AlertTriangle, Download, Sparkles, Building, Layers, FileSpreadsheet, Printer, LineChart, CheckCircle2, CalendarClock, Users, Sparkle } from 'lucide-react';
+
+const TREND_PRESETS: { label: string; days: number }[] = [
+  { label: '7j', days: 7 },
+  { label: '14j', days: 14 },
+  { label: '30j', days: 30 },
+  { label: '90j', days: 90 },
+  { label: '6 mois', days: 180 },
+  { label: '1 an', days: 365 },
+];
 
 export const ExecutiveDashboard: React.FC = () => {
   const [telemetry, setTelemetry] = useState<SiteTelemetrySummary | null>(null);
@@ -25,6 +35,9 @@ export const ExecutiveDashboard: React.FC = () => {
   // Separate from `telemetry` so a failed fetch shows an error instead of spinning forever:
   // apiFetchOccupancy resolves to null on 403/500 rather than rejecting.
   const [occupancyLoaded, setOccupancyLoaded] = useState(false);
+  // The trend window is a question the reader asks, not a constant. 14 days is only the opening
+  // position; any value between 1 and 730 is accepted by /api/telemetry/trends.
+  const [trendDays, setTrendDays] = useState<number>(14);
 
   useEffect(() => {
     // Every KPI comes from /api/telemetry (BPMN D6 "DASH → API Layer"). Computing them in the
@@ -37,7 +50,7 @@ export const ExecutiveDashboard: React.FC = () => {
       });
       apiFetchOccupancyPrediction().then(setPrediction);
       apiFetchNoShowStats().then(setNoShowStats);
-      apiFetchReservationTrends(14).then(setTrends);
+      apiFetchReservationTrends(trendDays).then(setTrends);
       apiFetchDepartmentStats().then(setUserDeptStats);
     };
 
@@ -53,12 +66,17 @@ export const ExecutiveDashboard: React.FC = () => {
       window.removeEventListener('xfactory_reservations_changed', refresh);
       window.removeEventListener('xfactory_workstations_changed', refresh);
     };
-  }, []);
+  }, [trendDays]);
 
   if (!telemetry) {
+    const cause = getLastTelemetryFailure();
     return occupancyLoaded ? (
       <div className="p-8 text-center text-xs text-slate-500">
-        Télémétrie indisponible - vous n'avez pas accès aux analytics, ou le service n'a pas répondu.
+        {cause === 'forbidden'
+          ? "Vous n'avez pas accès aux analytics."
+          : cause === 'unreachable'
+          ? 'Serveur injoignable. Vérifiez que le service est démarré, puis rechargez.'
+          : "Le service de télémétrie n'a pas répondu. Réessayez dans un instant."}
       </div>
     ) : (
       <div className="p-8 text-center text-xs text-slate-500">Chargement de la télémetrie...</div>
@@ -101,10 +119,10 @@ export const ExecutiveDashboard: React.FC = () => {
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(clusterSheet), 'Clusters');
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(trendSheet), 'Tendances 14j');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(trendSheet), `Tendances ${trendDays}j`);
     XLSX.writeFile(wb, `Report_XFactory_Telemetry_${new Date().toISOString().split('T')[0]}.xlsx`);
 
-    apiLogExport('dashboard-telemetry.xlsx', 'Export Excel du dashboard exécutif (clusters + tendances 14j).');
+    apiLogExport('dashboard-telemetry.xlsx', `Export Excel du dashboard exécutif (clusters + tendances ${trendDays}j).`);
   };
 
   // FR-87 "Export PDF du dashboard" - print-to-PDF via the browser (no server-side PDF
@@ -114,6 +132,17 @@ export const ExecutiveDashboard: React.FC = () => {
   };
 
   const maxTrendCount = Math.max(1, ...trends.map((t) => t.count));
+  // One label per bar is unreadable past ~30 bars, so show roughly a dozen dates whatever the
+  // window: every day at 14, every other at 30, every fortnight at a year.
+  const labelEvery = Math.max(1, Math.ceil(trends.length / 12));
+  const trendPeriodLabel =
+    trendDays === 1
+      ? 'dernier jour'
+      : trendDays % 365 === 0
+      ? `${trendDays / 365} an${trendDays / 365 > 1 ? 's' : ''}`
+      : trendDays % 30 === 0
+      ? `${trendDays / 30} mois`
+      : `${trendDays} derniers jours`;
   const availableTotal = telemetry.clusters.reduce((sum, c) => sum + c.availableDesks, 0);
   const reservedTotal = telemetry.clusters.reduce((sum, c) => sum + c.reservedDesks, 0);
 
@@ -223,17 +252,49 @@ export const ExecutiveDashboard: React.FC = () => {
 
       {/* Reservation Trends (FR-86) */}
       <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
           <div className="flex items-center space-x-2">
             <LineChart className="w-5 h-5 text-[#008751]" />
-            <h3 className="font-bold text-sm text-slate-800">Tendance des Réservations (14 derniers jours)</h3>
+            <h3 className="font-bold text-sm text-slate-800">
+              Tendance des Réservations ({trendPeriodLabel})
+            </h3>
+          </div>
+
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {TREND_PRESETS.map((p) => (
+              <button
+                key={p.days}
+                type="button"
+                onClick={() => setTrendDays(p.days)}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all ${
+                  trendDays === p.days
+                    ? 'bg-[#008751] border-[#008751] text-white'
+                    : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+            <input
+              type="number"
+              min={1}
+              max={730}
+              value={trendDays}
+              onChange={(e) => {
+                const v = parseInt(e.target.value, 10);
+                if (Number.isFinite(v)) setTrendDays(Math.min(730, Math.max(1, v)));
+              }}
+              aria-label="Nombre de jours"
+              className="w-16 px-2 py-1 rounded-lg border border-slate-200 text-[11px] font-bold text-slate-700"
+            />
+            <span className="text-[11px] text-slate-400 font-semibold">jours</span>
           </div>
         </div>
 
         {trends.length === 0 ? (
           <p className="text-xs text-slate-400 text-center py-6">Données insuffisantes pour établir une tendance.</p>
         ) : (
-          <div className="flex items-end gap-1.5 h-32">
+          <div className={`flex items-end h-32 ${trends.length > 45 ? 'gap-px' : 'gap-1.5'}`}>
             {trends.map((t) => (
               <div key={t.date} className="flex-1 flex flex-col items-center justify-end gap-1 group relative">
                 <div className="text-[9px] font-bold text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity absolute -top-4">
@@ -252,7 +313,12 @@ export const ExecutiveDashboard: React.FC = () => {
                   />
                 </div>
                 <div className="text-[8px] text-slate-400 font-medium">
-                  {new Date(t.date + 'T00:00:00').toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}
+                  {trends.indexOf(t) % labelEvery === 0
+                    ? new Date(t.date + 'T00:00:00').toLocaleDateString('fr-FR', {
+                        day: '2-digit',
+                        month: '2-digit',
+                      })
+                    : ''}
                 </div>
               </div>
             ))}

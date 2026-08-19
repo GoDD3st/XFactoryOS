@@ -22,14 +22,26 @@ import { approvalRouter } from './routes/approval.routes';
 import { searchRouter } from './routes/search.routes';
 import { settingsRouter } from './routes/settings.routes';
 import { historyRouter } from './routes/history.routes';
+import { cronRouter } from './routes/cron.routes';
 import { seedDatabaseIfEmpty } from '../database/seeder';
 import { NoShowService } from '../services/noshow/noShowService';
-import { authenticateJWT } from './middleware/authMiddleware';
+import { authenticateJWT, assertDemoModeIsSafe } from './middleware/authMiddleware';
 import { apiGeneralLimiter } from './middleware/rateLimiter';
 
 
 export function createExpressApp() {
+  // Checked at app construction, so it fires on the serverless path too - startServer() never
+  // runs on Vercel, and a guard only in startServer() would protect exactly the deployment that
+  // does not need it.
+  assertDemoModeIsSafe();
+
   const app = express();
+
+  // Trust exactly one proxy hop (Vercel's edge). Without this `req.ip` is the proxy's address,
+  // so every caller shares a single rate-limit bucket and per-client limiting silently does
+  // nothing. Deliberately `1`, not `true`: trusting the whole X-Forwarded-For chain would let a
+  // client spoof its own source address and evade the limiter entirely.
+  app.set('trust proxy', 1);
 
   app.use(express.json());
 
@@ -110,6 +122,8 @@ export function createExpressApp() {
   app.use('/api/search', searchRouter);
   app.use('/api/settings', settingsRouter);
   app.use('/api/history', historyRouter);
+  // Serverless scheduler entry point. Authenticated by CRON_SECRET, not by a user session.
+  app.use('/api/cron', cronRouter);
 
   return app;
 }

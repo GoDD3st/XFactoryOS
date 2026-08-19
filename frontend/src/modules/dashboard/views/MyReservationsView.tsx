@@ -9,6 +9,9 @@ import {
   LateCheckInRequest,
 } from '@/services/api/checkinoutApi';
 import { useAuth } from '@/frontend/src/modules/auth/context/AuthContext';
+import { apiFetchMyApprovalRequests, apiCompleteApprovalRequest } from '@/services/api/approvalApi';
+import { ExtensionRequestModal } from '@/frontend/src/shared/components/ExtensionRequestModal';
+import { ApprovalRequest } from '@/frontend/src/types';
 import {
   DataTable,
   DataTableColumn,
@@ -33,6 +36,13 @@ export const MyReservationsView: React.FC = () => {
   const [justification, setJustification] = useState('');
   const [submittingLate, setSubmittingLate] = useState(false);
   const [lateError, setLateError] = useState<string | null>(null);
+  // Approval requests this user raised, so a reservation stuck on "the validator wants more
+  // detail" can say so on its own row instead of only in the notification list.
+  const [myApprovals, setMyApprovals] = useState<ApprovalRequest[]>([]);
+  const [reclarifyTarget, setReclarifyTarget] = useState<ApprovalRequest | null>(null);
+
+  const needsInfoFor = (reservationId: string) =>
+    myApprovals.find((a) => a.reservation_id === reservationId && a.status === 'needs_info') || null;
 
   const loadReservations = async () => {
     setLoading(true);
@@ -48,10 +58,17 @@ export const MyReservationsView: React.FC = () => {
     }
   };
 
+  const loadApprovals = async () => setMyApprovals(await apiFetchMyApprovalRequests());
+
   useEffect(() => {
     loadReservations();
-    window.addEventListener('xfactory_reservations_changed', loadReservations);
-    return () => window.removeEventListener('xfactory_reservations_changed', loadReservations);
+    loadApprovals();
+    const refresh = () => {
+      loadReservations();
+      loadApprovals();
+    };
+    window.addEventListener('xfactory_reservations_changed', refresh);
+    return () => window.removeEventListener('xfactory_reservations_changed', refresh);
   }, [currentUser.id]);
 
   /** Latest request per reservation, so the row can show its state. */
@@ -213,6 +230,19 @@ export const MyReservationsView: React.FC = () => {
               Check-in tardif
             </button>
           )}
+          {/* BPMN D2: the validator asked for more detail on THIS reservation. The prompt has to
+              live on the row as well as in Notifications - a user checking "where is my booking?"
+              looks here first, and the request stalls until they answer. */}
+          {needsInfoFor(r.id) && (
+            <button
+              onClick={() => setReclarifyTarget(needsInfoFor(r.id)!)}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-white border border-amber-600 text-[10px] font-bold animate-pulse"
+              title="Le valideur demande des précisions avant de décider"
+            >
+              <AlertCircle className="w-3 h-3" />
+              Précisions demandées
+            </button>
+          )}
           {(r.status === 'confirmée' || r.status === 'en attente') && (
             <button
               onClick={() => runAction(r.id, () => deleteReservation(r.id).then(() => undefined), 'Réservation annulée.')}
@@ -340,6 +370,35 @@ export const MyReservationsView: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Same form the notification opens: one component, one submit path, so the two entry
+          points cannot drift apart. */}
+      {reclarifyTarget && (
+        <ExtensionRequestModal
+          isOpen
+          isReLoop
+          onClose={() => setReclarifyTarget(null)}
+          onSubmit={async ({ objective, motif }) => {
+            try {
+              await apiCompleteApprovalRequest(reclarifyTarget.id, objective, motif);
+              setReclarifyTarget(null);
+              await loadApprovals();
+              await loadReservations();
+            } catch {
+              /* the modal stays open so the text isn't lost */
+            }
+          }}
+          businessDays={reclarifyTarget.duration_days || 0}
+          startDate={reclarifyTarget.reservation_date || ''}
+          endDate={reclarifyTarget.end_date || reclarifyTarget.reservation_date || ''}
+          workstationCode={reclarifyTarget.workstation_code || ''}
+          clusterName={reclarifyTarget.cluster_name || ''}
+          initialObjective={reclarifyTarget.objective || ''}
+          initialMotif={reclarifyTarget.reason || ''}
+          approverFeedbackNote={reclarifyTarget.decision_note}
+          totalHours={reclarifyTarget.total_hours}
+        />
       )}
     </div>
   );

@@ -126,15 +126,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         // SRS FR-05 / §26.1 "Connexion utilisateur" - journaliser chaque connexion.
         // Only on an actual sign-in, not every TOKEN_REFRESHED/USER_UPDATED event.
         if (_event === 'SIGNED_IN') {
-          const { AuditRepository } = await import('@/database/repositories/auditRepository');
-          AuditRepository.logEvent(
-            'LOGIN',
-            profile.id,
-            profile.full_name,
-            profile.role,
-            profile.id,
-            `Connexion réussie de ${profile.email}`
-          ).catch(() => {});
+          // Via the API, not the repository: browser code can no longer write audit_logs
+          // directly (migration 20260818090000). The server takes the actor from the JWT.
+          const { apiLogAuditEvent } = await import('@/services/api/auditApi');
+          apiLogAuditEvent('LOGIN', profile.id, `Connexion réussie de ${profile.email}`);
         }
       } else {
         if (!cancelled) setRealUser(null);
@@ -162,15 +157,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const signOut = useCallback(async () => {
     if (demo) return; // nothing to sign out of in demo mode
     if (realUser) {
-      const { AuditRepository } = await import('@/database/repositories/auditRepository');
-      AuditRepository.logEvent(
-        'LOGOUT',
-        realUser.id,
-        realUser.full_name,
-        realUser.role,
-        realUser.id,
-        `Déconnexion de ${realUser.email}`
-      ).catch(() => {});
+      // Logged BEFORE realSignOut() so the session token is still valid for the API call.
+      const { apiLogAuditEvent } = await import('@/services/api/auditApi');
+      await apiLogAuditEvent('LOGOUT', realUser.id, `Déconnexion de ${realUser.email}`);
     }
     await realSignOut();
     setRealUser(null);

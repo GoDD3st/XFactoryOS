@@ -1,8 +1,6 @@
 import { supabase } from '@/database/client';
 import { UserProfile, UserRole } from '@/frontend/src/types';
 import { normalizeRoleCode } from '../utils/normalizeRole';
-import { UserRepository } from '@/database/repositories/userRepository';
-import { AuditRepository } from '@/database/repositories/auditRepository';
 
 /**
  * Real (non-demo) authentication against Supabase Auth.
@@ -30,7 +28,22 @@ export async function fetchRealUserProfile(authUser: {
   email?: string | null;
   user_metadata?: { full_name?: string; department?: string };
 }): Promise<{ profile: UserProfile; role: UserRole }> {
-  await UserRepository.ensureUserProfile(authUser);
+  // Server-side, via the API. This used to call UserRepository.ensureUserProfile directly from
+  // the browser - a database repository running in the client, writing to public.users and
+  // public.user_roles. Identity is taken from the JWT on the server, so the client cannot claim
+  // to be someone else.
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (token) {
+      await fetch('/api/users/me/bootstrap', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    }
+  } catch {
+    // Non-blocking: a failed bootstrap must not prevent sign-in.
+  }
 
   let role: UserRole = 'collaborator';
   let full_name = authUser.email || 'Utilisateur';
