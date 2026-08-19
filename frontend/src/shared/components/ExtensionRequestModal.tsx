@@ -23,6 +23,10 @@ interface ExtensionRequestModalProps {
   initialObjective?: string;
   initialMotif?: string;
   approverFeedbackNote?: string;
+  /** settings.maxReservationDaysWithoutApproval - the boundary this request crossed. */
+  thresholdDays?: number;
+  /** Occupancy hours being requested (daily window x days), shown to justify the arbitration. */
+  totalHours?: number;
 }
 
 export const ExtensionRequestModal: React.FC<ExtensionRequestModalProps> = ({
@@ -38,6 +42,8 @@ export const ExtensionRequestModal: React.FC<ExtensionRequestModalProps> = ({
   initialObjective = '',
   initialMotif = '',
   approverFeedbackNote,
+  thresholdDays,
+  totalHours,
 }) => {
   const [objective, setObjective] = useState<string>(initialObjective);
   const [motif, setMotif] = useState<string>(initialMotif);
@@ -78,7 +84,8 @@ export const ExtensionRequestModal: React.FC<ExtensionRequestModalProps> = ({
           <div>
             <div className="flex items-center space-x-2">
               <span className="text-[10px] font-black px-2.5 py-0.5 rounded bg-purple-900 text-white uppercase">
-                {businessDays} Jours Ouvrés &gt; 2j
+                {businessDays} Jours Ouvrés
+                {thresholdDays !== undefined ? ` > ${thresholdDays}j autorisés` : ''}
               </span>
               <span className="text-xs text-purple-700 font-bold">Workflow Validation Multi-Direction</span>
             </div>
@@ -108,10 +115,18 @@ export const ExtensionRequestModal: React.FC<ExtensionRequestModalProps> = ({
             <span className="text-purple-700">{businessDays} Jours Ouvrés</span>
           </div>
           <p className="text-[11px] text-slate-500">
-            Du <strong>{startDate}</strong> au <strong>{endDate}</strong> (08:00 – 18:00)
+            Du <strong>{startDate}</strong> au <strong>{endDate}</strong> (08:00 - 18:00)
           </p>
+          {totalHours !== undefined && (
+            <p className="text-[11px] text-slate-600">
+              Occupation totale demandée : <strong>{totalHours} heures</strong>
+            </p>
+          )}
+          {/* BR-06: Executive Assistant and Director are the only long-duration approvers. This
+              previously also listed Building Manager, Admin and Super Admin, none of whom can
+              decide these requests - see APPROVER_ROLES in backend/routes/approval.routes.ts. */}
           <p className="text-[11px] text-purple-800 font-semibold pt-1 border-t border-slate-200">
-            👥 Sera soumis pour arbitrage à : <strong>Building Manager, Assistant Directeur, Directeur, Admin &amp; SuperAdmin</strong>.
+            Sera soumis pour arbitrage à : <strong>Assistant(e) de Direction ou Directeur de Site</strong>.
           </p>
         </div>
 
@@ -119,7 +134,7 @@ export const ExtensionRequestModal: React.FC<ExtensionRequestModalProps> = ({
           {/* Objective / Detailed Description */}
           <div className="space-y-1">
             <label className="text-xs font-bold text-slate-700 block">
-              Objectif et Motif Détaillé de la Réservation (&gt; 2 Jours Ouvrés) <span className="text-red-500">*</span>
+              Objectif et Motif Détaillé de la Réservation <span className="text-red-500">*</span>
             </label>
             <textarea
               rows={4}
@@ -128,7 +143,7 @@ export const ExtensionRequestModal: React.FC<ExtensionRequestModalProps> = ({
                 setObjective(e.target.value);
                 setErrorMsg(null);
               }}
-              placeholder="Expliquez en détail le projet, la mission ou l'objectif nécessitant l'occupation du poste sur plus de 2 jours..."
+              placeholder="Expliquez en détail le projet, la mission ou l'objectif nécessitant l'occupation prolongée du poste..."
               className="w-full p-3 text-xs rounded-xl border border-slate-300 bg-slate-50 focus:ring-2 focus:ring-purple-600 outline-none"
             />
             <p className="text-[11px] text-slate-400">Minimum 15 caractères. Précisez le projet et les livrables associés.</p>
@@ -137,7 +152,7 @@ export const ExtensionRequestModal: React.FC<ExtensionRequestModalProps> = ({
           {/* Project / Mission Name */}
           <div className="space-y-1">
             <label className="text-xs font-bold text-slate-700 block">
-              Intitulé du Projet / Mission OCP Safi
+              Intitulé du Projet / Mission
             </label>
             <input
               type="text"

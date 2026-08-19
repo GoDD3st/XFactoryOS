@@ -21,7 +21,7 @@ export async function seedDatabaseIfEmpty(): Promise<void> {
     const { data: existingClusters } = await db().from('clusters').select('id');
     
     if (!existingClusters || existingClusters.length === 0) {
-      console.log('🌱 Seeding initial Supabase building, floor, space, and clusters...');
+      console.log('Seeding initial Supabase building, floor, space, and clusters...');
 
       // Seed Building
       let { data: building } = await db().from('buildings').select('id').eq('code', 'BLD-SFI-01').single();
@@ -40,7 +40,7 @@ export async function seedDatabaseIfEmpty(): Promise<void> {
         if (!floor) {
           const { data: newFloor } = await db().from('floors').insert({
             building_id: building.id,
-            name: 'Niveau 1 — Open Space Smart',
+            name: 'Niveau 1 - Open Space Smart',
             level: 1,
           }).select().single();
           floor = newFloor;
@@ -78,7 +78,7 @@ export async function seedDatabaseIfEmpty(): Promise<void> {
                   await db().from('workstations').insert({
                     cluster_id: cluster.id,
                     code: wsCode,
-                    // 'MANAGEMENT_RESERVED' is not a workstation_status enum value — the lock
+                    // 'MANAGEMENT_RESERVED' is not a workstation_status enum value - the lock
                     // is expressed via `reservable: false` alone (see WorkstationRepository
                     // .mapDbStatusToDomain, which already treats !reservable as management-reserved).
                     status: 'AVAILABLE',
@@ -102,7 +102,7 @@ export async function seedDatabaseIfEmpty(): Promise<void> {
     // 2. Seed Default System Settings
     const { data: settings } = await db().from('settings').select('id');
     if (!settings || settings.length === 0) {
-      console.log('🌱 Seeding initial Supabase system settings...');
+      console.log('Seeding initial Supabase system settings...');
       await db().from('settings').insert({
         max_duration_hours_no_approval: 72, // 3 days
         no_show_window_minutes: 30,
@@ -113,8 +113,8 @@ export async function seedDatabaseIfEmpty(): Promise<void> {
       });
     }
 
-    console.log('✅ Supabase Seeder check completed successfully.');
+    console.log('Supabase Seeder check completed successfully.');
   } catch (err) {
-    console.warn('⚠️ Seeder notice (Supabase tables ready or pending connection):', err);
+    console.warn('Seeder notice (Supabase tables ready or pending connection):', err);
   }
 }

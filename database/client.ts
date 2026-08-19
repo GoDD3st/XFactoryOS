@@ -41,13 +41,13 @@ export async function executeDbQuery<T>(
   try {
     const { data, error } = await queryFn();
     if (error) {
-      console.error(`❌ DB Error on [${table}.${action}]:`, error);
+      console.error(`DB Error on [${table}.${action}]:`, error);
       throw new DatabaseError(table, action, error.message || 'Database query failed', error);
     }
     return data as T;
   } catch (err: any) {
     if (err instanceof DatabaseError) throw err;
-    console.error(`❌ DB Execution Exception on [${table}.${action}]:`, err);
+    console.error(`DB Execution Exception on [${table}.${action}]:`, err);
     throw new DatabaseError(table, action, err?.message || 'Unexpected database failure', err);
   }
 }

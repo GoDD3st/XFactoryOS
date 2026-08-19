@@ -13,7 +13,7 @@ import { isDateLockedDown, isPublicHoliday, isWeekend, getHolidayName, calculate
 const CACHE_KEY = 'xfactory_reservations_v2';
 
 /**
- * BPMN D1 "GWAV NON -> Proposer alternatives (postes proches ou liste d'attente)" — carries
+ * BPMN D1 "GWAV NON -> Proposer alternatives (postes proches ou liste d'attente)" - carries
  * up-to-3 other available desks in the same cluster/slot so the caller can offer them instead
  * of a flat rejection.
  */
@@ -84,13 +84,13 @@ export class ReservationService {
    * Pull authoritative reservations from Supabase and refresh local cache.
    * On failure, keeps existing cache (prevents wiping reservations after a failed read).
    *
-   * Deliberately does NOT dispatch 'xfactory_reservations_changed' — this is a pure read/refresh,
+   * Deliberately does NOT dispatch 'xfactory_reservations_changed' - this is a pure read/refresh,
    * and every current listener of that event (EndUserDashboard, ReservationsTable,
    * MyReservationsView) reacts to it by calling this same method. Dispatching here created an
    * unbounded feedback loop (event -> listener -> syncFromDatabase -> dispatch -> event -> ...)
    * that hammered /api/reservations continuously and tripped the rate limiter. Only actual
    * mutations (saveLocalReservations) and the realtime subscription / no-show ticker should
-   * announce the event — this method just answers "what's current" without re-announcing it.
+   * announce the event - this method just answers "what's current" without re-announcing it.
    */
   static async syncFromDatabase(): Promise<Reservation[]> {
     try {
@@ -110,7 +110,7 @@ export class ReservationService {
   }
 
   /**
-   * Read cached reservations only — does NOT trigger a background sync that could wipe data.
+   * Read cached reservations only - does NOT trigger a background sync that could wipe data.
    */
   static getLocalReservations(): Reservation[] {
     return this.readCachedReservations();
@@ -150,9 +150,9 @@ export class ReservationService {
     const settings = await SettingsRepository.getSettings();
     const isBypassRole = !!userRole && settings.bypassRoles.includes(userRole);
 
-    // Workspace lockdown — always enforced (even for bypass roles: a physical closure isn't an
+    // Workspace lockdown - always enforced (even for bypass roles: a physical closure isn't an
     // access-control rule). This is the server-side twin of validateReservationConstraints()'s
-    // check, needed because the browser only calls that for live UI feedback — without this,
+    // check, needed because the browser only calls that for live UI feedback - without this,
     // a direct POST to the API could bypass a lockdown entirely.
     if (payload.reservation_date) {
       const lockdown = isDateLockedDown(payload.reservation_date, settings.closedDates);
@@ -169,7 +169,7 @@ export class ReservationService {
       }
       if (!settings.allowHolidayBooking && isPublicHoliday(payload.reservation_date, settings.holidays)) {
         throw new Error(
-          `La date sélectionnée est un jour férié OCP Safi (${getHolidayName(payload.reservation_date, settings.holidays)}). Réservation impossible.`
+          `La date sélectionnée est un jour férié (${getHolidayName(payload.reservation_date, settings.holidays)}). Réservation impossible.`
         );
       }
     }
@@ -208,7 +208,7 @@ export class ReservationService {
 
     // BR-07: block booking a VIP/management-locked seat unless the requester holds one of the
     // roles that cluster is reserved for, or has been individually assigned to it. Previously
-    // this was only enforced client-side (the seat button was disabled) — a direct POST here
+    // this was only enforced client-side (the seat button was disabled) - a direct POST here
     // had no server-side check at all.
     if (payload.workstation_code) {
       const client = dbClient || supabase;
@@ -287,7 +287,7 @@ export class ReservationService {
     // SRS 8.6 EA: approves long/sensitive same-day reservations. SRS 8.7 Director: approves
     // reservations exceeding the max configured duration (i.e. genuine multi-day spans). These
     // are two distinct approver pools now that approver_role is actually persisted and enforced
-    // (see ApprovalService.decideApproval) — previously this was hardcoded to 'executive_assistant'
+    // (see ApprovalService.decideApproval) - previously this was hardcoded to 'executive_assistant'
     // for every case, and a second, duplicate approval row (tagged 'director') was created
     // separately by the client for the multi-day case. That duplication is why multi-day approval
     // routing lives entirely here now instead of also being created client-side.
@@ -306,7 +306,7 @@ export class ReservationService {
     }
 
     // Multi-day span (end_date beyond reservation_date): enforced server-side too, not just via
-    // the client's UI gating — a direct API call must not be able to book a multi-day span
+    // the client's UI gating - a direct API call must not be able to book a multi-day span
     // without going through Director approval.
     if (payload.end_date && payload.end_date !== payload.reservation_date && payload.reservation_date) {
       const businessDays = calculateBusinessDays(payload.reservation_date, payload.end_date, payload.start_time, payload.end_time, settings.holidays);
@@ -327,10 +327,11 @@ export class ReservationService {
     this.saveLocalReservations([newReservation, ...current.filter((r) => r.id !== newReservation.id)]);
 
     if (requiresApproval) {
-      await ApprovalRepository.createApproval({
+      const approvalRequest = await ApprovalRepository.createApproval({
         reservation_id: newReservation.id,
         requester_id: newReservation.user_id,
         requester_name: newReservation.user_name,
+        user_department: newReservation.user_department,
         approver_role: approverRole,
         reason: payload.notes || `Réservation longue durée (${payload.reservation_date} → ${payload.end_date || payload.reservation_date})`,
         objective: payload.notes,
@@ -350,6 +351,15 @@ export class ReservationService {
         'info',
         newReservation.id
       );
+
+      // Tell the approver pool. Without this the request was written and nobody was informed -
+      // it only surfaced if an approver happened to open the Approvals screen.
+      try {
+        const { ApprovalService } = await import('../approval/approvalService');
+        await ApprovalService.notifyApprovers(approvalRequest);
+      } catch (err) {
+        console.warn('[Reservations] Could not notify approvers:', err);
+      }
     } else {
       await NotificationService.sendNotification(
         newReservation.user_id,
@@ -361,7 +371,7 @@ export class ReservationService {
     }
 
     // Reservation creation is already audited (action 'CREATE') inside
-    // ReservationRepository.createReservation — this used to be a second, redundant call here,
+    // ReservationRepository.createReservation - this used to be a second, redundant call here,
     // and one that used an invalid audit_action enum value ('RESERVATION_CREATED'), so it was
     // silently failing on every insert anyway.
 
@@ -371,11 +381,45 @@ export class ReservationService {
     return newReservation;
   }
 
+  /**
+   * Statuses that hand a desk back before its slot is over, so the waiting list should be offered
+   * it. 'terminée' and 'no-show' are deliberately absent - the check-out and no-show paths run
+   * their own cascade with the window they actually free, and duplicating it here would offer the
+   * same desk twice.
+   */
+  private static readonly RELEASING_STATUSES: ReservationStatus[] = ['annulée', 'rejetée'];
+
   static async updateReservationStatus(id: string, status: ReservationStatus): Promise<boolean> {
+    // Read before writing: the cascade needs the desk, cluster, date and window, and after the
+    // update the row no longer describes a live booking.
+    const previous = this.RELEASING_STATUSES.includes(status)
+      ? await ReservationRepository.getReservationById(id)
+      : null;
+
     const success = await ReservationRepository.updateReservationStatus(id, status);
     const reservations = this.readCachedReservations().map((r) => (r.id === id ? { ...r, status } : r));
     this.saveLocalReservations(reservations);
     await this.syncFromDatabase();
+
+    // BPMN D5 EVENT → MATCH, "Annulation reservation" edge. The diagram gives three events that
+    // free a desk - cancellation, no-show, and early check-out - and only the latter two were
+    // wired up. A cancelled booking released the seat but never told the queue, so anyone waiting
+    // on that exact desk stayed WAITING while it sat free.
+    if (success && previous?.workstation_id) {
+      try {
+        const { WaitingListService } = await import('../waitinglist/waitingListService');
+        await WaitingListService.processWaitingListFIFO(
+          previous.cluster_id || previous.cluster_name,
+          previous.reservation_date,
+          previous.workstation_id,
+          { start: previous.start_time, end: previous.end_time }
+        );
+      } catch (err) {
+        // A cancellation must succeed even if the cascade cannot run - the desk is already free.
+        console.warn('[Reservations] Waiting-list cascade after cancellation failed:', err);
+      }
+    }
+
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('xfactory_workstations_changed'));
     }

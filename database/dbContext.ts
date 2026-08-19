@@ -12,7 +12,7 @@ export function getDbClient(accessToken?: string): SupabaseClient {
   return getServerWriteClient(accessToken);
 }
 
-/** Server-only admin client — throws a clear error if service role key is missing. */
+/** Server-only admin client - throws a clear error if service role key is missing. */
 export function requireAdminClient(): SupabaseClient {
   const admin = getAdminClient();
   if (!admin) {

@@ -391,63 +391,63 @@
 
 | Policy | Command | Roles | Action | USING | WITH CHECK |
 |--------|---------|-------|--------|-------|------------|
-| `p_users_admin_all` | ALL | public | PERMISSIVE | `has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text])` | — |
-| `p_users_ops_read` | SELECT | public | PERMISSIVE | `has_role(ARRAY['BUILDING_MANAGER'::text, 'GCI_MANAGER'::text, 'IT_ADMIN'::text])` | — |
-| `p_users_self` | SELECT | public | PERMISSIVE | `(id = auth.uid())` | — |
+| `p_users_admin_all` | ALL | public | PERMISSIVE | `has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text])` | - |
+| `p_users_ops_read` | SELECT | public | PERMISSIVE | `has_role(ARRAY['BUILDING_MANAGER'::text, 'GCI_MANAGER'::text, 'IT_ADMIN'::text])` | - |
+| `p_users_self` | SELECT | public | PERMISSIVE | `(id = auth.uid())` | - |
 
 ### `user_roles`
 
 | Policy | Command | Roles | Action | USING | WITH CHECK |
 |--------|---------|-------|--------|-------|------------|
 | `p_user_roles_admin_manage` | ALL | public | PERMISSIVE | `has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text])` | `has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text])` |
-| `p_user_roles_self` | SELECT | public | PERMISSIVE | `((user_id = auth.uid()) OR has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text]))` | — |
+| `p_user_roles_self` | SELECT | public | PERMISSIVE | `((user_id = auth.uid()) OR has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text]))` | - |
 
 ### `roles`
 
 | Policy | Command | Roles | Action | USING | WITH CHECK |
 |--------|---------|-------|--------|-------|------------|
-| `p_roles_read` | SELECT | public | PERMISSIVE | `true` | — |
+| `p_roles_read` | SELECT | public | PERMISSIVE | `true` | - |
 
 ### `permissions`
 
 | Policy | Command | Roles | Action | USING | WITH CHECK |
 |--------|---------|-------|--------|-------|------------|
 | `p_permissions_admin_write` | ALL | public | PERMISSIVE | `has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text])` | `has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text])` |
-| `p_permissions_read` | SELECT | public | PERMISSIVE | `true` | — |
+| `p_permissions_read` | SELECT | public | PERMISSIVE | `true` | - |
 
 ### `role_permissions`
 
 | Policy | Command | Roles | Action | USING | WITH CHECK |
 |--------|---------|-------|--------|-------|------------|
 | `p_role_permissions_admin_write` | ALL | public | PERMISSIVE | `has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text])` | `has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text])` |
-| `p_role_permissions_read` | SELECT | public | PERMISSIVE | `true` | — |
+| `p_role_permissions_read` | SELECT | public | PERMISSIVE | `true` | - |
 
 ### `buildings`
 
 | Policy | Command | Roles | Action | USING | WITH CHECK |
 |--------|---------|-------|--------|-------|------------|
-| `p_buildings_read` | SELECT | public | PERMISSIVE | `true` | — |
+| `p_buildings_read` | SELECT | public | PERMISSIVE | `true` | - |
 
 ### `floors`
 
 | Policy | Command | Roles | Action | USING | WITH CHECK |
 |--------|---------|-------|--------|-------|------------|
-| `p_floors_read` | SELECT | public | PERMISSIVE | `true` | — |
+| `p_floors_read` | SELECT | public | PERMISSIVE | `true` | - |
 
 ### `ai_interactions`
 
 | Policy | Command | Roles | Action | USING | WITH CHECK |
 |--------|---------|-------|--------|-------|------------|
-| `p_ai_interactions_insert` | INSERT | public | PERMISSIVE | — | `(user_id = auth.uid())` |
-| `p_ai_interactions_read` | SELECT | public | PERMISSIVE | `((user_id = auth.uid()) OR has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text, 'IT_ADMIN'::text]))` | — |
+| `p_ai_interactions_insert` | INSERT | public | PERMISSIVE | - | `(user_id = auth.uid())` |
+| `p_ai_interactions_read` | SELECT | public | PERMISSIVE | `((user_id = auth.uid()) OR has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text, 'IT_ADMIN'::text]))` | - |
 
 ### `settings`
 
 | Policy | Command | Roles | Action | USING | WITH CHECK |
 |--------|---------|-------|--------|-------|------------|
-| `p_settings_admin_insert` | INSERT | public | PERMISSIVE | — | `has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text, 'IT_ADMIN'::text])` |
-| `p_settings_admin_write` | UPDATE | public | PERMISSIVE | `has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text, 'IT_ADMIN'::text])` | — |
-| `p_settings_read` | SELECT | public | PERMISSIVE | `true` | — |
+| `p_settings_admin_insert` | INSERT | public | PERMISSIVE | - | `has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text, 'IT_ADMIN'::text])` |
+| `p_settings_admin_write` | UPDATE | public | PERMISSIVE | `has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text, 'IT_ADMIN'::text])` | - |
+| `p_settings_read` | SELECT | public | PERMISSIVE | `true` | - |
 
 ### `settings_change_requests`
 
@@ -459,84 +459,84 @@
 
 | Policy | Command | Roles | Action | USING | WITH CHECK |
 |--------|---------|-------|--------|-------|------------|
-| `p_audit_insert` | INSERT | public | PERMISSIVE | — | `true` |
-| `p_audit_read` | SELECT | public | PERMISSIVE | `has_role(ARRAY['SUPER_ADMIN'::text, 'SECURITY'::text, 'IT_ADMIN'::text])` | — |
+| `p_audit_insert` | INSERT | public | PERMISSIVE | - | `true` |
+| `p_audit_read` | SELECT | public | PERMISSIVE | `has_role(ARRAY['SUPER_ADMIN'::text, 'SECURITY'::text, 'IT_ADMIN'::text])` | - |
 
 ### `spaces`
 
 | Policy | Command | Roles | Action | USING | WITH CHECK |
 |--------|---------|-------|--------|-------|------------|
-| `p_spaces_read` | SELECT | public | PERMISSIVE | `true` | — |
+| `p_spaces_read` | SELECT | public | PERMISSIVE | `true` | - |
 
 ### `reservations`
 
 | Policy | Command | Roles | Action | USING | WITH CHECK |
 |--------|---------|-------|--------|-------|------------|
-| `p_reservations_delete` | DELETE | public | PERMISSIVE | `has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text, 'BUILDING_MANAGER'::text])` | — |
-| `p_reservations_owner_insert` | INSERT | public | PERMISSIVE | — | `((user_id = auth.uid()) OR has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text, 'RECEPTIONIST'::text]))` |
-| `p_reservations_owner_read` | SELECT | public | PERMISSIVE | `((user_id = auth.uid()) OR has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text, 'BUILDING_MANAGER'::text, 'GCI_MANAGER'::text, 'RECEPTIONIST'::text]))` | — |
-| `p_reservations_owner_update` | UPDATE | public | PERMISSIVE | `((user_id = auth.uid()) OR has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text, 'BUILDING_MANAGER'::text, 'GCI_MANAGER'::text]))` | — |
+| `p_reservations_delete` | DELETE | public | PERMISSIVE | `has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text, 'BUILDING_MANAGER'::text])` | - |
+| `p_reservations_owner_insert` | INSERT | public | PERMISSIVE | - | `((user_id = auth.uid()) OR has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text, 'RECEPTIONIST'::text]))` |
+| `p_reservations_owner_read` | SELECT | public | PERMISSIVE | `((user_id = auth.uid()) OR has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text, 'BUILDING_MANAGER'::text, 'GCI_MANAGER'::text, 'RECEPTIONIST'::text]))` | - |
+| `p_reservations_owner_update` | UPDATE | public | PERMISSIVE | `((user_id = auth.uid()) OR has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text, 'BUILDING_MANAGER'::text, 'GCI_MANAGER'::text]))` | - |
 
 ### `workstations`
 
 | Policy | Command | Roles | Action | USING | WITH CHECK |
 |--------|---------|-------|--------|-------|------------|
-| `p_workstations_admin_delete` | DELETE | public | PERMISSIVE | `has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text])` | — |
-| `p_workstations_admin_insert_delete` | INSERT | public | PERMISSIVE | — | `has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text])` |
+| `p_workstations_admin_delete` | DELETE | public | PERMISSIVE | `has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text])` | - |
+| `p_workstations_admin_insert_delete` | INSERT | public | PERMISSIVE | - | `has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text])` |
 | `p_workstations_admin_write` | UPDATE | public | PERMISSIVE | `has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text, 'BUILDING_MANAGER'::text, 'GCI_MANAGER'::text])` | `has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text, 'BUILDING_MANAGER'::text, 'GCI_MANAGER'::text])` |
-| `p_workstations_read` | SELECT | public | PERMISSIVE | `true` | — |
+| `p_workstations_read` | SELECT | public | PERMISSIVE | `true` | - |
 
 ### `clusters`
 
 | Policy | Command | Roles | Action | USING | WITH CHECK |
 |--------|---------|-------|--------|-------|------------|
-| `p_clusters_admin_delete` | DELETE | public | PERMISSIVE | `has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text])` | — |
-| `p_clusters_admin_insert_delete` | INSERT | public | PERMISSIVE | — | `has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text])` |
+| `p_clusters_admin_delete` | DELETE | public | PERMISSIVE | `has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text])` | - |
+| `p_clusters_admin_insert_delete` | INSERT | public | PERMISSIVE | - | `has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text])` |
 | `p_clusters_admin_write` | UPDATE | public | PERMISSIVE | `has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text, 'BUILDING_MANAGER'::text, 'GCI_MANAGER'::text])` | `has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text, 'BUILDING_MANAGER'::text, 'GCI_MANAGER'::text])` |
-| `p_clusters_read` | SELECT | public | PERMISSIVE | `true` | — |
+| `p_clusters_read` | SELECT | public | PERMISSIVE | `true` | - |
 
 ### `digital_twin_objects`
 
 | Policy | Command | Roles | Action | USING | WITH CHECK |
 |--------|---------|-------|--------|-------|------------|
-| `p_dt_objects_read` | SELECT | public | PERMISSIVE | `true` | — |
+| `p_dt_objects_read` | SELECT | public | PERMISSIVE | `true` | - |
 
 ### `cluster_authorizations`
 
 | Policy | Command | Roles | Action | USING | WITH CHECK |
 |--------|---------|-------|--------|-------|------------|
-| `p_cluster_auth_decide` | UPDATE | public | PERMISSIVE | `has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text, 'GCI_MANAGER'::text, 'BUILDING_MANAGER'::text])` | — |
-| `p_cluster_auth_insert` | INSERT | public | PERMISSIVE | — | `(requested_by = auth.uid())` |
-| `p_cluster_auth_read` | SELECT | public | PERMISSIVE | `((requested_by = auth.uid()) OR has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text, 'GCI_MANAGER'::text, 'BUILDING_MANAGER'::text]))` | — |
+| `p_cluster_auth_decide` | UPDATE | public | PERMISSIVE | `has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text, 'GCI_MANAGER'::text, 'BUILDING_MANAGER'::text])` | - |
+| `p_cluster_auth_insert` | INSERT | public | PERMISSIVE | - | `(requested_by = auth.uid())` |
+| `p_cluster_auth_read` | SELECT | public | PERMISSIVE | `((requested_by = auth.uid()) OR has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text, 'GCI_MANAGER'::text, 'BUILDING_MANAGER'::text]))` | - |
 
 ### `check_events`
 
 | Policy | Command | Roles | Action | USING | WITH CHECK |
 |--------|---------|-------|--------|-------|------------|
-| `p_check_events_insert` | INSERT | public | PERMISSIVE | — | `((actor_id = auth.uid()) OR has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text, 'RECEPTIONIST'::text]))` |
-| `p_check_events_read` | SELECT | public | PERMISSIVE | `((actor_id = auth.uid()) OR has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text, 'BUILDING_MANAGER'::text, 'GCI_MANAGER'::text, 'RECEPTIONIST'::text]))` | — |
+| `p_check_events_insert` | INSERT | public | PERMISSIVE | - | `((actor_id = auth.uid()) OR has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text, 'RECEPTIONIST'::text]))` |
+| `p_check_events_read` | SELECT | public | PERMISSIVE | `((actor_id = auth.uid()) OR has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text, 'BUILDING_MANAGER'::text, 'GCI_MANAGER'::text, 'RECEPTIONIST'::text]))` | - |
 
 ### `notifications`
 
 | Policy | Command | Roles | Action | USING | WITH CHECK |
 |--------|---------|-------|--------|-------|------------|
-| `p_notifications_insert` | INSERT | public | PERMISSIVE | — | `((user_id = auth.uid()) OR has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text, 'EXECUTIVE_ASSISTANT'::text, 'DIRECTOR'::text, 'GCI_MANAGER'::text, 'BUILDING_MANAGER'::text, 'RECEPTIONIST'::text, 'IT_ADMIN'::text]))` |
-| `p_notifications_owner` | SELECT | public | PERMISSIVE | `(user_id = auth.uid())` | — |
-| `p_notifications_owner_update` | UPDATE | public | PERMISSIVE | `((user_id = auth.uid()) OR has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text]))` | — |
+| `p_notifications_insert` | INSERT | public | PERMISSIVE | - | `((user_id = auth.uid()) OR has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text, 'EXECUTIVE_ASSISTANT'::text, 'DIRECTOR'::text, 'GCI_MANAGER'::text, 'BUILDING_MANAGER'::text, 'RECEPTIONIST'::text, 'IT_ADMIN'::text]))` |
+| `p_notifications_owner` | SELECT | public | PERMISSIVE | `(user_id = auth.uid())` | - |
+| `p_notifications_owner_update` | UPDATE | public | PERMISSIVE | `((user_id = auth.uid()) OR has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text]))` | - |
 
 ### `approval_requests`
 
 | Policy | Command | Roles | Action | USING | WITH CHECK |
 |--------|---------|-------|--------|-------|------------|
-| `p_approvals_decide` | UPDATE | public | PERMISSIVE | `has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text, 'EXECUTIVE_ASSISTANT'::text, 'DIRECTOR'::text, 'GCI_MANAGER'::text, 'BUILDING_MANAGER'::text])` | — |
-| `p_approvals_insert` | INSERT | public | PERMISSIVE | — | `((requested_by = auth.uid()) OR has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text, 'EXECUTIVE_ASSISTANT'::text, 'DIRECTOR'::text, 'GCI_MANAGER'::text, 'BUILDING_MANAGER'::text, 'RECEPTIONIST'::text]))` |
-| `p_approvals_read` | SELECT | public | PERMISSIVE | `((requested_by = auth.uid()) OR has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text, 'EXECUTIVE_ASSISTANT'::text, 'DIRECTOR'::text, 'GCI_MANAGER'::text, 'BUILDING_MANAGER'::text]))` | — |
+| `p_approvals_decide` | UPDATE | public | PERMISSIVE | `has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text, 'EXECUTIVE_ASSISTANT'::text, 'DIRECTOR'::text, 'GCI_MANAGER'::text, 'BUILDING_MANAGER'::text])` | - |
+| `p_approvals_insert` | INSERT | public | PERMISSIVE | - | `((requested_by = auth.uid()) OR has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text, 'EXECUTIVE_ASSISTANT'::text, 'DIRECTOR'::text, 'GCI_MANAGER'::text, 'BUILDING_MANAGER'::text, 'RECEPTIONIST'::text]))` |
+| `p_approvals_read` | SELECT | public | PERMISSIVE | `((requested_by = auth.uid()) OR has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text, 'EXECUTIVE_ASSISTANT'::text, 'DIRECTOR'::text, 'GCI_MANAGER'::text, 'BUILDING_MANAGER'::text]))` | - |
 
 ### `waiting_list_entries`
 
 | Policy | Command | Roles | Action | USING | WITH CHECK |
 |--------|---------|-------|--------|-------|------------|
-| `p_waiting_list_insert` | INSERT | public | PERMISSIVE | — | `((user_id = auth.uid()) OR has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text, 'RECEPTIONIST'::text]))` |
-| `p_waiting_list_read` | SELECT | public | PERMISSIVE | `((user_id = auth.uid()) OR has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text, 'BUILDING_MANAGER'::text, 'GCI_MANAGER'::text, 'RECEPTIONIST'::text]))` | — |
-| `p_waiting_list_update` | UPDATE | public | PERMISSIVE | `((user_id = auth.uid()) OR has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text, 'RECEPTIONIST'::text]))` | — |
+| `p_waiting_list_insert` | INSERT | public | PERMISSIVE | - | `((user_id = auth.uid()) OR has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text, 'RECEPTIONIST'::text]))` |
+| `p_waiting_list_read` | SELECT | public | PERMISSIVE | `((user_id = auth.uid()) OR has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text, 'BUILDING_MANAGER'::text, 'GCI_MANAGER'::text, 'RECEPTIONIST'::text]))` | - |
+| `p_waiting_list_update` | UPDATE | public | PERMISSIVE | `((user_id = auth.uid()) OR has_role(ARRAY['SUPER_ADMIN'::text, 'ADMIN'::text, 'RECEPTIONIST'::text]))` | - |
 

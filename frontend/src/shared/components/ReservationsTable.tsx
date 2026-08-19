@@ -63,7 +63,7 @@ export const ReservationsTable: React.FC<ReservationsTableProps> = ({
   const [formUserName, setFormUserName] = useState<string>(currentUser.full_name);
   const [formDepartment, setFormDepartment] = useState<string>(currentUser.department);
   const [selectedSeatCode, setSelectedSeatCode] = useState<string>('CL-A-01');
-  const [formNotes, setFormNotes] = useState<string>('Réservation poste de travail OCP Safi');
+  const [formNotes, setFormNotes] = useState<string>('Réservation poste de travail');
   const [formPurpose, setFormPurpose] = useState<string>('Projet XFactory OS');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
@@ -203,7 +203,7 @@ export const ReservationsTable: React.FC<ReservationsTableProps> = ({
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-            <span>Gestion des Réservations OCP Safi</span>
+            <span>Gestion des Réservations</span>
             <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 font-semibold">
               {filteredReservations.length} enregistrements
             </span>
@@ -315,8 +315,8 @@ export const ReservationsTable: React.FC<ReservationsTableProps> = ({
               {filteredReservations.map((res) => (
                 <tr key={res.id} className="hover:bg-slate-50/80 transition-colors">
                   <td className="py-3 px-4">
-                    <div className="font-bold text-slate-900">{res.user_name || 'Utilisateur OCP'}</div>
-                    <div className="text-[11px] font-semibold text-emerald-700">{res.user_department || 'OCP SA Safi'}</div>
+                    <div className="font-bold text-slate-900">{res.user_name || 'Utilisateur'}</div>
+                    <div className="text-[11px] font-semibold text-emerald-700">{res.user_department || 'Digital Factory'}</div>
                     <div className="text-[10px] text-slate-400 font-mono">ID: {res.user_id}</div>
                   </td>
 
@@ -401,13 +401,13 @@ export const ReservationsTable: React.FC<ReservationsTableProps> = ({
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                 <Plus className="w-5 h-5 text-emerald-600" />
-                <span>Nouvelle Réservation de Poste - OCP Safi</span>
+                <span>Nouvelle Réservation de Poste</span>
               </h3>
               <button
                 onClick={() => setIsModalOpen(false)}
                 className="text-slate-400 hover:text-slate-600 font-bold p-1 rounded-lg"
               >
-                ✕
+
               </button>
             </div>
 
@@ -458,7 +458,7 @@ export const ReservationsTable: React.FC<ReservationsTableProps> = ({
               )}
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Choix du Poste (56 postes disponibles)</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Choix du Poste</label>
                 <select
                   value={selectedSeatCode}
                   onChange={(e) => setSelectedSeatCode(e.target.value)}

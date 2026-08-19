@@ -1,8 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
 import { UserRole } from '@/frontend/src/types';
+import { PermissionService, PermissionAction } from '@/services/rbac/permissionService';
 
 /**
- * RBAC Middleware — Role-Based Access Control
+ * RBAC Middleware - Role-Based Access Control
  * 
  * Must be used AFTER authenticateJWT middleware.
  * Checks req.user.role against allowed roles.
@@ -53,6 +54,65 @@ export function requireRole(...allowedRoles: UserRole[]) {
 }
 
 /**
+ * Permission-driven guard: the `role_permissions` policy table decides, so a toggle in the
+ * Roles & Permissions screen actually changes what a role can do.
+ *
+ * `fallbackRoles` is the hardcoded list this route used before, and it is deliberately kept:
+ *  - if the policy table can't be read (outage, unseeded install), the route behaves exactly as
+ *    it did before rather than denying everyone - a DB blip must never brick the whole app;
+ *  - once the policy IS readable, it is authoritative and the fallback is ignored, including
+ *    when it denies a role the fallback would have allowed.
+ *
+ * Super Admin always keeps `manage_roles`, regardless of the table. Without that, toggling one
+ * cell would remove the only route capable of toggling it back - an unrecoverable lockout.
+ */
+export function requirePermission(
+  permissionCode: string,
+  action: PermissionAction,
+  fallbackRoles: readonly UserRole[]
+) {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    if (!req.user) {
+      res.status(401).json({ status: 'error', code: 'AUTH_REQUIRED', message: 'Authentification requise.' });
+      return;
+    }
+
+    const role = req.user.role;
+
+    if (permissionCode === 'manage_roles' && role === 'super_admin') {
+      return next();
+    }
+
+    const allowed = await PermissionService.can(role, permissionCode, action);
+
+    if (allowed === null) {
+      if (fallbackRoles.includes(role)) return next();
+      res.status(403).json({
+        status: 'error',
+        code: 'RBAC_DENIED',
+        message: `Accès refusé. Permission requise : ${permissionCode}.${action}.`,
+        permission: `${permissionCode}.${action}`,
+        current_role: role,
+      });
+      return;
+    }
+
+    if (!allowed) {
+      res.status(403).json({
+        status: 'error',
+        code: 'RBAC_DENIED',
+        message: `Accès refusé. Permission requise : ${permissionCode}.${action}.`,
+        permission: `${permissionCode}.${action}`,
+        current_role: role,
+      });
+      return;
+    }
+
+    return next();
+  };
+}
+
+/**
  * Middleware that requires the user to have a role at or above a minimum level.
  * Uses the role hierarchy for comparison.
  */
@@ -86,7 +146,7 @@ export function requireMinRole(minRole: UserRole) {
 /**
  * Checks if the authenticated user is the owner of a resource, or has admin override.
  * The `extractOwnerId` function receives the request and returns the owner's user ID.
- * If it returns null, the check is skipped (resource not found yet — let the handler deal with it).
+ * If it returns null, the check is skipped (resource not found yet - let the handler deal with it).
  */
 export function requireOwnerOrAdmin(extractOwnerId: (req: Request) => string | null | Promise<string | null>) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {

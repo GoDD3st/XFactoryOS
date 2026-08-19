@@ -2,10 +2,10 @@ import { HardwareDiagnosticsInfo, Workstation } from '@/frontend/src/types';
 import { WorkstationRepository } from '@/database/repositories/workstationRepository';
 
 /**
- * §10.3 "Préparé, minimal" — there's no real IoT/network monitoring integration (CDVI/Hager are
+ * §10.3 "Préparé, minimal" - there's no real IoT/network monitoring integration (CDVI/Hager are
  * future integrations per SRS §6), so per-port link speed / dock wattage can't be genuinely
  * measured. What IS real here: the workstation code, its cluster, and its actual DB status
- * (`maintenance` -> degraded, otherwise online) — derived from live Supabase data instead of
+ * (`maintenance` -> degraded, otherwise online) - derived from live Supabase data instead of
  * the synthetic seed set getSavedWorkstations() falls back to when called server-side.
  */
 export async function getHardwareDiagnostics(): Promise<HardwareDiagnosticsInfo[]> {

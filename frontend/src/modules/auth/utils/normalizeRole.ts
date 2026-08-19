@@ -5,16 +5,16 @@ import { UserRole } from '@/frontend/src/types';
  * into the application's strict `UserRole` type.
  *
  * Examples:
- * - 'EXECUTIVE_ASSISTANT' | 'EA' -> 'executive_assistant'
- * - 'SECURITY' | 'SECURITY_GUARD' -> 'security_guard'
- * - 'EMPLOYEE' | 'EMPLOYEE / COLLABORATOR' -> 'collaborator'
- * - 'BUILDING_MANAGER' -> 'building_manager'
- * - 'SUPER_ADMIN' -> 'super_admin'
- * - 'GCI_MANAGER' -> 'gci_manager'
- * - 'IT_ADMIN' -> 'it_admin'
- * - 'RECEPTIONIST' -> 'receptionist'
- * - 'DIRECTOR' -> 'director'
- * - 'ADMIN' -> 'admin'
+ *'EXECUTIVE_ASSISTANT' | 'EA' -> 'executive_assistant'
+ *'SECURITY' | 'SECURITY_GUARD' -> 'security_guard'
+ *'EMPLOYEE' | 'EMPLOYEE / COLLABORATOR' -> 'collaborator'
+ *'BUILDING_MANAGER' -> 'building_manager'
+ *'SUPER_ADMIN' -> 'super_admin'
+ *'GCI_MANAGER' -> 'gci_manager'
+ *'IT_ADMIN' -> 'it_admin'
+ *'RECEPTIONIST' -> 'receptionist'
+ *'DIRECTOR' -> 'director'
+ *'ADMIN' -> 'admin'
  */
 export function normalizeRoleCode(rawCode?: string | null): UserRole {
   if (!rawCode) return 'collaborator';

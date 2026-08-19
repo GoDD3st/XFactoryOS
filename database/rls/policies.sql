@@ -1,5 +1,5 @@
 -- ============================================================================
--- OCP SA XFactory OS — Row Level Security (RLS) Policies
+-- OCP SA XFactory OS - Row Level Security (RLS) Policies
 -- Zero-Trust Second Defense Layer for Supabase PostgreSQL
 -- ============================================================================
 

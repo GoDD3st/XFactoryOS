@@ -17,7 +17,7 @@ export class RealtimeSyncService {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'reservations' },
         (payload) => {
-          console.log('📡 Real-time Supabase Event [reservations]:', payload);
+          console.log('Real-time Supabase Event [reservations]:', payload);
           if (onReservationChange) onReservationChange(payload);
           if (typeof window !== 'undefined') {
             window.dispatchEvent(new CustomEvent('xfactory_reservations_changed'));
@@ -28,7 +28,7 @@ export class RealtimeSyncService {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'workstations' },
         (payload) => {
-          console.log('📡 Real-time Supabase Event [workstations]:', payload);
+          console.log('Real-time Supabase Event [workstations]:', payload);
           if (onWorkstationChange) onWorkstationChange(payload);
           if (typeof window !== 'undefined') {
             window.dispatchEvent(new CustomEvent('xfactory_workstations_changed'));
@@ -37,7 +37,7 @@ export class RealtimeSyncService {
       )
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
-          console.log('⚡ Supabase Realtime Channel Subscribed successfully.');
+          console.log('Supabase Realtime Channel Subscribed successfully.');
         }
       });
   }

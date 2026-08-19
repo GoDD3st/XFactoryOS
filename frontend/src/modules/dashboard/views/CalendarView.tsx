@@ -79,7 +79,7 @@ export const CalendarView: React.FC = () => {
             <div
               key={res.id}
               className="p-1.5 rounded-lg bg-[#008751]/10 text-[#008751] border border-emerald-500/20 text-[9px] leading-tight"
-              title={`${res.workstation_code} — ${res.user_name} (${res.start_time}-${res.end_time})`}
+              title={`${res.workstation_code} - ${res.user_name} (${res.start_time}-${res.end_time})`}
             >
               <div className="font-bold truncate">{res.workstation_code}</div>
               {!compact && <div className="text-slate-600 truncate">{res.user_name}</div>}
@@ -117,7 +117,7 @@ export const CalendarView: React.FC = () => {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-5 rounded-2xl bg-white border border-slate-200 shadow-sm">
         <div>
           <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">Calendrier des Réservations Open Space</h2>
-          <p className="text-xs text-slate-500 mt-0.5">Planning des 28 postes et 7 clusters Safi — vues jour, semaine, mois</p>
+          <p className="text-xs text-slate-500 mt-0.5">Planning des 28 postes et 7 clusters Safi - vues jour, semaine, mois</p>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">

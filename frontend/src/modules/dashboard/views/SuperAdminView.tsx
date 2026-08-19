@@ -1,36 +1,46 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
-  ShieldAlert,
-  Database,
-  Cpu,
-  RefreshCw,
-  Terminal,
-  Activity,
-  CheckCircle,
-  Server
+  ShieldCheck,
+  Users,
+  Lock,
+  Wrench,
+  AlertTriangle,
+  Settings,
+  BarChart3,
+  UserX,
+  History,
 } from 'lucide-react';
 import { DigitalTwin } from '../../../shared/components/DigitalTwin';
 import { ReservationsTable } from '../../../shared/components/ReservationsTable';
-import { supabase } from '@/services/supabase/supabaseClient';
+import { SiteTelemetrySummary } from '@/services/telemetry/telemetryService';
+import { apiFetchOccupancy } from '@/services/api/telemetryApi';
+import { apiFetchUsers } from '@/services/api/userApi';
+import { apiFetchRoles } from '@/services/api/rolesApi';
+import { apiFetchAuditLogs } from '@/services/api/auditApi';
+import { SettingsService } from '@/services/settings/settingsService';
+import { UserProfile, RoleWithCount, AuditLogEntry, SystemSettings } from '@/frontend/src/types';
 
 export const SuperAdminView: React.FC = () => {
-  const [dbStatus, setDbStatus] = useState<'connected' | 'checking' | 'fallback'>('connected');
-  const [lastSyncTime, setLastSyncTime] = useState<string>(new Date().toLocaleTimeString());
+  const [telemetry, setTelemetry] = useState<SiteTelemetrySummary | null>(null);
+  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [roles, setRoles] = useState<RoleWithCount[]>([]);
+  const [roleChangesToday, setRoleChangesToday] = useState(0);
+  const [settings, setSettings] = useState<SystemSettings>(SettingsService.getSettings() as SystemSettings);
 
-  const handleTestDbSync = async () => {
-    setDbStatus('checking');
-    try {
-      const { data, error } = await supabase.from('clusters').select('count', { count: 'exact', head: true });
-      if (!error) {
-        setDbStatus('connected');
-      } else {
-        setDbStatus('fallback');
-      }
-    } catch (e) {
-      setDbStatus('fallback');
-    }
-    setLastSyncTime(new Date().toLocaleTimeString());
-  };
+  useEffect(() => {
+    apiFetchOccupancy().then(setTelemetry);
+    apiFetchUsers().then(setUsers);
+    apiFetchRoles().then(setRoles);
+    apiFetchAuditLogs(true).then(({ data }) => {
+      const today = new Date().toISOString().split('T')[0];
+      const changesToday = data.filter((l: AuditLogEntry) => l.action === 'ROLE_CHANGE' && l.timestamp.startsWith(today));
+      setRoleChangesToday(changesToday.length);
+    });
+    Promise.resolve(SettingsService.getSettings()).then((s) => setSettings(s as SystemSettings));
+  }, []);
+
+  const activeUsers = users.filter((u) => u.status === 'active').length;
+  const disabledUsers = users.filter((u) => u.status !== 'active').length;
 
   return (
     <div className="space-y-6">
@@ -39,59 +49,119 @@ export const SuperAdminView: React.FC = () => {
         <div>
           <div className="flex items-center space-x-2">
             <span className="px-2.5 py-0.5 rounded bg-violet-500/20 text-violet-300 font-bold text-xs">
-              Rôle : Super Admin Enterprise
+              Rôle : Super Administrator
             </span>
-            <span className="text-xs text-slate-400">Contrôle Total Infrastructure & Supabase</span>
+            <span className="text-xs text-slate-400">Gouvernance & Administration XFactory OS</span>
           </div>
-          <h1 className="text-xl font-bold mt-1">Super Admin Console & Systèmes OCP SA</h1>
+          <h1 className="text-xl font-bold mt-1">Configuration de la Plateforme</h1>
           <p className="text-xs text-slate-400 mt-0.5">
-            Diagnostic en direct Supabase PostgreSQL (`ygoqiipvarlqtvpuhrbo`), journaux de sécurité, matrice RBAC et état de la synchronisation.
+            Utilisateurs, rôles &amp; permissions, politiques de réservation et référentiels - la gouvernance fonctionnelle du site Safi.
           </p>
         </div>
-
-        <button
-          onClick={handleTestDbSync}
-          className="bg-violet-700 hover:bg-violet-800 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 shadow-md"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${dbStatus === 'checking' ? 'animate-spin' : ''}`} />
-          <span>Tester Connexion Supabase</span>
-        </button>
-      </div>
-
-      {/* Supabase Status Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-slate-900 text-white p-4 rounded-2xl border border-slate-800 space-y-1">
-          <div className="flex items-center justify-between text-xs text-slate-400 font-bold">
-            <span>Base Supabase DB</span>
-            <Database className="w-4 h-4 text-emerald-400" />
-          </div>
-          <div className="text-lg font-black text-emerald-400 flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span>Connecté (PostgreSQL)</span>
-          </div>
-          <p className="text-[11px] text-slate-400">Dernière synchro : {lastSyncTime}</p>
-        </div>
-
-        <div className="bg-slate-900 text-white p-4 rounded-2xl border border-slate-800 space-y-1">
-          <div className="flex items-center justify-between text-xs text-slate-400 font-bold">
-            <span>Matrice RBAC</span>
-            <ShieldAlert className="w-4 h-4 text-violet-400" />
-          </div>
-          <div className="text-lg font-black text-white">10 Rôles Unifiés</div>
-          <p className="text-[11px] text-slate-400">Collaborateur à Super Admin</p>
-        </div>
-
-        <div className="bg-slate-900 text-white p-4 rounded-2xl border border-slate-800 space-y-1">
-          <div className="flex items-center justify-between text-xs text-slate-400 font-bold">
-            <span>Capacité Totale Site</span>
-            <Server className="w-4 h-4 text-cyan-400" />
-          </div>
-          <div className="text-lg font-black text-white">56 Postes (7 Clusters x 8)</div>
-          <p className="text-[11px] text-slate-400">Règle des 8 sièges stricte</p>
+        <div className="bg-slate-800 px-3.5 py-2 rounded-xl border border-slate-700 flex items-center space-x-2">
+          <ShieldCheck className="w-4 h-4 text-emerald-400" />
+          <span className="text-xs text-slate-200">Plateforme opérationnelle</span>
         </div>
       </div>
 
-      <DigitalTwin />
+      {/* Governance KPI Row */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-500">Utilisateurs</span>
+            <Users className="w-4 h-4 text-indigo-600" />
+          </div>
+          <div className="text-2xl font-black text-slate-900">{users.length}</div>
+          <p className="text-[11px] text-slate-500">{activeUsers} actifs</p>
+        </div>
+
+        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-500">Rôles</span>
+            <Lock className="w-4 h-4 text-violet-600" />
+          </div>
+          <div className="text-2xl font-black text-slate-900">{roles.length}</div>
+          <p className="text-[11px] text-slate-500">{roles.reduce((s, r) => s + r.user_count, 0)} assignations</p>
+        </div>
+
+        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-500">Postes Configurés</span>
+            <Wrench className="w-4 h-4 text-emerald-600" />
+          </div>
+          <div className="text-2xl font-black text-slate-900">{telemetry?.totalCapacity ?? ''}</div>
+          <p className="text-[11px] text-slate-500">{telemetry?.clusters.length ?? 0} clusters</p>
+        </div>
+
+        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-500">Occupation Live</span>
+            <BarChart3 className="w-4 h-4 text-amber-500" />
+          </div>
+          <div className="text-2xl font-black text-slate-900">{telemetry?.overallOccupancyRate ?? ''}%</div>
+          <p className="text-[11px] text-slate-500">{telemetry?.activeOccupancy ?? 0} postes occupés/réservés</p>
+        </div>
+      </div>
+
+      {/* Governance / Config Summary */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+          <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+            <History className="w-4 h-4 text-violet-600" />
+            <span>Activité RBAC & Sécurité</span>
+          </h3>
+          <div className="grid grid-cols-2 gap-3 text-center">
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
+              <div className="text-lg font-black text-slate-900">{roleChangesToday}</div>
+              <div className="text-[10px] text-slate-400">Modifications RBAC aujourd'hui</div>
+            </div>
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
+              <div className="text-lg font-black text-slate-900 flex items-center justify-center gap-1">
+                <UserX className="w-3.5 h-3.5 text-rose-500" />
+                {disabledUsers}
+              </div>
+              <div className="text-[10px] text-slate-400">Comptes désactivés</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+          <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+            <Settings className="w-4 h-4 text-slate-600" />
+            <span>Paramètres en vigueur</span>
+          </h3>
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+              <div className="text-[10px] text-slate-400">Durée max sans approbation</div>
+              <div className="font-bold text-slate-800">{settings.maxReservationDaysWithoutApproval} jours</div>
+            </div>
+            <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+              <div className="text-[10px] text-slate-400">Délai No-Show</div>
+              <div className="font-bold text-slate-800">{settings.noShowDelayMinutes} min</div>
+            </div>
+            <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+              <div className="text-[10px] text-slate-400">Horaires</div>
+              <div className="font-bold text-slate-800">{settings.workingHoursStart} - {settings.workingHoursEnd}</div>
+            </div>
+            <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+              <div className="text-[10px] text-slate-400">Week-end</div>
+              <div className="font-bold text-slate-800">{settings.allowWeekendBooking ? 'Autorisé' : 'Bloqué'}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {telemetry && telemetry.clusters.some((c) => c.maintenanceDesks > 0) && (
+        <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-semibold flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          <span>
+            {telemetry.clusters.reduce((s, c) => s + c.maintenanceDesks, 0)} poste(s) en maintenance sur{' '}
+            {telemetry.clusters.filter((c) => c.maintenanceDesks > 0).length} cluster(s).
+          </span>
+        </div>
+      )}
+
+      <DigitalTwin readOnly />
       <ReservationsTable />
     </div>
   );

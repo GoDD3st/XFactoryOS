@@ -1,8 +1,6 @@
 import { supabase } from '@/database/client';
 import { UserProfile, UserRole } from '@/frontend/src/types';
 import { normalizeRoleCode } from '../utils/normalizeRole';
-import { UserRepository } from '@/database/repositories/userRepository';
-import { AuditRepository } from '@/database/repositories/auditRepository';
 
 /**
  * Real (non-demo) authentication against Supabase Auth.
@@ -11,17 +9,6 @@ import { AuditRepository } from '@/database/repositories/auditRepository';
 
 export async function signInWithPassword(email: string, password: string) {
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error) throw error;
-  return data;
-}
-
-export async function signInWithGoogle() {
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: 'google',
-    options: {
-      redirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
-    },
-  });
   if (error) throw error;
   return data;
 }
@@ -41,7 +28,22 @@ export async function fetchRealUserProfile(authUser: {
   email?: string | null;
   user_metadata?: { full_name?: string; department?: string };
 }): Promise<{ profile: UserProfile; role: UserRole }> {
-  await UserRepository.ensureUserProfile(authUser);
+  // Server-side, via the API. This used to call UserRepository.ensureUserProfile directly from
+  // the browser - a database repository running in the client, writing to public.users and
+  // public.user_roles. Identity is taken from the JWT on the server, so the client cannot claim
+  // to be someone else.
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (token) {
+      await fetch('/api/users/me/bootstrap', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    }
+  } catch {
+    // Non-blocking: a failed bootstrap must not prevent sign-in.
+  }
 
   let role: UserRole = 'collaborator';
   let full_name = authUser.email || 'Utilisateur';
@@ -62,7 +64,7 @@ export async function fetchRealUserProfile(authUser: {
     }
   } catch (err) {
     // If no user_roles row by ID, attempt lookup by email in users table.
-    // Note: `role` is NOT a column on public.users — roles only live in
+    // Note: `role` is NOT a column on public.users - roles only live in
     // user_roles -> roles, so this fallback can only recover the name/department.
     if (authUser.email) {
       try {
@@ -81,7 +83,7 @@ export async function fetchRealUserProfile(authUser: {
   }
 
   // 2. Query Supabase DB users profile table for full_name and department
-  // (role is deliberately excluded — it's not a column on this table, and
+  // (role is deliberately excluded - it's not a column on this table, and
   // selecting it errors the whole query, silently dropping full_name/department too)
   try {
     const { data: profileData } = await supabase

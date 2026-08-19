@@ -11,7 +11,7 @@ const TYPE_TO_EVENT: Record<string, string> = {
 
 // notifications has no anon/authenticated INSERT policy by design (a notification is routinely
 // created by the system on behalf of a DIFFERENT user than the caller, e.g. an approver's
-// decision notifying the requester — a self-scoped `user_id = auth.uid()` policy can't allow
+// decision notifying the requester - a self-scoped `user_id = auth.uid()` policy can't allow
 // that). Server-side callers must use the service-role client to bypass RLS for writes.
 async function resolveClient(): Promise<SupabaseClient> {
   if (typeof window === 'undefined') {
@@ -47,6 +47,7 @@ export class NotificationRepository {
         type: this.mapEventToType(n.event_code),
         read: !!n.read_at,
         created_at: n.created_at,
+        reservation_id: n.reservation_id || undefined,
       }));
     } catch (err) {
       console.warn('Fetch notifications fallback:', err);
@@ -92,6 +93,27 @@ export class NotificationRepository {
     } catch (err) {
       console.warn('Create notification DB notice:', err);
       return null;
+    }
+  }
+
+  /**
+   * Dedupe check for tickers that re-scan the same candidates on every tick (e.g. the
+   * check-in reminder ticker, which re-evaluates "starts within 15 min" every 60s) - lets
+   * the caller send a given (reservation, title) notification at most once.
+   */
+  static async hasNotificationForReservation(reservationId: string, title: string): Promise<boolean> {
+    try {
+      const db = await resolveClient();
+      const { data } = await db
+        .from('notifications')
+        .select('id')
+        .eq('reservation_id', reservationId)
+        .eq('title', title)
+        .limit(1)
+        .maybeSingle();
+      return !!data;
+    } catch {
+      return false;
     }
   }
 

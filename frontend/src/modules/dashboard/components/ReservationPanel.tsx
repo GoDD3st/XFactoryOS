@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Workstation, Cluster } from '@/frontend/src/types';
 import { createReservation } from '@/services/reservations/reservationService';
+import { SettingsService } from '@/services/settings/settingsService';
+import { SystemSettings } from '@/frontend/src/types';
 import { useAuth } from '@/frontend/src/modules/auth/context/AuthContext';
 import { X, Calendar, Clock, Monitor, Wifi, Power, CheckCircle, AlertCircle, Sparkles } from 'lucide-react';
 
@@ -27,6 +29,16 @@ export const ReservationPanel: React.FC<ReservationPanelProps> = ({
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [isError, setIsError] = useState(false);
+
+  // The no-show window is configured by the Super Admin. This panel stated a flat "30 minutes",
+  // which silently became wrong the moment that setting was changed.
+  const [noShowDelay, setNoShowDelay] = useState(30);
+  React.useEffect(() => {
+    const apply = (s: SystemSettings) => setNoShowDelay(s.noShowDelayMinutes ?? 30);
+    const result = SettingsService.getSettings();
+    if (result instanceof Promise) result.then(apply).catch(() => {});
+    else apply(result);
+  }, []);
 
   if (!isOpen || !workstation || !cluster) return null;
 
@@ -159,7 +171,7 @@ export const ReservationPanel: React.FC<ReservationPanelProps> = ({
               Politique Clean Desk & No-Show Safi
             </div>
             <p className="text-[11px] text-amber-800 leading-normal">
-              Vous disposerez de 30 minutes après le début de votre réservation pour effectuer votre check-in sur la plateforme. Passer ce délai, le poste sera automatiquement remis en disponibilité.
+              Vous disposerez de {noShowDelay} minutes après le début de votre réservation pour effectuer votre check-in. Passé ce délai, le poste sera automatiquement remis en disponibilité.
             </p>
           </div>
 

@@ -4,18 +4,18 @@ import { ReservationRepository } from '@/database/repositories/reservationReposi
 
 // Roles allowed to search across everyone's reservations (matches reservations RLS / matrix
 // RBAC "Modifier réservation d'autrui"). Everyone else is scoped to their own reservations only
-// — SRS §11.10 "Résultats limités au périmètre autorisé".
+// - SRS §11.10 "Résultats limités au périmètre autorisé".
 const RESERVATION_SEARCH_OPS_ROLES: UserRole[] = ['super_admin', 'admin', 'building_manager', 'gci_manager', 'receptionist'];
 
 export class SearchService {
-  // Runs server-side (backend/routes/search.routes.ts) — reads live Supabase data, not the
+  // Runs server-side (backend/routes/search.routes.ts) - reads live Supabase data, not the
   // browser-only localStorage cache (WorkspaceService.getSavedWorkstations() always returns
   // synthetic seed data when called with no `window`, which is exactly the server's context).
   static async searchWorkstations(query: WorkstationSearchQuery): Promise<Workstation[]> {
     const wsMap = await WorkstationRepository.getWorkstations();
     // Each workstation is keyed by both its UUID and its cluster code in wsMap (see
     // WorkstationRepository.getWorkstations), so a naive flatten of all values double-counts
-    // every seat — dedupe by id.
+    // every seat - dedupe by id.
     const byId = new Map<string, Workstation>();
     Object.values(wsMap).flat().forEach((w) => byId.set(w.id, w));
     let workstations: Workstation[] = Array.from(byId.values());
@@ -47,7 +47,7 @@ export class SearchService {
   }
 
   /**
-   * `callerId`/`callerRole` come from the authenticated request (server-side only) — a
+   * `callerId`/`callerRole` come from the authenticated request (server-side only) - a
    * non-privileged caller is always scoped to their own reservations regardless of what
    * `query.userId` asks for, so this can't be used to browse other users' bookings.
    */

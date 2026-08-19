@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Award, Check, X, Clock, HelpCircle, MessageSquare, AlertCircle, FileText } from 'lucide-react';
 import { DigitalTwin } from '../../../shared/components/DigitalTwin';
 import { ReservationsTable } from '../../../shared/components/ReservationsTable';
-import { apiFetchPendingApprovals, apiDecideApproval } from '@/services/api/approvalApi';
+import { apiFetchPendingApprovals, apiDecideApproval, apiFetchApprovalHistory } from '@/services/api/approvalApi';
 import { ApprovalRequest } from '../../../types';
 import { useAuth } from '../../../modules/auth/context/AuthContext';
 
@@ -15,17 +15,26 @@ export const ApprovalsView: React.FC = () => {
   const [decisionNote, setDecisionNote] = useState<string>('');
   const [decisionError, setDecisionError] = useState<string | null>(null);
 
+  const [history, setHistory] = useState<ApprovalRequest[]>([]);
+
   const loadRequests = async () => {
     setLoading(true);
     try {
-      const list = await apiFetchPendingApprovals();
+      const [list, decided] = await Promise.all([
+        apiFetchPendingApprovals(),
+        apiFetchApprovalHistory().catch(() => [] as ApprovalRequest[]),
+      ]);
       setPendingRequests(list);
+      setHistory(decided);
     } catch (err) {
       console.error('Error loading pending approvals:', err);
     } finally {
       setLoading(false);
     }
   };
+
+  const approvedCount = history.filter((r) => r.status === 'approved').length;
+  const rejectedCount = history.filter((r) => r.status === 'rejected').length;
 
   useEffect(() => {
     loadRequests();
@@ -36,28 +45,38 @@ export const ApprovalsView: React.FC = () => {
   const openDecisionModal = (id: string, type: 'approved' | 'rejected' | 'needs_info') => {
     setActiveDecisionId(id);
     setDecisionType(type);
-    setDecisionNote(
-      type === 'approved'
-        ? 'Extension accordée par la Direction OCP Safi.'
-        : type === 'needs_info'
-        ? 'Merci de fournir une description plus détaillée des livrables et objectifs de votre mission.'
-        : 'Demande d\'extension refusée pour dépassement de quota.'
-    );
+    setDecisionError(null);
+    // Only the approval path gets a default. A refusal (or a request for more information) is
+    // sent verbatim to the requester in the notification, so a canned "refusée pour dépassement
+    // de quota" would tell them nothing about the actual reason - the SRS workflow requires a
+    // real motif here.
+    setDecisionNote(type === 'approved' ? 'Extension accordée.' : '');
   };
+
+  const requiresNote = decisionType === 'rejected' || decisionType === 'needs_info';
 
   const handleConfirmDecision = async () => {
     if (!activeDecisionId || !decisionType) return;
+
+    if (requiresNote && decisionNote.trim().length < 5) {
+      setDecisionError(
+        decisionType === 'rejected'
+          ? 'Un motif de refus est obligatoire - il est transmis au demandeur.'
+          : "Précisez les informations attendues du demandeur."
+      );
+      return;
+    }
 
     setDecisionError(null);
     try {
       await apiDecideApproval(
         activeDecisionId,
         decisionType,
-        decisionNote || 'Décision enregistrée par la Direction'
+        decisionNote.trim() || 'Extension accordée.'
       );
     } catch (err: any) {
       // Some pending requests are routed to a specific approver role (Director vs Executive
-      // Assistant) — a decider outside that role gets rejected server-side rather than silently.
+      // Assistant) - a decider outside that role gets rejected server-side rather than silently.
       setDecisionError(err?.message || 'Échec de la décision.');
       return;
     }
@@ -80,14 +99,27 @@ export const ApprovalsView: React.FC = () => {
             <span className="text-xs text-slate-400">Arbitrage Réservations Multi-Jours (&gt; 2j Ouvrés)</span>
           </div>
           <h1 className="text-xl font-bold mt-1">Validation des Extensions &amp; Demandes Longue Durée</h1>
+          {/* BR-06: the long-duration approvers are Executive Assistant and Director. Building
+              Manager and Administrator were both removed from APPROVER_ROLES, so the previous
+              wording here (which still listed them) no longer described who can decide. */}
           <p className="text-xs text-slate-400 mt-0.5">
-            Décisions partagées entre Building Manager, Assistant Directeur, Directeur, Admin et SuperAdmin (BPMN D2).
+            Approbateurs longue durée : Assistant(e) de Direction et Directeur (BR-06).
           </p>
         </div>
 
-        <div className="bg-slate-800 px-4 py-2 rounded-xl border border-slate-700 text-center">
-          <div className="text-xs text-slate-400">Demandes en Attente</div>
-          <div className="text-lg font-black text-purple-400">{pendingRequests.length}</div>
+        <div className="flex items-center gap-3">
+          <div className="bg-slate-800 px-4 py-2 rounded-xl border border-slate-700 text-center min-w-[92px]">
+            <div className="text-xs text-slate-400">En attente</div>
+            <div className="text-lg font-black text-purple-400">{loading ? '...' : pendingRequests.length}</div>
+          </div>
+          <div className="bg-slate-800 px-4 py-2 rounded-xl border border-slate-700 text-center min-w-[92px]">
+            <div className="text-xs text-slate-400">Approuvées</div>
+            <div className="text-lg font-black text-emerald-400">{loading ? '...' : approvedCount}</div>
+          </div>
+          <div className="bg-slate-800 px-4 py-2 rounded-xl border border-slate-700 text-center min-w-[92px]">
+            <div className="text-xs text-slate-400">Refusées</div>
+            <div className="text-lg font-black text-rose-400">{loading ? '...' : rejectedCount}</div>
+          </div>
         </div>
       </div>
 
@@ -118,7 +150,7 @@ export const ApprovalsView: React.FC = () => {
                     <div className="flex items-center space-x-2">
                       <span className="font-black text-sm text-slate-900">{req.requester_name}</span>
                       <span className="text-[10px] px-2 py-0.5 rounded bg-purple-200 text-purple-800 font-bold">
-                        {req.user_department || 'OCP Safi'}
+                        {req.user_department || 'Non renseigné'}
                       </span>
                       <span className="text-[10px] px-2 py-0.5 rounded bg-slate-900 text-white font-bold">
                         {req.duration_days || 3} Jours Ouvrés
@@ -199,12 +231,15 @@ export const ApprovalsView: React.FC = () => {
               <label className="text-xs font-bold text-slate-700 block">
                 {decisionType === 'needs_info'
                   ? 'Précisez la remarque ou les informations attendues du demandeur :'
+                  : decisionType === 'rejected'
+                  ? 'Motif du refus * (transmis au demandeur)'
                   : 'Motif ou remarque de décision :'}
               </label>
               <textarea
                 rows={3}
                 value={decisionNote}
                 onChange={(e) => setDecisionNote(e.target.value)}
+                placeholder={requiresNote ? 'Obligatoire - expliquez la décision au demandeur.' : ''}
                 className="w-full p-3 text-xs rounded-xl border border-slate-300 bg-slate-50 focus:ring-2 focus:ring-purple-600 outline-none"
               />
             </div>
@@ -229,7 +264,8 @@ export const ApprovalsView: React.FC = () => {
               </button>
               <button
                 onClick={handleConfirmDecision}
-                className={`px-5 py-2 text-xs font-bold text-white rounded-xl shadow-md ${
+                disabled={requiresNote && decisionNote.trim().length < 5}
+                className={`px-5 py-2 text-xs font-bold text-white rounded-xl shadow-md disabled:opacity-50 disabled:cursor-not-allowed ${
                   decisionType === 'approved'
                     ? 'bg-emerald-600 hover:bg-emerald-700'
                     : decisionType === 'needs_info'

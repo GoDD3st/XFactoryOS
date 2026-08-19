@@ -5,24 +5,30 @@
   "type": "module",
   "scripts": {
     "dev": "tsx backend/server.ts",
-    "build": "vite build && esbuild backend/server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
-    "start": "node dist/server.cjs",
+    "build": "vite build",
+    "start": "node server-dist/server.cjs",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "build:server": "esbuild backend/server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=server-dist/server.cjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
     "@supabase/ssr": "^0.12.4",
     "@supabase/supabase-js": "^2.111.0",
     "@tailwindcss/vite": "^4.1.14",
+    "@types/qrcode": "^1.5.6",
+    "@types/sanitize-html": "^2.16.1",
     "@vitejs/plugin-react": "^5.0.4",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
+    "html5-qrcode": "^2.3.8",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
+    "qrcode": "^1.5.4",
     "react": "^19.2.8",
     "react-dom": "^19.0.1",
+    "sanitize-html": "^2.17.6",
     "vite": "^6.2.3",
     "xlsx": "^0.18.5",
     "zod": "^4.4.3"
@@ -37,5 +43,8 @@
     "tsx": "^4.23.5",
     "typescript": "~5.8.2",
     "vite": "^6.2.3"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

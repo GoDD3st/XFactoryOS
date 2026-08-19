@@ -4,9 +4,9 @@ import { SystemSettings, UserRole } from '@/frontend/src/types';
 import { OCP_SAFI_PUBLIC_HOLIDAYS_2026 } from '@/frontend/src/shared/utils/dateValidation';
 
 // settings write access (p_settings_admin_write) requires has_role(SUPER_ADMIN/ADMIN/IT_ADMIN),
-// which needs a real Supabase Auth session — the OTP-confirmed settings change runs server-side
-// (backend/routes/settings.routes.ts), where demo mode has no such session, so it must bypass
-// RLS via the service-role client.
+// which needs a real Supabase Auth session - the password-confirmed settings change runs
+// server-side (backend/routes/settings.routes.ts), where demo mode has no such session, so it
+// must bypass RLS via the service-role client.
 async function resolveClient(): Promise<SupabaseClient> {
   if (typeof window === 'undefined') {
     const { getAdminClient } = await import('../serverClient');
@@ -36,7 +36,7 @@ export class SettingsRepository {
     extensionSeatsVisibleByDefault: false,
     managementClustersEnabled: false,
     theme: 'dark',
-    siteName: 'OCP SA - Safi Site XFactory OS',
+    siteName: 'XFactory OS - Site Safi',
     configVersion: 1,
   };
 
@@ -48,7 +48,7 @@ export class SettingsRepository {
       if (error || !data) return this.DEFAULT_SETTINGS;
 
       // `settings` only has dedicated columns for a handful of fields (business_days,
-      // business_hours_*, max_duration_hours_no_approval, no_show_window_minutes) — everything
+      // business_hours_*, max_duration_hours_no_approval, no_show_window_minutes) - everything
       // else lives in raw_config (jsonb), including holidays/closedDates.
       const raw = data.raw_config || {};
 
@@ -73,7 +73,9 @@ export class SettingsRepository {
         extensionSeatsVisibleByDefault: raw.extensionSeatsVisibleByDefault ?? false,
         managementClustersEnabled: raw.managementClustersEnabled ?? false,
         theme: raw.theme || 'dark',
-        siteName: raw.siteName || 'OCP SA - Safi Site XFactory OS',
+        siteName: raw.siteName || 'XFactory OS - Site Safi',
+        // Own column, not part of raw_config - see updateSiteLogo.
+        siteLogoDataUrl: data.site_logo_data_url ?? null,
         configVersion: raw.configVersion || 1,
         updated_at: data.updated_at,
         updated_by: data.updated_by,
@@ -81,6 +83,42 @@ export class SettingsRepository {
     } catch (err) {
       console.warn('getSettings fallback to default:', err);
       return this.DEFAULT_SETTINGS;
+    }
+  }
+
+  /**
+   * Writes the site logo to its own column.
+   *
+   * Kept out of the raw_config JSON blob that carries the rest of the settings: that blob is
+   * read, merged and rewritten on every settings save, and round-tripping a few hundred KB of
+   * base64 through it on each change would be wasteful and easy to clobber.
+   */
+  static async updateSiteLogo(dataUrl: string | null, adminId?: string): Promise<void> {
+    const db = await resolveClient();
+    const { data: existing } = await db.from('settings').select('id').limit(1).maybeSingle();
+
+    const payload: Record<string, unknown> = {
+      site_logo_data_url: dataUrl,
+      updated_at: new Date().toISOString(),
+    };
+    if (adminId) payload.updated_by = adminId;
+
+    const { error } = existing
+      ? await db.from('settings').update(payload).eq('id', existing.id)
+      : await db.from('settings').insert(payload);
+
+    if (error) throw new Error(`Échec de l'enregistrement du logo : ${error.message}`);
+  }
+
+  /** Site logo for the header. Returns null when none is configured. */
+  static async getSiteLogo(): Promise<string | null> {
+    try {
+      const db = await resolveClient();
+      const { data } = await db.from('settings').select('site_logo_data_url').limit(1).maybeSingle();
+      return data?.site_logo_data_url ?? null;
+    } catch {
+      // A missing logo must never break the header.
+      return null;
     }
   }
 
@@ -94,17 +132,23 @@ export class SettingsRepository {
       updated_by: adminId || current.updated_by,
     };
 
-    // Only write columns that actually exist on public.settings — everything else rides in
+    // Only write columns that actually exist on public.settings - everything else rides in
     // raw_config. (A previous version of this payload referenced columns like
     // booking_window_days/bypass_roles/config_version that were never real, which made every
     // settings update fail outright and silently fall back to defaults.)
+    // The logo lives in its own column (site_logo_data_url) and must not be copied into
+    // raw_config: getSettings() reads it back into the settings object, so leaving it here would
+    // round-trip a base64 image into the JSON blob on every unrelated settings save - duplicating
+    // up to 512 KB and creating a second, stale copy of the mark.
+    const { siteLogoDataUrl, ...rawConfig } = updated;
+
     const dbPayload = {
       max_duration_hours_no_approval: updated.maxReservationDaysWithoutApproval * 24,
       business_hours_start: `${updated.workingHoursStart}:00`,
       business_hours_end: `${updated.workingHoursEnd}:00`,
       business_days: updated.workingDays,
       no_show_window_minutes: updated.noShowDelayMinutes,
-      raw_config: updated,
+      raw_config: rawConfig,
       updated_by: adminId,
       updated_at: updated.updated_at,
     };
@@ -136,7 +180,7 @@ export class SettingsRepository {
   }>> {
     try {
       const db = await resolveClient();
-      // 'SETTINGS_CHANGE' is the only value the audit_action enum actually has for this — the
+      // 'SETTINGS_CHANGE' is the only value the audit_action enum actually has for this - the
       // three values previously queried here don't exist in the enum, so this always returned
       // empty even though OTPSettingsService.confirmUpdate was logging every change correctly.
       const { data, error } = await db

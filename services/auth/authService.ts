@@ -7,7 +7,7 @@ export const ROLE_CONFIGS: Record<UserRole, RoleConfig> = {
     label: 'Collaborateur',
     route: '/me',
     badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-300',
-    description: 'Accès espace collaborateur OCP, réservation bureaux, calendrier & badge.',
+    description: 'Accès espace collaborateur, réservation bureaux, calendrier & badge.',
     permissions: ['book_desks', 'view_my_reservations', 'check_in_own']
   },
   receptionist: {
@@ -47,7 +47,7 @@ export const ROLE_CONFIGS: Record<UserRole, RoleConfig> = {
     label: 'Directeur de Site',
     route: '/direction',
     badgeColor: 'bg-rose-100 text-rose-800 border-rose-300',
-    description: 'Tableau de bord exécutif, KPIs stratégiques, rapports occupation OCP Safi.',
+    description: 'Tableau de bord exécutif, KPIs stratégiques, rapports occupation Safi.',
     permissions: ['view_executive_kpis', 'export_executive_reports']
   },
   admin: {
@@ -79,7 +79,7 @@ export const ROLE_CONFIGS: Record<UserRole, RoleConfig> = {
     label: 'Gardien Sécurité',
     route: '/security',
     badgeColor: 'bg-slate-200 text-slate-800 border-slate-400',
-    description: 'Contrôle accès port OCP, badges en direct, liste d’évacuation urgence.',
+    description: 'Contrôle accès, badges en direct, liste d’évacuation urgence.',
     permissions: ['view_security_logs', 'evacuation_roster', 'badge_validation']
   }
 };
@@ -91,7 +91,7 @@ export const DEFAULT_USERS_BY_ROLE: Record<UserRole, UserProfile> = {
     full_name: 'Youssef El Amrani',
     department: 'Digital Factory',
     role: 'collaborator',
-    badge_number: 'OCP-SAF-8821',
+    badge_number: 'XF-SAF-8821',
     status: 'active'
   },
   receptionist: {
@@ -100,7 +100,7 @@ export const DEFAULT_USERS_BY_ROLE: Record<UserRole, UserProfile> = {
     full_name: 'Khadija Mansour',
     department: 'Accueil & Services Bâtiment',
     role: 'receptionist',
-    badge_number: 'OCP-SAF-0012',
+    badge_number: 'XF-SAF-0012',
     status: 'active'
   },
   building_manager: {
@@ -109,7 +109,7 @@ export const DEFAULT_USERS_BY_ROLE: Record<UserRole, UserProfile> = {
     full_name: 'Mehdi Chraibi',
     department: 'Facility & Asset Management',
     role: 'building_manager',
-    badge_number: 'OCP-SAF-0544',
+    badge_number: 'XF-SAF-0544',
     status: 'active'
   },
   gci_manager: {
@@ -118,7 +118,7 @@ export const DEFAULT_USERS_BY_ROLE: Record<UserRole, UserProfile> = {
     full_name: 'Fatima-Zahra Benali',
     department: 'Gouvernance Chimie & Intégration',
     role: 'gci_manager',
-    badge_number: 'OCP-SAF-1090',
+    badge_number: 'XF-SAF-1090',
     status: 'active'
   },
   executive_assistant: {
@@ -127,16 +127,16 @@ export const DEFAULT_USERS_BY_ROLE: Record<UserRole, UserProfile> = {
     full_name: 'Sanaa Berrada',
     department: 'Secrétariat Général & Direction',
     role: 'executive_assistant',
-    badge_number: 'OCP-SAF-0005',
+    badge_number: 'XF-SAF-0005',
     status: 'active'
   },
   director: {
     id: 'usr-dir-1',
     email: 'directeur.safi@ocpgroup.ma',
     full_name: 'Dr. Hassan Alami',
-    department: 'Direction Générale OCP Safi',
+    department: 'Direction Générale',
     role: 'director',
-    badge_number: 'OCP-SAF-0001',
+    badge_number: 'XF-SAF-0001',
     status: 'active'
   },
   admin: {
@@ -145,7 +145,7 @@ export const DEFAULT_USERS_BY_ROLE: Record<UserRole, UserProfile> = {
     full_name: 'Omar Bennani',
     department: 'Systèmes d’Information & XFactory',
     role: 'admin',
-    badge_number: 'OCP-SAF-9901',
+    badge_number: 'XF-SAF-9901',
     status: 'active'
   },
   super_admin: {
@@ -154,7 +154,7 @@ export const DEFAULT_USERS_BY_ROLE: Record<UserRole, UserProfile> = {
     full_name: 'Amine Benchekroun',
     department: 'Architecte Enterprise & Cloud',
     role: 'super_admin',
-    badge_number: 'OCP-SAF-0000',
+    badge_number: 'XF-SAF-0000',
     status: 'active'
   },
   it_admin: {
@@ -163,7 +163,7 @@ export const DEFAULT_USERS_BY_ROLE: Record<UserRole, UserProfile> = {
     full_name: 'Reda Laraki',
     department: 'IT Infrastructure & Support',
     role: 'it_admin',
-    badge_number: 'OCP-SAF-4432',
+    badge_number: 'XF-SAF-4432',
     status: 'active'
   },
   security_guard: {
@@ -172,7 +172,7 @@ export const DEFAULT_USERS_BY_ROLE: Record<UserRole, UserProfile> = {
     full_name: 'Tariq Kadiri',
     department: 'Sûreté Industrielle & Contrôle Accès',
     role: 'security_guard',
-    badge_number: 'OCP-SAF-0099',
+    badge_number: 'XF-SAF-0099',
     status: 'active'
   }
 };

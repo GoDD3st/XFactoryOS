@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { ReservationService, ReservationConflictError } from '@/services/reservations/reservationService';
 import { validateBody } from '../middleware/validateBody';
-import { requireOwnerOrAdmin } from '../middleware/rbacMiddleware';
+import { requireOwnerOrAdmin, requirePermission } from '../middleware/rbacMiddleware';
 import { reservationLimiter } from '../middleware/rateLimiter';
 import { CreateReservationSchema, UpdateReservationStatusSchema } from '../validators';
 import { ReservationRepository } from '@/database/repositories/reservationRepository';
@@ -14,7 +14,7 @@ function getDbClient(req: { headers: { authorization?: string } }) {
 
 export const reservationsRouter = Router();
 
-// GET /api/reservations — Authenticated users only
+// GET /api/reservations - Authenticated users only
 reservationsRouter.get('/', async (req, res) => {
   try {
     const dbClient = getDbClient(req);
@@ -25,8 +25,30 @@ reservationsRouter.get('/', async (req, res) => {
   }
 });
 
-// POST /api/reservations — Create reservation (Rate limited + Zod validated + Zero-trust user identity)
-reservationsRouter.post('/', reservationLimiter, validateBody(CreateReservationSchema), async (req, res) => {
+// POST /api/reservations - Create reservation (Rate limited + Zod validated + Zero-trust user identity)
+//
+// SRS §13 row "Réserver poste standard": C for every role EXCEPT Security and Visitor, which are
+// X. This route previously had no role or permission guard at all - the `reserve_standard`
+// permission existed in the policy table but was referenced nowhere in the codebase, so any
+// authenticated user could book, including the roles the matrix forbids.
+const RESERVE_FALLBACK_ROLES = [
+  'collaborator',
+  'receptionist',
+  'building_manager',
+  'gci_manager',
+  'executive_assistant',
+  'director',
+  'admin',
+  'super_admin',
+  'it_admin',
+] as const;
+
+reservationsRouter.post(
+  '/',
+  reservationLimiter,
+  requirePermission('reserve_standard', 'create', RESERVE_FALLBACK_ROLES),
+  validateBody(CreateReservationSchema),
+  async (req, res) => {
   try {
     const dbClient = getDbClient(req);
     const payload = {
@@ -49,7 +71,7 @@ reservationsRouter.post('/', reservationLimiter, validateBody(CreateReservationS
   }
 });
 
-// PATCH /api/reservations/:id/status — Ownership check (Only owner or admin can update)
+// PATCH /api/reservations/:id/status - Ownership check (Only owner or admin can update)
 reservationsRouter.patch(
   '/:id/status',
   requireOwnerOrAdmin(async (req) => {
@@ -68,7 +90,7 @@ reservationsRouter.patch(
   }
 );
 
-// DELETE /api/reservations/:id — Ownership check (Only owner or admin can delete)
+// DELETE /api/reservations/:id - Ownership check (Only owner or admin can delete)
 reservationsRouter.delete(
   '/:id',
   requireOwnerOrAdmin(async (req) => {

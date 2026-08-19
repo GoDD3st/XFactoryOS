@@ -43,7 +43,8 @@ export class ApprovalRepository {
       const { data, error } = await db
         .from('approval_requests')
         .select(
-          '*, requester:users!approval_requests_requested_by_fkey(full_name, department), reservations(start_at, end_at, purpose, workstations(code))'
+          '*, requester:users!approval_requests_requested_by_fkey(full_name, department), ' +
+            'reservations(start_at, end_at, purpose, workstations(code, clusters(name)))'
         )
         .order('created_at', { ascending: false });
 
@@ -55,13 +56,34 @@ export class ApprovalRepository {
             ? Math.max(1, Math.round((new Date(endAt).getTime() - new Date(startAt).getTime()) / 86400000))
             : undefined;
 
+          // Read the clock times in LOCAL time, the way the reservation was written. The approver
+          // is deciding on "08:00-18:00", and a UTC read would shift that by the server offset -
+          // the same defect already fixed in waitingListRepository.
+          const localTime = (iso?: string) => {
+            if (!iso) return undefined;
+            const d = new Date(iso);
+            return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+          };
+          const startTime = localTime(startAt);
+          const endTime = localTime(endAt);
+
+          // Occupancy hours, not wall-clock: the daily window times the number of days. This is
+          // the figure BR-06 asks the approver to weigh.
+          let totalHours: number | undefined;
+          if (startTime && endTime && durationDays) {
+            const [sh, sm] = startTime.split(':').map(Number);
+            const [eh, em] = endTime.split(':').map(Number);
+            const dailyHours = (eh * 60 + em - (sh * 60 + sm)) / 60;
+            if (dailyHours > 0) totalHours = Math.round(dailyHours * durationDays * 10) / 10;
+          }
+
           return {
             id: a.id,
             reservation_id: a.reservation_id || '',
             requester_id: a.requested_by,
             requester_name: a.requester?.full_name || 'Collaborateur Safi',
-            user_department: a.requester?.department || 'OCP Safi Team',
-            // Rows written before the approver_role column existed have no stored value —
+            user_department: a.requester?.department || 'Digital Factory',
+            // Rows written before the approver_role column existed have no stored value - 
             // 'director' matches their original (client-only, never persisted) default.
             approver_role: a.approver_role || 'director',
             status: a.status === 'INFO_REQUESTED' ? 'needs_info' : (a.status.toLowerCase() as any),
@@ -72,9 +94,12 @@ export class ApprovalRepository {
             decided_at: a.decided_at,
             reservation_date: startAt ? new Date(startAt).toISOString().split('T')[0] : undefined,
             end_date: endAt ? new Date(endAt).toISOString().split('T')[0] : undefined,
+            start_time: startTime,
+            end_time: endTime,
             duration_days: durationDays,
+            total_hours: totalHours,
             workstation_code: a.reservations?.workstations?.code,
-            cluster_name: undefined,
+            cluster_name: a.reservations?.workstations?.clusters?.name,
           };
         });
         this.saveLocalApprovals(dbMapped);
@@ -141,7 +166,7 @@ export class ApprovalRepository {
     decisionNote: string,
     deciderId: string
   ): Promise<boolean> {
-    // DB enum approval_status is PENDING/APPROVED/REJECTED/INFO_REQUESTED — 'NEEDS_INFO' isn't
+    // DB enum approval_status is PENDING/APPROVED/REJECTED/INFO_REQUESTED - 'NEEDS_INFO' isn't
     // a valid value and would fail the write with a Postgres enum error.
     const dbStatus = status === 'approved' ? 'APPROVED' : status === 'needs_info' ? 'INFO_REQUESTED' : 'REJECTED';
 
@@ -172,20 +197,52 @@ export class ApprovalRepository {
     return true;
   }
 
+  /**
+   * BPMN D2 "UPDATE --> REVIEW": the requester completes the motif after a DEMANDER INFO decision
+   * and the request goes back into the approver's queue.
+   *
+   * This previously wrote to localStorage only and returned true unconditionally. The database row
+   * stayed INFO_REQUESTED forever while the UI announced the request had been re-submitted, so the
+   * approver never saw it again - the loop silently dead-ended. It now writes to the database and
+   * reports whether it actually succeeded.
+   *
+   * Resetting to PENDING and clearing the previous decision is what puts it back in front of the
+   * approver; leaving decision_reason set would show the old "missing information" note against a
+   * request that has since been completed.
+   */
   static async updateApprovalObjective(
     id: string,
     newObjective: string,
     newReason: string
   ): Promise<boolean> {
-    const current = this.getLocalApprovals();
-    const target = current.find((a) => a.id === id);
-    if (target) {
-      target.objective = newObjective;
-      target.reason = newReason;
-      target.status = 'pending';
-      target.decision_note = undefined;
-      this.saveLocalApprovals(current);
+    try {
+      const db = await resolveClient();
+      const { data, error } = await db
+        .from('approval_requests')
+        .update({
+          objective: newObjective,
+          decision_reason: newReason,
+          status: 'PENDING',
+          decided_by: null,
+          decided_at: null,
+        })
+        .eq('id', id)
+        // Only a request actually awaiting completion may be re-submitted: without this an
+        // already-approved or refused decision could be reopened by replaying the call.
+        .eq('status', 'INFO_REQUESTED')
+        // .select() is what makes the guard real. An UPDATE matching zero rows is not an error in
+        // PostgREST, so checking `error` alone reported success for a request that was never
+        // eligible - a replay of this call looked like it had reopened a decided request.
+        .select('id');
+
+      if (error) {
+        console.warn('Re-soumission de la demande impossible:', error.message);
+        return false;
+      }
+      return (data?.length ?? 0) > 0;
+    } catch (err) {
+      console.warn('Re-soumission de la demande impossible:', err);
+      return false;
     }
-    return true;
   }
 }

@@ -60,7 +60,18 @@ export function hasAdminClient(): boolean {
   return getAdminClient() !== null;
 }
 
-/** Server-only admin client — throws if service role key is missing. */
+/**
+ * Fresh anon-key client with no persisted session - used only to verify a password via
+ * signInWithPassword (step-up re-authentication before a sensitive action) without touching or
+ * replacing the caller's own active session/token.
+ */
+export function createVerificationClient(): SupabaseClient {
+  return createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
+
+/** Server-only admin client - throws if service role key is missing. */
 export function requireAdminClient(): SupabaseClient {
   const admin = getAdminClient();
   if (!admin) {

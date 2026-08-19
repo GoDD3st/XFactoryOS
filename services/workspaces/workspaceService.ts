@@ -4,6 +4,12 @@ import { ReservationRepository } from '@/database/repositories/reservationReposi
 import { Reservation } from '@/frontend/src/types';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '@/database/client';
+import {
+  deriveSeatAvailability,
+  toHHMM,
+  DEFAULT_BUSINESS_START,
+  DEFAULT_BUSINESS_END,
+} from './seatAvailability';
 
 export const INITIAL_CLUSTERS: Cluster[] = [
   { id: 'cl-a', code: 'CL-A', name: 'Cluster A', description: 'Cluster A', desk_count: 4, is_management_only: false, enabled: true, location_zone: 'Openspace', workstations: [] },
@@ -33,14 +39,42 @@ export class WorkspaceService {
     return this.generateDefaultWorkstations();
   }
 
-  static async fetchClustersWithOverlays(): Promise<Cluster[]> {
+  /**
+   * Seat grid for a given day and time window.
+   *
+   * `options.date` / `startTime` / `endTime` describe the slot the caller is looking at; seats are
+   * coloured relative to THAT window. Omitting them means "today, whole business day", which is
+   * what the read-only dashboards want.
+   *
+   * This used to ignore date and time entirely - one reservation on a seat painted it 'réservé' on
+   * every date forever, and a `Map` keyed by seat kept only the last booking, so a seat with two
+   * bookings reported just one of them. Availability is now computed per seat from every
+   * reservation touching that day (see seatAvailability.ts).
+   */
+  static async fetchClustersWithOverlays(options?: {
+    date?: string;
+    startTime?: string;
+    endTime?: string;
+    businessStart?: string;
+    businessEnd?: string;
+  }): Promise<Cluster[]> {
     const wsMap = await WorkstationRepository.getWorkstations();
     const clusters = await WorkstationRepository.getClusters();
+
+    const date = options?.date || new Date().toISOString().split('T')[0];
+    const businessStart = options?.businessStart || DEFAULT_BUSINESS_START;
+    const businessEnd = options?.businessEnd || DEFAULT_BUSINESS_END;
+    const windowStart = options?.startTime || businessStart;
+    const windowEnd = options?.endTime || businessEnd;
 
     let reservations: Reservation[] = [];
     if (typeof window !== 'undefined') {
       const { ReservationService } = await import('../reservations/reservationService');
-      reservations = ReservationService.readCachedReservations();
+      // Was readCachedReservations(): the grid rendered whatever localStorage happened to hold, so
+      // a seat just booked in this session could still show free until something else refreshed
+      // the cache. syncFromDatabase fetches fresh and falls back to that same cache on failure,
+      // and deliberately does not re-dispatch 'xfactory_reservations_changed' - no refresh loop.
+      reservations = await ReservationService.syncFromDatabase();
     } else {
       try {
         const { getAdminClient } = await import('@/database/serverClient');
@@ -53,28 +87,52 @@ export class WorkspaceService {
       }
     }
 
-    const reservedStatuses = new Set(['confirmée', 'check-in', 'en attente']);
-    const reservedByWorkstationId = new Map<string, Reservation>();
-    const reservedByWorkstationCode = new Map<string, Reservation>();
+    // Every reservation touching a seat is kept, not just the last one - a seat booked 08:00-09:00
+    // and 14:00-16:00 has two occupied stretches and a bookable gap between them.
+    const byWorkstationId = new Map<string, Reservation[]>();
+    const byWorkstationCode = new Map<string, Reservation[]>();
+
+    const push = (map: Map<string, Reservation[]>, key: string, r: Reservation) => {
+      const list = map.get(key);
+      if (list) list.push(r);
+      else map.set(key, [r]);
+    };
 
     reservations.forEach((r) => {
-      if (!reservedStatuses.has(r.status)) return;
-      if (r.workstation_id) reservedByWorkstationId.set(r.workstation_id, r);
-      if (r.workstation_code) reservedByWorkstationCode.set(r.workstation_code, r);
+      if (r.workstation_id) push(byWorkstationId, r.workstation_id, r);
+      if (r.workstation_code) push(byWorkstationCode, r.workstation_code, r);
     });
 
     const applyReservationOverlay = (ws: Workstation): Workstation => {
       if (ws.status === 'maintenance' || ws.status === 'management_reserved') return ws;
 
-      const activeRes =
-        reservedByWorkstationId.get(ws.id) || reservedByWorkstationCode.get(ws.code);
+      // Prefer the id index; fall back to code for rows whose workstation_id didn't resolve.
+      const seatReservations = byWorkstationId.get(ws.id) || byWorkstationCode.get(ws.code) || [];
+      if (seatReservations.length === 0) return ws;
 
-      if (!activeRes) return ws;
+      const availability = deriveSeatAvailability(
+        seatReservations,
+        date,
+        windowStart,
+        windowEnd,
+        businessStart,
+        businessEnd
+      );
 
-      const overlayStatus: SeatStatus =
-        activeRes.status === 'check-in' ? 'occupé' : 'réservé';
+      if (availability.intervals.length === 0) return ws;
 
-      return { ...ws, status: overlayStatus, reservable: false };
+      return {
+        ...ws,
+        status: availability.status as SeatStatus,
+        // A partially-booked seat stays reservable: the free gaps are genuinely bookable, and the
+        // conflict check on submit is what actually guards the slot.
+        reservable: ws.reservable && availability.windowFree,
+        availability: {
+          busy: availability.intervals.map((i) => ({ start: toHHMM(i.start), end: toHHMM(i.end) })),
+          gaps: availability.gaps.map((i) => ({ start: toHHMM(i.start), end: toHHMM(i.end) })),
+          windowFree: availability.windowFree,
+        },
+      };
     };
 
     const targetClusters = clusters.length > 0 ? clusters : INITIAL_CLUSTERS;
@@ -135,9 +193,9 @@ export class WorkspaceService {
     dbClient?: SupabaseClient
   ): Promise<Record<string, Workstation[]>> {
     // Was reading getSavedWorkstations(), which on the server (no `window`) falls straight
-    // through to generateDefaultWorkstations() — synthetic seed data with fake ids like
+    // through to generateDefaultWorkstations() - synthetic seed data with fake ids like
     // 'cl-a-seat-1'. The real UUID sent from the browser never matched, so `seat` was always
-    // undefined and this silently no-op'd — the button appeared to work (200 OK) but never
+    // undefined and this silently no-op'd - the button appeared to work (200 OK) but never
     // touched the database. Same bug as toggleExtensionSeatVisibility below.
     const workstations = await WorkstationRepository.getWorkstations(dbClient);
     const clusterSeats = workstations[clusterId] || workstations[clusterId.toLowerCase()];
@@ -149,7 +207,7 @@ export class WorkspaceService {
     const newStatus: SeatStatus = isMaintenance ? 'maintenance' : 'disponible';
     const updated = await WorkstationRepository.updateWorkstationStatus(seat.id, newStatus, !isMaintenance, dbClient);
     if (!updated) {
-      throw new Error(`Échec de la mise à jour du poste ${seat.code} — le changement de statut n'a pas été persisté.`);
+      throw new Error(`Échec de la mise à jour du poste ${seat.code} - le changement de statut n'a pas été persisté.`);
     }
     seat.status = newStatus;
 
@@ -186,7 +244,7 @@ export class WorkspaceService {
 
     const updated = await WorkstationRepository.updateWorkstation(seat.id, { metadataPatch: { visibleToUsers: visible } }, dbClient);
     if (!updated) {
-      throw new Error(`Échec de la mise à jour du poste ${seat.code} — la visibilité n'a pas été persistée.`);
+      throw new Error(`Échec de la mise à jour du poste ${seat.code} - la visibilité n'a pas été persistée.`);
     }
     seat.visibleToUsers = visible;
 
@@ -203,6 +261,127 @@ export class WorkspaceService {
     );
 
     return workstations;
+  }
+
+  /**
+   * SRS §13 "Gérer clusters" = CRUD for Administrator/Super Admin. Before this, `clusters` rows
+   * were only ever inserted by database/seeder.ts - there was no create path in the application
+   * at all, so the C in CRUD did not exist.
+   */
+  static async createCluster(
+    payload: { code: string; name: string; deskCount?: number; isManagement?: boolean },
+    actorId?: string,
+    actorName?: string,
+    actorRole?: string,
+    dbClient?: SupabaseClient
+  ): Promise<{ id: string; code: string; name: string }> {
+    const db = dbClient || supabase;
+    const code = payload.code.trim().toUpperCase();
+
+    const { data: existing } = await db.from('clusters').select('id').eq('code', code).maybeSingle();
+    if (existing) throw new Error(`Un cluster portant le code ${code} existe déjà.`);
+
+    // clusters.space_id is NOT NULL - inherit the space the existing clusters belong to rather
+    // than inventing one, so a new cluster lands on the same site as the rest.
+    const { data: anyCluster } = await db.from('clusters').select('space_id').limit(1).maybeSingle();
+    if (!anyCluster?.space_id) throw new Error("Aucun espace de référence trouvé pour rattacher le cluster.");
+
+    const { data: created, error } = await db
+      .from('clusters')
+      .insert({
+        space_id: anyCluster.space_id,
+        code,
+        name: payload.name.trim(),
+        desk_count: payload.deskCount ?? 4,
+        management_reserved: payload.isManagement ?? false,
+        enabled: true,
+      })
+      .select('id, code, name')
+      .single();
+
+    if (error || !created) throw new Error(`Échec de la création du cluster : ${error?.message}`);
+
+    const { AuditRepository } = await import('@/database/repositories/auditRepository');
+    await AuditRepository.logEvent(
+      'CREATE',
+      actorId || 'system',
+      actorName || 'Administrateur',
+      actorRole || 'admin',
+      created.code,
+      `Cluster ${created.code} (${created.name}) créé.`,
+      '10.120.4.18',
+      'cluster_management'
+    );
+
+    return created;
+  }
+
+  /**
+   * Soft delete (`enabled = false`): the cluster and its seats leave the booking flows and the
+   * Digital Twin, but reservations and audit history remain intact. Pass `enabled: true` to
+   * restore. Refuses while the cluster still holds active reservations, since disabling it would
+   * strand people who already booked a seat there.
+   */
+  static async setClusterEnabled(
+    clusterId: string,
+    enabled: boolean,
+    actorId?: string,
+    actorName?: string,
+    actorRole?: string,
+    dbClient?: SupabaseClient
+  ): Promise<void> {
+    const db = dbClient || supabase;
+
+    const { data: cluster } = await db.from('clusters').select('code, name').eq('id', clusterId).maybeSingle();
+    if (!cluster) throw new Error('Cluster introuvable.');
+
+    if (!enabled) {
+      const { data: seats } = await db.from('workstations').select('id').eq('cluster_id', clusterId);
+      const seatIds = (seats || []).map((s: any) => s.id);
+
+      if (seatIds.length > 0) {
+        const { count } = await db
+          .from('reservations')
+          .select('id', { count: 'exact', head: true })
+          .in('workstation_id', seatIds)
+          // Real reservation_status enum labels - 'PENDING'/'CHECKED_IN' do not exist and would
+          // fail the query with 22P02 rather than returning zero rows.
+          .in('status', ['PENDING_APPROVAL', 'CONFIRMED', 'CHECK_IN_PENDING', 'OCCUPIED'])
+          .gte('end_at', new Date().toISOString());
+
+        if ((count ?? 0) > 0) {
+          throw new Error(
+            `Impossible de désactiver ${cluster.code} : ${count} réservation(s) active(s) sur ses postes. Annulez-les d'abord.`
+          );
+        }
+      }
+    }
+
+    const { error } = await db.from('clusters').update({ enabled, updated_at: new Date().toISOString() }).eq('id', clusterId);
+    if (error) throw new Error(`Échec de la mise à jour du cluster : ${error.message}`);
+
+    const { AuditRepository } = await import('@/database/repositories/auditRepository');
+    await AuditRepository.logEvent(
+      enabled ? 'UPDATE' : 'DELETE',
+      actorId || 'system',
+      actorName || 'Administrateur',
+      actorRole || 'admin',
+      cluster.code,
+      `Cluster ${cluster.code} ${enabled ? 'réactivé' : 'désactivé (suppression logique)'}.`,
+      '10.120.4.18',
+      'cluster_management'
+    );
+  }
+
+  /** Cluster code (CL-F) for audit targets; returns the raw id if it can't be resolved. */
+  private static async resolveClusterCode(clusterId: string, dbClient?: SupabaseClient): Promise<string> {
+    try {
+      const db = dbClient || supabase;
+      const { data } = await db.from('clusters').select('code').eq('id', clusterId).maybeSingle();
+      return data?.code || clusterId;
+    } catch {
+      return clusterId;
+    }
   }
 
   static async toggleManagementClusterLock(
@@ -224,7 +403,7 @@ export class WorkspaceService {
         seat.reservable = unlocked;
         const updated = await WorkstationRepository.updateWorkstationStatus(seat.id, newStatus, unlocked, dbClient);
         if (!updated) {
-          throw new Error(`Échec de mise à jour du poste ${seat.code} — le déblocage du cluster n'a pas été persisté.`);
+          throw new Error(`Échec de mise à jour du poste ${seat.code} - le déblocage du cluster n'a pas été persisté.`);
         }
       }
 
@@ -234,21 +413,26 @@ export class WorkspaceService {
         window.dispatchEvent(new CustomEvent('xfactory_clusters_changed'));
       }
 
+      // Log the cluster CODE, not its UUID: target_resource is what the audit screen's
+      // "Entité / Cible" filter shows, and a raw UUID there is unreadable. Falls back to the id
+      // only if the cluster can't be resolved.
+      const clusterCode = await this.resolveClusterCode(clusterId, dbClient);
+
       const { AuditRepository } = await import('@/database/repositories/auditRepository');
       await AuditRepository.logEvent(
         unlocked ? 'CLUSTER_ACTIVATE' : 'CLUSTER_DEACTIVATE',
         actorId || 'admin-current',
         actorName || 'Admin Direction Safi',
         'super_admin',
-        clusterId,
-        `Cluster Management ${clusterId.toUpperCase()} ${unlocked ? 'débloqué pour les utilisateurs' : 'verrouillé réservé Direction'}.`
+        clusterCode,
+        `Cluster Management ${clusterCode} ${unlocked ? 'débloqué pour les utilisateurs' : 'verrouillé réservé Direction'}.`
       );
     }
     return workstations;
   }
 
   /**
-   * Super Admin/Admin/Director/EA can mark ANY cluster VIP (not just the seeded CL-F/CL-G) —
+   * Super Admin/Admin/Director/EA can mark ANY cluster VIP (not just the seeded CL-F/CL-G) - 
    * toggling `clusters.management_reserved` and cascading the same seat-lock/unlock as
    * toggleManagementClusterLock. This is the first code path that ever writes that column
    * after seed time.
@@ -272,9 +456,13 @@ export class WorkspaceService {
     dbClient?: SupabaseClient
   ): Promise<{ id: string; user_id: string; full_name: string; email: string; assigned_at: string }[]> {
     const db = dbClient || supabase;
+    // cluster_vip_members has TWO foreign keys to users (user_id AND assigned_by), so the plain
+    // `users(...)` embed is ambiguous - PostgREST errors, which silently fell into the
+    // `error || !data` branch below and returned an empty list every time regardless of how many
+    // VIP members were actually assigned. Same bug class as UserRepository.getUsers().
     const { data, error } = await db
       .from('cluster_vip_members')
-      .select('id, user_id, assigned_at, users(full_name, email)')
+      .select('id, user_id, assigned_at, users!cluster_vip_members_user_id_fkey(full_name, email)')
       .eq('cluster_id', clusterId);
 
     if (error || !data) return [];
@@ -302,7 +490,7 @@ export class WorkspaceService {
         cluster_id: clusterId,
         user_id: userId,
         // Demo-mode actor ids are human-readable placeholders (e.g. 'usr-dir-1'), not real UUIDs
-        // — assigned_by is a nullable FK, so omit it rather than fail the whole insert.
+        // - assigned_by is a nullable FK, so omit it rather than fail the whole insert.
         assigned_by: isValidUuid(assignedBy) ? assignedBy : null,
       },
       { onConflict: 'cluster_id,user_id' }
@@ -355,7 +543,7 @@ export class WorkspaceService {
    * Adds the next sequential extension seat (5-8) to a cluster. Hard-capped at 8 per cluster.
    * `reason` is mandatory (governance: every ad-hoc seat addition must state why). `isPublic`
    * controls whether the seat is open to any collaborator (reservable=true) or restricted the
-   * same way a VIP-locked seat is (reservable=false — bypassable only by role or a
+   * same way a VIP-locked seat is (reservable=false - bypassable only by role or a
    * cluster_vip_members entry, see ReservationService.createReservation's BR-07 check).
    * `isTemporary` + `endAt` are read back by expireTemporarySeats() below, which the server ticker
    * calls every 60s to auto-disable seats whose window has elapsed.
@@ -430,7 +618,7 @@ export class WorkspaceService {
       actorName || 'Direction',
       actorRole || 'director',
       created.code,
-      `Poste d'extension ${created.code} ajouté au cluster ${cluster.code} (siège ${nextSeat}/8) — ${visibilityLabel}, ${durationLabel}. Motif : ${options?.reason || 'non renseigné'}.`,
+      `Poste d'extension ${created.code} ajouté au cluster ${cluster.code} (siège ${nextSeat}/8) - ${visibilityLabel}, ${durationLabel}. Motif : ${options?.reason || 'non renseigné'}.`,
       '10.120.4.18',
       'cluster_management'
     );
