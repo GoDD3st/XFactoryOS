@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import * as XLSX from 'xlsx';
 import {
   SiteTelemetrySummary,
@@ -15,6 +16,7 @@ import {
   getLastTelemetryFailure,
 } from '@/services/api/telemetryApi';
 import { apiLogExport } from '@/services/api/auditApi';
+import { useAuth } from '../../auth/context/AuthContext';
 import { BarChart3, TrendingUp, Clock, AlertTriangle, Download, Sparkles, Building, Layers, FileSpreadsheet, Printer, LineChart, CheckCircle2, CalendarClock, Users, Sparkle } from 'lucide-react';
 
 const TREND_PRESETS: { label: string; days: number }[] = [
@@ -27,6 +29,7 @@ const TREND_PRESETS: { label: string; days: number }[] = [
 ];
 
 export const ExecutiveDashboard: React.FC = () => {
+  const { currentUser } = useAuth();
   const [telemetry, setTelemetry] = useState<SiteTelemetrySummary | null>(null);
   const [noShowStats, setNoShowStats] = useState<{ today: number; thisWeek: number }>({ today: 0, thisWeek: 0 });
   const [trends, setTrends] = useState<DailyReservationTrend[]>([]);
@@ -83,25 +86,60 @@ export const ExecutiveDashboard: React.FC = () => {
     );
   }
 
-  const exportReportCSV = () => {
-    let csv = 'Cluster;Total;Occupés;Réservés;Disponibles;Maintenance;Taux Occup %\n';
-    telemetry.clusters.forEach((c) => {
-      csv += `${c.clusterName};${c.totalDesks};${c.occupiedDesks};${c.reservedDesks};${c.availableDesks};${c.maintenanceDesks};${c.occupancyRate}%\n`;
-    });
+  // ---------------------------------------------------------------------------
+  // Report model
+  //
+  // The three buttons used to disagree about what "the report" was. CSV carried the cluster table
+  // and nothing else, Excel carried clusters plus trends, and PDF was a bare window.print() over
+  // the live screen - navigation bar, export buttons, hover states and all, which is why it read
+  // as a screenshot rather than a document. None of them carried the KPIs shown on the page, the
+  // department split, the forecast, or so much as a generation date, so two exports of the same
+  // dashboard taken a week apart were indistinguishable.
+  //
+  // One model, three renderings. Every export now answers the same questions - when, by whom,
+  // over which window, and what the figures were - and they cannot drift apart because they all
+  // read from here.
+  // ---------------------------------------------------------------------------
 
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Report_XFactory_Telemetry_${new Date().toISOString().split('T')[0]}.csv`;
-    a.click();
+  /** Header block repeated at the top of every rendering. */
+  const reportMeta = (): [string, string][] => [
+    ['Site', telemetry.siteName],
+    ['Rapport', 'Dashboard Exécutif & Télémétrie'],
+    ['Généré le', new Date().toLocaleString('fr-FR')],
+    ['Généré par', currentUser.full_name + ' (' + currentUser.department + ')'],
+    ['Fenêtre de tendance', trendPeriodLabel],
+    ['Relevé télémétrie', new Date(telemetry.timestamp).toLocaleString('fr-FR')],
+  ];
 
-    apiLogExport('dashboard-telemetry.csv', 'Export CSV du dashboard exécutif (télémétrie clusters).');
-  };
+  /** The KPI cards on screen, in the order they are read, plus the forecast beneath them. */
+  const kpiRows = (): [string, string | number][] => [
+    ["Taux d'occupation live (%)", telemetry.overallOccupancyRate],
+    ['Capacité totale (postes)', telemetry.totalCapacity],
+    ['Occupations actives (postes)', telemetry.activeOccupancy],
+    ['Postes disponibles', availableTotal],
+    ['Postes réservés', reservedTotal],
+    ['Heures de pointe', telemetry.peakHourWindow],
+    ["No-shows aujourd'hui", noShowStats.today],
+    ['No-shows cette semaine', noShowStats.thisWeek],
+    ...(userDeptStats
+      ? ([
+          ["Utilisateurs actifs aujourd'hui", userDeptStats.activeToday],
+          ['Utilisateurs actifs cette semaine', userDeptStats.activeThisWeek],
+          ['Utilisateurs actifs ce mois', userDeptStats.activeThisMonth],
+        ] as [string, string | number][])
+      : []),
+    ...(prediction
+      ? ([
+          ['Prévision - date', prediction.predictedDate],
+          ["Prévision - taux d'occupation (%)", prediction.predictedOccupancyRate],
+          ['Prévision - forte affluence', prediction.isHighDemand ? 'Oui' : 'Non'],
+          ["Prévision - taille d'échantillon", prediction.sampleSize],
+        ] as [string, string | number][])
+      : []),
+  ];
 
-  // FR-87 "Export Excel des données agrégées"
-  const exportReportExcel = () => {
-    const clusterSheet = telemetry.clusters.map((c) => ({
+  const clusterRows = () =>
+    telemetry.clusters.map((c) => ({
       Cluster: c.clusterName,
       Code: c.clusterCode,
       Total: c.totalDesks,
@@ -109,25 +147,150 @@ export const ExecutiveDashboard: React.FC = () => {
       Réservés: c.reservedDesks,
       Disponibles: c.availableDesks,
       Maintenance: c.maintenanceDesks,
-      'Taux Occup. %': c.occupancyRate,
+      "Taux d'occupation (%)": c.occupancyRate,
     }));
-    const trendSheet = trends.map((t) => ({
+
+  const trendRows = () =>
+    trends.map((t) => ({
       Date: t.date,
       Réservations: t.count,
-      'No-Shows': t.noShows,
+      'No-shows': t.noShows,
     }));
 
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(clusterSheet), 'Clusters');
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(trendSheet), `Tendances ${trendDays}j`);
-    XLSX.writeFile(wb, `Report_XFactory_Telemetry_${new Date().toISOString().split('T')[0]}.xlsx`);
+  const departmentRows = () =>
+    (userDeptStats?.departmentUsage ?? []).map((d) => ({
+      Département: d.department,
+      Réservations: d.count,
+      'Part (%)': d.percentage,
+    }));
 
-    apiLogExport('dashboard-telemetry.xlsx', `Export Excel du dashboard exécutif (clusters + tendances ${trendDays}j).`);
+  const reportFileStem = () =>
+    'Rapport_XFactory_' +
+    telemetry.siteName.replace(/[^A-Za-z0-9]+/g, '-') +
+    '_' +
+    new Date().toISOString().split('T')[0];
+
+  const downloadBlob = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    // Without this the object URL - and the blob behind it - is held until a full page reload.
+    URL.revokeObjectURL(url);
   };
 
-  // FR-87 "Export PDF du dashboard" - print-to-PDF via the browser (no server-side PDF
-  // renderer in this stack); user picks "Enregistrer en PDF" in the print dialog.
+  // FR-87 "Export CSV". Semicolon-separated because the audience opens these in a French-locale
+  // Excel, where the comma is a decimal separator and a comma-separated file lands in one column.
+  const exportReportCSV = () => {
+    const esc = (v: unknown) => {
+      const str = String(v ?? '');
+      return /[";\n]/.test(str) ? '"' + str.replace(/"/g, '""') + '"' : str;
+    };
+    const section = (title: string, header: string[], rows: unknown[][]) =>
+      [title, header.map(esc).join(';'), ...rows.map((r) => r.map(esc).join(';')), ''].join('\n');
+
+    const clusters = clusterRows();
+    const trendsData = trendRows();
+    const departments = departmentRows();
+
+    const body = [
+      section('# SYNTHÈSE', ['Champ', 'Valeur'], reportMeta().map(([k, v]) => [k, v])),
+      section('# INDICATEURS', ['Indicateur', 'Valeur'], kpiRows().map(([k, v]) => [k, v])),
+      clusters.length
+        ? section('# CLUSTERS', Object.keys(clusters[0]), clusters.map((c) => Object.values(c)))
+        : '',
+      trendsData.length
+        ? section('# TENDANCES', Object.keys(trendsData[0]), trendsData.map((t) => Object.values(t)))
+        : '',
+      departments.length
+        ? section('# DÉPARTEMENTS', Object.keys(departments[0]), departments.map((d) => Object.values(d)))
+        : '',
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    // BOM first: without it Excel reads the file in the system codepage and every accented
+    // heading in this report arrives mangled.
+    downloadBlob(
+      new Blob(['﻿' + body], { type: 'text/csv;charset=utf-8' }),
+      reportFileStem() + '.csv'
+    );
+
+    apiLogExport(
+      reportFileStem() + '.csv',
+      'Export CSV du dashboard exécutif (synthèse, indicateurs, ' +
+        clusters.length +
+        ' clusters, tendances ' +
+        trendDays +
+        'j, départements).'
+    );
+  };
+
+  // FR-87 "Export Excel des données agrégées"
+  const exportReportExcel = () => {
+    const wb = XLSX.utils.book_new();
+
+    const summary = [
+      ...reportMeta().map(([k, v]) => ({ Champ: k, Valeur: v as string | number })),
+      { Champ: '', Valeur: '' },
+      ...kpiRows().map(([k, v]) => ({ Champ: k, Valeur: v })),
+    ];
+    const summarySheet = XLSX.utils.json_to_sheet(summary);
+    summarySheet['!cols'] = [{ wch: 34 }, { wch: 30 }];
+    XLSX.utils.book_append_sheet(wb, summarySheet, 'Synthèse');
+
+    const clusters = clusterRows();
+    const clusterSheet = XLSX.utils.json_to_sheet(clusters);
+    clusterSheet['!cols'] = [
+      { wch: 24 },
+      { wch: 10 },
+      { wch: 10 },
+      { wch: 12 },
+      { wch: 12 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 20 },
+    ];
+    XLSX.utils.book_append_sheet(wb, clusterSheet, 'Clusters');
+
+    const trendsData = trendRows();
+    if (trendsData.length) {
+      const trendSheet = XLSX.utils.json_to_sheet(trendsData);
+      trendSheet['!cols'] = [{ wch: 14 }, { wch: 14 }, { wch: 12 }];
+      // Sheet names are capped at 31 characters; "Tendances 730j" is comfortably inside it.
+      XLSX.utils.book_append_sheet(wb, trendSheet, 'Tendances ' + trendDays + 'j');
+    }
+
+    const departments = departmentRows();
+    if (departments.length) {
+      const deptSheet = XLSX.utils.json_to_sheet(departments);
+      deptSheet['!cols'] = [{ wch: 28 }, { wch: 14 }, { wch: 12 }];
+      XLSX.utils.book_append_sheet(wb, deptSheet, 'Départements');
+    }
+
+    XLSX.writeFile(wb, reportFileStem() + '.xlsx');
+
+    apiLogExport(
+      reportFileStem() + '.xlsx',
+      'Export Excel du dashboard exécutif (' +
+        wb.SheetNames.length +
+        ' feuilles : ' +
+        wb.SheetNames.join(', ') +
+        ').'
+    );
+  };
+
+  // FR-87 "Export PDF du dashboard" - still print-to-PDF, because this stack has no server-side
+  // PDF renderer and adding one for a single button is not worth the dependency. What changed is
+  // WHAT gets printed: the `@media print` block in src/styles.css hides the application shell and
+  // reveals the report document rendered at the bottom of this view, so the output is a paginated
+  // A4 report rather than a picture of the screen with a navigation bar across the top.
   const exportReportPDF = () => {
+    apiLogExport(
+      reportFileStem() + '.pdf',
+      'Export PDF du dashboard exécutif (rapport imprimable, tendances ' + trendDays + 'j).'
+    );
     window.print();
   };
 
@@ -477,6 +640,144 @@ export const ExecutiveDashboard: React.FC = () => {
           ))}
         </div>
       </div>
+
+      {/* ---------------------------------------------------------------------
+          Printable report document.
+
+          Hidden on screen, and the only thing visible on paper - see the
+          `@media print` block in src/styles.css, which hides the application
+          shell and reveals this. That is what turns the PDF button from a
+          picture of the screen into an actual paginated report.
+
+          Rendered through a portal onto <body> rather than in place. The print
+          rules position it absolutely, and left here it would resolve against
+          the nearest positioned ancestor and be clipped by any of them that
+          scrolls internally - or by .glass-panel, whose backdrop-filter makes
+          it a containing block for absolutely positioned descendants. As a
+          direct child of <body> none of that can reach it.
+
+          It is plain tables on purpose: bar charts, ring gauges and colour-coded
+          tiles are how you read a screen, not how you read a printout, and most
+          of them come out as empty rectangles once the browser drops background
+          graphics. The figures are the same ones the cards above show, because
+          both read from the same model.
+      --------------------------------------------------------------------- */}
+      {createPortal(
+        <div className="xf-print-report hidden">
+          <header className="xf-print-header">
+            <h1>{telemetry.siteName}</h1>
+            <p>Dashboard Exécutif &amp; Télémétrie — Module Smart Open Space Management</p>
+          </header>
+
+          <table className="xf-print-table xf-print-meta">
+            <tbody>
+              {reportMeta().map(([k, v]) => (
+                <tr key={k}>
+                  <th scope="row">{k}</th>
+                  <td>{v}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <h2>Indicateurs</h2>
+          <table className="xf-print-table">
+            <tbody>
+              {kpiRows().map(([k, v]) => (
+                <tr key={k}>
+                  <th scope="row">{k}</th>
+                  <td>{v}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <h2>Occupation par cluster</h2>
+          <table className="xf-print-table">
+            <thead>
+              <tr>
+                <th>Cluster</th>
+                <th>Code</th>
+                <th>Total</th>
+                <th>Occupés</th>
+                <th>Réservés</th>
+                <th>Disponibles</th>
+                <th>Maintenance</th>
+                <th>Taux</th>
+              </tr>
+            </thead>
+            <tbody>
+              {telemetry.clusters.map((c) => (
+                <tr key={c.clusterCode}>
+                  <td>{c.clusterName}</td>
+                  <td>{c.clusterCode}</td>
+                  <td>{c.totalDesks}</td>
+                  <td>{c.occupiedDesks}</td>
+                  <td>{c.reservedDesks}</td>
+                  <td>{c.availableDesks}</td>
+                  <td>{c.maintenanceDesks}</td>
+                  <td>{c.occupancyRate}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          {trends.length > 0 && (
+            <>
+              <h2>Tendance des réservations ({trendPeriodLabel})</h2>
+              <table className="xf-print-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Réservations</th>
+                    <th>No-shows</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {trends.map((t) => (
+                    <tr key={t.date}>
+                      <td>{t.date}</td>
+                      <td>{t.count}</td>
+                      <td>{t.noShows}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+
+          {(userDeptStats?.departmentUsage?.length ?? 0) > 0 && (
+            <>
+              <h2>Répartition par département</h2>
+              <table className="xf-print-table">
+                <thead>
+                  <tr>
+                    <th>Département</th>
+                    <th>Réservations</th>
+                    <th>Part</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {userDeptStats!.departmentUsage.map((d) => (
+                    <tr key={d.department}>
+                      <td>{d.department}</td>
+                      <td>{d.count}</td>
+                      <td>{d.percentage}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+
+          <footer className="xf-print-footer">
+            {telemetry.siteName} — document généré depuis XFactory OS le{' '}
+            {new Date().toLocaleString('fr-FR')} par {currentUser.full_name}. Données internes OCP,
+            diffusion restreinte.
+          </footer>
+        </div>,
+        document.body
+      )}
     </div>
   );
 };

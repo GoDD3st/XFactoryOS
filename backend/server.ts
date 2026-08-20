@@ -20,7 +20,7 @@ import { checkInOutRouter } from './routes/checkinout.routes';
 import { rolesRouter } from './routes/roles.routes';
 import { approvalRouter } from './routes/approval.routes';
 import { searchRouter } from './routes/search.routes';
-import { settingsRouter } from './routes/settings.routes';
+import { settingsRouter, brandingRouter } from './routes/settings.routes';
 import { historyRouter } from './routes/history.routes';
 import { cronRouter } from './routes/cron.routes';
 import { seedDatabaseIfEmpty } from '../database/seeder';
@@ -100,6 +100,12 @@ export function createExpressApp() {
 
   // ZERO-TRUST GLOBAL MIDDLEWARE: Rate limiting + JWT Verification for ALL /api/* routes
   app.use('/api', apiGeneralLimiter);
+
+  // Mounted BEFORE authenticateJWT, deliberately: the login screen needs the site name and logo
+  // to render, and it has no session yet. Rate limiting above still applies. It exposes only
+  // those two fields - see brandingRouter in routes/settings.routes.ts.
+  app.use('/api/branding', brandingRouter);
+
   app.use('/api', authenticateJWT);
 
   // Microservices Express Routers (All protected by JWT + RBAC guards)
