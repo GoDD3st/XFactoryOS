@@ -1,21 +1,40 @@
 import type { Request, Response } from 'express';
-import { createExpressApp } from '../backend/server';
+// The PRE-BUILT bundle, not ../backend/server.
+//
+// This package is "type": "module", so Vercel transpiles this file to ESM and runs it as ESM.
+// Importing `../backend/server` from here deployed a function whose very first statement was an
+// extensionless relative import - which Node's ESM resolver rejects outright - against a path that
+// did not exist in the lambda anyway, because nothing had compiled `backend/` to JavaScript:
+//
+//   ERR_MODULE_NOT_FOUND: Cannot find module '/var/task/backend/server'
+//     imported from /var/task/api/index.js
+//
+// Every route answered 500 on that, including ones that touch nothing. `tsc --noEmit` was happy
+// throughout: tsconfig sets moduleResolution "bundler", which permits extensionless specifiers
+// precisely because it assumes a bundler will resolve them. Nothing was bundling this entry.
+//
+// So the bundling is done explicitly. `npm run build:server` already existed for the self-hosted
+// `npm start` and does exactly what is needed - esbuild resolves the extensionless imports AND the
+// `@/*` tsconfig aliases that riddle backend/, and emits one self-contained CommonJS file. The
+// import below names it with its real extension, so ESM can resolve it, and a .cjs imported from
+// ESM hands back its module.exports as the default binding.
+//
+// vercel.json runs build:server as part of the build and pins the output with includeFiles, so the
+// file exists before this function is traced.
+import serverBundle from '../server-dist/server.cjs';
+
+const { createExpressApp } = serverBundle as { createExpressApp: () => (req: Request, res: Response) => void };
 
 /**
- * Vercel serverless entry point.
- *
- * createExpressApp() can refuse to build - assertDemoModeIsSafe() throws when a production
- * deployment is configured with DEMO_MODE=true. Left uncaught, that throw happens at module scope,
- * the function crashes on cold start, and every route in the application answers a bare 500 with
- * no body: /api/branding, /api/health, everything. The cause is legible only in the function log,
- * and only to someone who already suspects the boot sequence.
- *
- * Catching it does not soften the guard. A refusal still serves nothing - every request gets 503
- * and no route is reachable - but it says so, and the browser console shows a reason instead of an
- * unexplained 500 storm. The detail goes to the log; the response deliberately carries only enough
- * to point at the configuration, since anyone can call it.
+ * createExpressApp() can also refuse to build - assertDemoModeIsSafe() throws when a production
+ * deployment is configured with DEMO_MODE=true. Left uncaught that throw happens at module scope,
+ * the function dies on cold start, and every route returns a bare 500 with no body, which is
+ * indistinguishable from the packaging failure above. Catching it does not soften the guard: a
+ * refused app still serves nothing, every request gets 503 - but it says which failure it was.
+ * The detail goes to the log; the response carries only enough to point at the configuration,
+ * since anyone can call it.
  */
-let app: ReturnType<typeof createExpressApp> | null = null;
+let app: ((req: Request, res: Response) => void) | null = null;
 let bootError: Error | null = null;
 
 try {

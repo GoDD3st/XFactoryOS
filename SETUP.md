@@ -213,119 +213,44 @@ Both build from the same commit. The only difference is environment variables.
 
 ### If every route returns 500
 
-That is a boot failure, not a route bug - a request that touches nothing, `/api/branding` or
-`/api/health`, failing the same way as one that queries the database is the signature. `api/index.ts`
-calls `createExpressApp()` at module scope, so anything that throws there takes the whole function
-down on cold start and every path answers identically.
+That is a boot failure, not a route bug. The signature is a request that touches nothing -
+`/api/branding`, `/api/health` - failing exactly like one that queries the database.
+`api/index.ts` builds the app at module scope, so anything that throws there kills the function on
+cold start and every path answers identically. The reason is in the Vercel function log; the two
+that have actually happened:
 
-Since the fix in this session that surfaces as `503 BOOT_FAILED` with a message, and the reason is
-in the Vercel function log (`[BOOT] ...`). An older build shows a bare `500` with no body instead.
-
-The trap that produced it: `DEMO_MODE=true` on a Vercel **preview**. Vercel sets
-`NODE_ENV=production` on every deployment, previews included, and the guard used to treat that
-alone as proof of production - so the dev configuration this very table prescribes refused to
-start. It now reads `VERCEL_ENV` when present and only falls back to `NODE_ENV` when it is absent.
-Production is still refused; a preview is not.
-
-
-### Why production cannot accidentally become a demo
-
-`assertDemoModeIsSafe()` runs in `createExpressApp()`, so it fires on the serverless path too, not
-just on `startServer()` (which Vercel never calls). If `DEMO_MODE=true` while `VERCEL_ENV` or
-`NODE_ENV` is `production`, the app **throws on boot** rather than serving an open admin API. A
-deploy that is misconfigured fails visibly instead of quietly exposing everything.
-
-In dev mode it still boots, but prints a loud banner on every start.
-
-### What is actually stripped from the production bundle
-
-`VITE_DEMO_MODE` is a Vite compile-time constant, so `isDemoMode()` folds to `false` and the
-guarded branches are dead-code eliminated. Measured on a `VITE_DEMO_MODE=false` build:
-
-- `X-Demo-Role` header injection: **absent** (0 occurrences)
-- the demo user table and `switchRole` binding: **still present**
-
-Those remnants are inert - `switchRole` refuses outside demo mode, and the table holds fictitious
-names and emails, no credentials - but they are not *gone*. Removing them entirely means
-restructuring `AuthContext` so it never references demo state when the flag is false. The
-server-side bypass, which is the part that actually matters, is impossible in production
-regardless.
-
-### Never share a database between the two
-
-Dev has authentication disabled. Pointing it at the production Supabase project would hand anyone
-who finds the dev URL full admin access to real data through `X-Demo-Role`. Use a separate
-Supabase project and apply `database/migrations/` to it.
-
-
-## Background jobs
-
-Six sweeps keep the reservation lifecycle moving: no-show detection, auto check-out, check-in
-reminders, waiting-list offer expiry, temporary-seat expiry and cluster-authorisation re-lock.
-Self-hosted, they are `setInterval` tickers inside `backend/server.ts` and there is nothing to
-configure. On Vercel `startServer()` never runs, so every one of them has to be driven from
-outside by calling:
+**1. The backend was never bundled into the function.**
 
 ```
-GET /api/cron/sweep?job=all
-Authorization: Bearer $CRON_SECRET
+ERR_MODULE_NOT_FOUND: Cannot find module '/var/task/backend/server'
+  imported from /var/task/api/index.js
 ```
 
-`job=all` runs all six in parallel and reports each separately; it answers `200` when they all
-succeed and `500` when any failed, so a scheduler that only watches the status code still notices.
-Individual jobs remain addressable by name (`?job=no-show`) for debugging. Without `CRON_SECRET`
-set the route refuses to run at all, and an unauthenticated call is rejected - an open endpoint
-here would let anyone force no-show detection across the whole site.
+This package is `"type": "module"`, so Vercel transpiles the entry to ESM and runs it as ESM.
+`api/index.ts` used to `import { createExpressApp } from '../backend/server'` - an extensionless
+relative specifier, which Node's ESM resolver rejects, pointing at a path that did not exist in the
+lambda anyway because nothing had compiled `backend/` to JavaScript. `tsc --noEmit` never
+complained: tsconfig sets `moduleResolution: "bundler"`, which allows extensionless specifiers on
+the assumption that a bundler resolves them, and no bundler was involved for this entry.
 
-### Why the schedule is not in `vercel.json`
+Fixed by bundling explicitly. `npm run build:server` (esbuild) resolves both the extensionless
+imports and the `@/*` aliases used throughout `backend/`, emitting one self-contained
+`server-dist/server.cjs`; `api/index.ts` imports that by its real extension. `vercel.json` runs it
+as part of `buildCommand` and pins the output into the lambda with `functions.includeFiles`, rather
+than trusting dependency tracing to follow an import into a file that did not exist when the source
+was uploaded. If you change how the server is built, keep those three in step.
 
-It used to be, and it could not have worked. Vercel's Hobby plan permits at most one cron run per
-day and **rejects a finer expression at deploy time** rather than degrading quietly, so the six
-`*/5` and `0 * * * *` entries would have failed the deployment outright. Daily resolution is not a
-workable fallback either: no-show detection is what releases a desk into the BPMN D5 waiting-list
-cascade, so a seat freed at 09:05 would not reach the queue until the following day, and a
-15-minute waiting-list offer would expire roughly 96 times before anything noticed.
+**2. `DEMO_MODE=true` on a deployment the guard reads as production.**
 
-So `crons` is gone from `vercel.json` and the schedule lives with an external caller. Pick one:
+`assertDemoModeIsSafe()` refuses to start rather than serve an app whose authentication is
+bypassable by an `X-Demo-Role` header. It used to treat `NODE_ENV === 'production'` as proof of
+production, and Vercel sets that on *every* deployment, previews included - so the dev
+configuration this document prescribes could not boot. It now reads `VERCEL_ENV` when present and
+falls back to `NODE_ENV` only when it is absent. Production is still refused; a preview is not.
 
-| Option | Notes |
-|---|---|
-| **External pinger** (cron-job.org, UptimeRobot, Better Stack) | Simplest. One URL, one bearer header, intervals down to a minute, no runner minutes to pay for. Recommended on Hobby. |
-| **GitHub Actions** - `.github/workflows/cron-sweep.yml`, already in the repo | Needs repository secret `CRON_SECRET` and variable `APP_URL`. Free on public repos. On a **private** repo, `*/5` is 288 billed runs a day and will exhaust the free monthly allowance on its own - widen the interval or use a pinger instead. |
-| **Vercel Pro** | Restores `crons` in `vercel.json` at the original frequencies. Nothing in the code has to change. |
-
-Whichever you choose, the same `CRON_SECRET` must be set both in Vercel's environment and on the
-caller.
-
-### Where `CRON_SECRET` comes from
-
-Nowhere - you invent it. It is not issued by Vercel and there is nothing to look up; it is just a
-shared secret this app compares against the `Authorization: Bearer` header, so that the sweep
-endpoint cannot be triggered by anyone who finds the URL. Generate one:
-
-```
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-```
-
-Paste the same value into both places: Vercel > Project > Settings > Environment Variables
-(Production), and the scheduler - a repository secret named `CRON_SECRET` for the GitHub Actions
-workflow, or the request-header field of whichever pinger you use. Redeploy after adding it;
-environment variables are read at boot.
-
-It is not needed for local development. Running `npm run dev` starts the in-process tickers in
-`backend/server.ts` instead, so the sweeps already run every 60-120 seconds without any scheduler.
-`GET /api/cron/sweep` answering `503 CRON_SECRET absent` on localhost is the expected result, not
-a misconfiguration.
-
-### The guard that used to eat these requests
-
-`PUBLIC_ROUTES` in `backend/middleware/authMiddleware.ts` compared `req.path` against absolute
-paths like `/api/cron`. Because the middleware is mounted with `app.use('/api', ...)`, Express had
-already stripped the prefix and `req.path` read `/cron/sweep`, so the exemption never matched and
-the global JWT guard rejected every sweep with 401 before the route's own `CRON_SECRET` check ran.
-A scheduler would have received 401 forever. Fixed to match on the full path; if you are
-diagnosing a sweep that returns 401, check the response body - `{"code":"AUTH_MISSING"}` is the
-JWT guard, `{"message":"Non autorisé."}` is the route saying the secret does not match.
+Since both fixes, a refusal answers `503 BOOT_FAILED` with a message and logs `[BOOT] ...`, instead
+of a bare 500 with no body. A bare 500 across every route means you are on a build from before
+this.
 
 ---
 
