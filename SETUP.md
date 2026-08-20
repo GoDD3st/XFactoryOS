@@ -211,6 +211,23 @@ demo-mode bypass survives in the copy nobody remembered to patch.
 
 Both build from the same commit. The only difference is environment variables.
 
+### If every route returns 500
+
+That is a boot failure, not a route bug - a request that touches nothing, `/api/branding` or
+`/api/health`, failing the same way as one that queries the database is the signature. `api/index.ts`
+calls `createExpressApp()` at module scope, so anything that throws there takes the whole function
+down on cold start and every path answers identically.
+
+Since the fix in this session that surfaces as `503 BOOT_FAILED` with a message, and the reason is
+in the Vercel function log (`[BOOT] ...`). An older build shows a bare `500` with no body instead.
+
+The trap that produced it: `DEMO_MODE=true` on a Vercel **preview**. Vercel sets
+`NODE_ENV=production` on every deployment, previews included, and the guard used to treat that
+alone as proof of production - so the dev configuration this very table prescribes refused to
+start. It now reads `VERCEL_ENV` when present and only falls back to `NODE_ENV` when it is absent.
+Production is still refused; a preview is not.
+
+
 ### Why production cannot accidentally become a demo
 
 `assertDemoModeIsSafe()` runs in `createExpressApp()`, so it fires on the serverless path too, not
