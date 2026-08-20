@@ -175,10 +175,9 @@ RBAC resolves through `role_permissions` via `PermissionService`. `can()` return
   it is ineffective on serverless.
 - **`RoleShell.tsx` imports `database/repositories/settingsRepository`**, pulling server-side data
   access into the browser bundle.
-- **The waiting-list unique index ignores the date**, so a user cannot queue for the same desk on
-  two different days.
-- **`xlsx@0.18.5` carries two high-severity advisories** with no fix on npm. Used only for
-  dashboard exports.
+- **`xlsx@0.18.5` carries two high-severity advisories** with no fix on npm. Kept deliberately -
+  see the security notes below for why they are not reachable, and what it would cost to remove
+  them.
 - **The Digital Twin under-reports occupancy** for Director, Executive Assistant, IT Admin and
   Security Guard: its client-side path is RLS-filtered and those roles are outside
   `p_reservations_owner_read`.
@@ -264,7 +263,12 @@ reading `ai_provider_config`, self-granting a role, writing `settings`.
   guesses a minute.
 - **Rate limiting is per-instance.** In-process counters bound abuse per serverless instance, not
   globally. For a true global limit use Vercel WAF or a shared store.
-- **`xlsx@0.18.5` advisories are not reachable here.** Both require *parsing* attacker-controlled
-  input; this codebase only writes (`book_new` / `json_to_sheet` / `writeFile`) and never calls
-  `XLSX.read`. It will still fail `npm audit`, which has no fix on npm - upgrading means the
-  SheetJS CDN build or a different library.
+- **`xlsx@0.18.5` advisories are not reachable here, and the dependency is kept on purpose.**
+  Both require *parsing* attacker-controlled input; this codebase only writes (`book_new` /
+  `json_to_sheet` / `writeFile`) and never calls `XLSX.read`. There is no fix on npm, so removing
+  the finding means either the SheetJS CDN build or rewriting the Excel export against a different
+  library - and the export was rebuilt on this API in the same breath as this decision, so the
+  swap would carry more regression risk than the vulnerability it retires. `npm audit` will keep
+  reporting 1 high; that is expected, not an oversight. Revisit if the app ever gains a path that
+  *reads* a spreadsheet - an upload, an import - because that is the day the advisories start to
+  apply.
