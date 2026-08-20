@@ -97,14 +97,18 @@ declares the enum types - the first file assumes all of it exists.
 `00000000000000_baseline_schema.sql` supplies the missing first step. It holds the schema as of
 just before `20260806160035`, so the recorded migrations still replay meaningfully on top of it,
 and every statement in it is guarded so re-running it against an existing database is a no-op.
-Order for a fresh project: baseline, then the ten `roles` rows, then the remaining migrations in
-filename order, then `database/seeder.ts`.
+`00000000000001_seed_roles.sql` then creates the ten `roles` rows, which are not optional: both
+`handle_new_auth_user()` and the RBAC matrix migration are written against `roles.code`, and a
+database missing them comes up serving every request on the route guards' hardcoded fallback
+lists, with one `[RBAC]` warning as the only signal that the matrix never loaded.
 
-**The `roles` rows are still not automated.** They exist only in the hosted project, and both
-`handle_new_auth_user()` and the RBAC matrix migration depend on them - a database built without
-them comes up serving every request on the route guards' hardcoded fallback lists, with one
-`[RBAC]` warning as the only signal. `database/migrations/README.md` lists the ten codes and the
-full bootstrap order.
+Order for a fresh project: baseline, seed roles, the remaining migrations in filename order, then
+`database/seeder.ts`.
+
+The baseline has been executed, not merely reviewed - built in full against an empty schema and
+rolled back - so the order above is known to work rather than assumed to.
+`database/migrations/README.md` carries the detail, including the one ordering constraint inside
+the file that is load-bearing.
 
 ---
 

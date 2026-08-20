@@ -150,77 +150,6 @@ end $$;
 
 
 -- ---------------------------------------------------------------------------
--- Functions
--- ---------------------------------------------------------------------------
-
--- The backbone of this schema's RLS. Every role check in every policy goes through it, and it is
--- SECURITY DEFINER so that a caller who cannot read user_roles can still be judged against it.
--- It answers only about the caller's own roles (ur.user_id = auth.uid()), which is why it is safe
--- to leave callable by anon - see the closing note in 20260819122112.
-create or replace function public.has_role(role_codes text[])
-returns boolean
-language sql
-stable
-security definer
-set search_path = public
-as $function$
-  select exists (
-    select 1
-    from public.user_roles ur
-    join public.roles r on r.id = ur.role_id
-    where ur.user_id = auth.uid()
-      and r.code = any(role_codes)
-  );
-$function$;
-
-create or replace function public.set_updated_at()
-returns trigger
-language plpgsql
-set search_path = public
-as $function$
-begin
-  new.updated_at = now();
-  return new;
-end;
-$function$;
-
--- Sign-up is limited to the corporate domain at the database level, so it holds regardless of
--- which client or admin API the account is created through.
-create or replace function public.restrict_signup_domain()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $function$
-begin
-  if new.email !~* '@ocpgroup\.ma$' then
-    raise exception 'Sign-up restricted to @ocpgroup.ma email addresses';
-  end if;
-  return new;
-end;
-$function$;
-
--- Mirrors a new auth.users row into public.users and gives it the default EMPLOYEE role.
--- Depends on a roles row with code = 'EMPLOYEE' existing; see the KNOWN GAP note at the top.
-create or replace function public.handle_new_auth_user()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $function$
-begin
-  insert into public.users (id, email, full_name, status)
-  values (new.id, new.email, coalesce(new.raw_user_meta_data->>'full_name', new.email), 'ACTIVE');
-
-  insert into public.user_roles (user_id, role_id)
-  select new.id, id from public.roles where code = 'EMPLOYEE';
-
-  return new;
-end;
-$function$;
-
-
--- ---------------------------------------------------------------------------
 -- Tables
 -- ---------------------------------------------------------------------------
 -- Primary keys, unique constraints and check constraints are inline; foreign keys are declared
@@ -580,6 +509,83 @@ begin
     end if;
   end loop;
 end $$;
+
+
+-- ---------------------------------------------------------------------------
+-- Functions
+-- ---------------------------------------------------------------------------
+-- These come AFTER the tables, and that ordering is load-bearing rather than cosmetic.
+-- has_role() is LANGUAGE SQL, so PostgreSQL parses and resolves its body at CREATE time
+-- (check_function_bodies is on by default) and the statement fails outright against a database
+-- where public.user_roles does not exist yet. The three plpgsql functions below would survive
+-- being declared earlier - their bodies are only syntax-checked - but there is no reason to
+-- split the section, and set_updated_at() has to precede its triggers anyway.
+
+-- The backbone of this schema's RLS. Every role check in every policy goes through it, and it is
+-- SECURITY DEFINER so that a caller who cannot read user_roles can still be judged against it.
+-- It answers only about the caller's own roles (ur.user_id = auth.uid()), which is why it is safe
+-- to leave callable by anon - see the closing note in 20260819122112.
+create or replace function public.has_role(role_codes text[])
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $function$
+  select exists (
+    select 1
+    from public.user_roles ur
+    join public.roles r on r.id = ur.role_id
+    where ur.user_id = auth.uid()
+      and r.code = any(role_codes)
+  );
+$function$;
+
+create or replace function public.set_updated_at()
+returns trigger
+language plpgsql
+set search_path = public
+as $function$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$function$;
+
+-- Sign-up is limited to the corporate domain at the database level, so it holds regardless of
+-- which client or admin API the account is created through.
+create or replace function public.restrict_signup_domain()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $function$
+begin
+  if new.email !~* '@ocpgroup\.ma$' then
+    raise exception 'Sign-up restricted to @ocpgroup.ma email addresses';
+  end if;
+  return new;
+end;
+$function$;
+
+-- Mirrors a new auth.users row into public.users and gives it the default EMPLOYEE role.
+-- Depends on a roles row with code = 'EMPLOYEE' existing; see the KNOWN GAP note at the top.
+create or replace function public.handle_new_auth_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $function$
+begin
+  insert into public.users (id, email, full_name, status)
+  values (new.id, new.email, coalesce(new.raw_user_meta_data->>'full_name', new.email), 'ACTIVE');
+
+  insert into public.user_roles (user_id, role_id)
+  select new.id, id from public.roles where code = 'EMPLOYEE';
+
+  return new;
+end;
+$function$;
 
 
 -- ---------------------------------------------------------------------------

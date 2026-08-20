@@ -41,26 +41,53 @@ no-op. A fresh project should not spend a migration run with a forgeable audit t
 ### Order
 
 1. `00000000000000_baseline_schema.sql`
-2. The ten `roles` rows - **see below, this is not automated**
+2. `00000000000001_seed_roles.sql`
 3. Every remaining file in filename order
 4. `database/seeder.ts` (idempotent: it seeds only when `clusters` is empty)
 
-### Still missing: the `roles` rows
+Steps 1 and 2 are the two files that have to run first and in that order; everything after them
+is the recorded history, unchanged.
 
-The ten role rows exist only in the hosted project. Nothing in this repository creates them -
-not the baseline (which is schema-only by design), not `seeder.ts`, not any migration. Two things
-depend on them:
+### The `roles` rows, and why they are a migration
+
+The ten role rows used to exist only in the hosted project: not in the baseline, which is
+schema-only by design, not in `seeder.ts`, not in any migration. `00000000000001_seed_roles.sql`
+now creates them, and it is the one place in this directory where seed data belongs. Two things
+depend on those rows, and neither fails loudly without them:
 
 - `handle_new_auth_user()` looks up `code = 'EMPLOYEE'` to give each new account its default role.
-  Without that row a new sign-up lands with no roles at all.
+  With no such row the insert selects nothing, the trigger still succeeds, and the account lands
+  with no roles at all.
 - `20260811132256` joins every matrix cell against `roles.code`. Against an empty `roles` it
-  inserts zero rows and the RBAC matrix comes up empty - which fails the way described in the next
-  section, quietly.
+  inserts zero rows and the RBAC matrix comes up empty - which fails the way the next section
+  describes, quietly.
 
-The codes are `SUPER_ADMIN`, `ADMIN`, `BUILDING_MANAGER`, `GCI_MANAGER`, `RECEPTIONIST`,
-`DIRECTOR`, `EXECUTIVE_ASSISTANT`, `IT_ADMIN`, `SECURITY`, `EMPLOYEE`; `SUPER_ADMIN` and `ADMIN`
-carry `is_critical = true`. Insert them between steps 1 and 3. Folding this into a proper seed
-migration is the remaining piece of work.
+So these are not sample data. They are the vocabulary every policy, every route guard and every
+matrix cell in the project is written against, which is why they sit in the migration history
+rather than in the seeder. The codes are `SUPER_ADMIN`, `ADMIN`, `BUILDING_MANAGER`,
+`GCI_MANAGER`, `RECEPTIONIST`, `DIRECTOR`, `EXECUTIVE_ASSISTANT`, `IT_ADMIN`, `SECURITY`,
+`EMPLOYEE`; `SUPER_ADMIN` and `ADMIN` carry `is_critical = true`. Ids are left to the column
+default - nothing anywhere references a role by id literal, only by `code`, which is also the
+conflict target that makes the file a no-op on a database that already has them.
+
+### The baseline is execution-verified
+
+It has been run, not just read. The file was rewritten into a throwaway schema - every
+`public.<obj>` reference repointed, the enum-existence guards repointed with them so they could
+not find production's types and skip the `create type` statements - executed in full against that
+empty namespace, and rolled back by a deliberate exception on the last line. Everything ran: 13
+enum types, 22 tables, the constraint loop, 4 functions, indexes, triggers, the view and
+materialized view, RLS and its policies.
+
+That run is also what shaped the file. `has_role()` is `LANGUAGE SQL`, so PostgreSQL resolves its
+body at `CREATE` time rather than at first call, and the statement fails outright against a
+database where `public.user_roles` does not exist yet. The `Functions` section therefore comes
+after `Tables`, and that ordering is load-bearing - moving it back to the top of the file, where
+a schema dump would conventionally put it, breaks the bootstrap.
+
+Two statements are excluded from that proof, both `create extension` (`citext`, `btree_gist`).
+They are cluster-wide and already installed, so the verification run skips them; on a genuinely
+fresh project they are the first thing the baseline does.
 
 ## Why an empty matrix is worse than a crash
 
