@@ -17,10 +17,12 @@ export const telemetryRouter = Router();
 // API follows immediately. Narrowing this list would contradict the SRS row above AND take that
 // toggle away, so it stays.
 //
-// Caveat, if you are here because a Super Admin granted analytics and "nothing happened": the
-// toggle moves the API only. The tab lists in RoleShell are a hardcoded Record<UserRole, Tab[]>
-// and read no permission at all, so the Dashboard tab will not appear. Making the menu follow the
-// policy table is unbuilt work, not a bug in this file.
+// The menu now follows the policy table too (services/rbac/navigationPolicy.ts), so granting
+// analytics to a role that has no Dashboard tab generally makes the tab appear. IT Admin and
+// Security are the two exceptions, and they are listed by name in that file's CURATED_OUT_TABS
+// with the reason above: they hold analytics.read as shipped, and the omission is the curation
+// speaking, not a missing grant. Toggling analytics for them changes the API and leaves the menu
+// alone. If that should change, the fix is one line there, not a change to this list.
 const ANALYTICS_ROLES = [
   'super_admin',
   'admin',

@@ -1,4 +1,5 @@
 import { UserRole } from '@/frontend/src/types';
+import { PermissionAction, PermissionCode, PermissionFlags, RoleGrants } from './permissionCodes';
 
 /**
  * Route-level enforcement backed by the `role_permissions` policy table.
@@ -17,7 +18,12 @@ import { UserRole } from '@/frontend/src/types';
  *  - Cached in memory because this runs on every gated request; invalidated on policy writes.
  */
 
-export type PermissionAction = 'read' | 'create' | 'update' | 'delete' | 'approve';
+/**
+ * Re-exported so the many existing importers keep working. The definitions now live in
+ * `permissionCodes.ts`, which the browser bundle can import without dragging this module - and
+ * its Supabase admin client - along with it.
+ */
+export type { PermissionAction, PermissionCode } from './permissionCodes';
 
 const ACTION_COLUMN: Record<PermissionAction, string> = {
   read: 'can_read',
@@ -120,10 +126,49 @@ export class PermissionService {
   }
 
   /**
+   * Every policy cell for one role, or `null` when the policy is unknown.
+   *
+   * Same cache, same `null`-means-fall-back contract as `can()` - deliberately, because this is
+   * what `GET /api/roles/me/permissions` answers and what the navigation menu builds itself from.
+   * If the menu resolved grants from a second source it would drift from the guards, and users
+   * would see tabs the API refuses (or lose tabs it would have allowed).
+   *
+   * Scoped to one role on purpose. Reading your own role's grants tells you nothing you cannot
+   * learn by clicking; enumerating every role's grants is the RBAC policy document itself, and
+   * stays behind `manage_roles.read` on /permissions-matrix.
+   */
+  static async forRole(role: UserRole): Promise<RoleGrants | null> {
+    if (!cache) await this.load();
+    if (!cache) return null;
+
+    const roleCode = ROLE_TO_DB_CODE[role];
+    if (!roleCode) return null;
+
+    const perms = cache.get(roleCode);
+    // A role with no policy rows at all is a data gap, not a deliberate deny-all - same call
+    // `can()` makes, so both answer "unknown" on exactly the same inputs.
+    if (!perms) return null;
+
+    const grants: RoleGrants = {};
+    perms.forEach((cell, permissionCode) => {
+      const flags: PermissionFlags = {
+        read: !!cell.can_read,
+        create: !!cell.can_create,
+        update: !!cell.can_update,
+        delete: !!cell.can_delete,
+        approve: !!cell.can_approve,
+      };
+      grants[permissionCode] = flags;
+    });
+
+    return grants;
+  }
+
+  /**
    * `true`/`false` when the policy is known, `null` when it isn't - callers must treat `null` as
    * "fall back", never as a denial.
    */
-  static async can(role: UserRole, permissionCode: string, action: PermissionAction): Promise<boolean | null> {
+  static async can(role: UserRole, permissionCode: PermissionCode, action: PermissionAction): Promise<boolean | null> {
     if (!cache) await this.load();
     if (!cache) return null;
 
