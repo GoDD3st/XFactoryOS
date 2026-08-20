@@ -207,7 +207,7 @@ demo-mode bypass survives in the copy nobody remembered to patch.
 | `DEMO_MODE` | `false` | `true` |
 | `VITE_DEMO_MODE` | `false` | `true` |
 | Supabase project | production ref | a separate ref - never the same database |
-| `CRON_SECRET` | set | optional |
+| `CRON_SECRET` | required - see Background jobs | optional |
 
 Both build from the same commit. The only difference is environment variables.
 
@@ -279,6 +279,26 @@ So `crons` is gone from `vercel.json` and the schedule lives with an external ca
 
 Whichever you choose, the same `CRON_SECRET` must be set both in Vercel's environment and on the
 caller.
+
+### Where `CRON_SECRET` comes from
+
+Nowhere - you invent it. It is not issued by Vercel and there is nothing to look up; it is just a
+shared secret this app compares against the `Authorization: Bearer` header, so that the sweep
+endpoint cannot be triggered by anyone who finds the URL. Generate one:
+
+```
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+Paste the same value into both places: Vercel > Project > Settings > Environment Variables
+(Production), and the scheduler - a repository secret named `CRON_SECRET` for the GitHub Actions
+workflow, or the request-header field of whichever pinger you use. Redeploy after adding it;
+environment variables are read at boot.
+
+It is not needed for local development. Running `npm run dev` starts the in-process tickers in
+`backend/server.ts` instead, so the sweeps already run every 60-120 seconds without any scheduler.
+`GET /api/cron/sweep` answering `503 CRON_SECRET absent` on localhost is the expected result, not
+a misconfiguration.
 
 ### The guard that used to eat these requests
 

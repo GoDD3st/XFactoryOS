@@ -55,10 +55,11 @@ const JOBS: Record<string, () => Promise<{ label: string; count: number }>> = {
  * a day for a seat freed at 09:05. Scheduling therefore has to come from outside Vercel, and an
  * external pinger is far easier to configure against one URL than against six.
  *
- * Runs in parallel rather than in sequence, deliberately. Serverless functions are killed at the
- * platform's duration limit, and six round trips to Supabase end to end is the kind of thing that
- * quietly starts timing out as the reservation table grows. In parallel the wall time is the
- * slowest job, not the sum.
+ * Runs in parallel rather than in sequence. Not because the budget is tight - Vercel's Hobby plan
+ * allows 300s per invocation and the whole sweep measures ~430ms today - but because the sum of
+ * six sequential round trips is the number that grows with the reservation table, while in
+ * parallel the wall time is just the slowest job. It also means a single slow query delays only
+ * itself instead of pushing everything behind it.
  *
  * allSettled, not all: one failing sweep must not cancel the other five. The response reports each
  * job's outcome separately and the status code reflects whether ANY of them failed, so a scheduler
