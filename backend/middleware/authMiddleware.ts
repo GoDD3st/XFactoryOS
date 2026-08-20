@@ -160,7 +160,20 @@ async function resolveDemoIdentity(role: UserRole): Promise<ResolvedDemoIdentity
 }
 
 export async function authenticateJWT(req: Request, res: Response, next: NextFunction): Promise<void> {
-  const path = req.path || req.originalUrl;
+  // Full request path, not req.path.
+  //
+  // This middleware is mounted with app.use('/api', authenticateJWT), and Express strips the
+  // mount point before handing the request over - so req.path reads "/cron/sweep" while
+  // PUBLIC_ROUTES lists "/api/cron". The startsWith test could therefore never match, and every
+  // route in that list was being authenticated anyway.
+  //
+  // It went unnoticed because of which routes are on the list. /api/health is registered ahead of
+  // this middleware and never reaches it, and the /api/auth/* entries are vestigial - the browser
+  // signs in against Supabase directly through realAuthService, not through this API. That left
+  // /api/cron, where it mattered: the scheduler sends `Authorization: Bearer $CRON_SECRET`, which
+  // is not a Supabase JWT, so every sweep was rejected here with 401 before the route's own
+  // CRON_SECRET check ever ran. Background jobs were dead on any deployment that relies on them.
+  const path = (req.originalUrl || req.url || '').split('?')[0];
   if (PUBLIC_ROUTES.some(route => path.startsWith(route))) {
     return next();
   }

@@ -240,6 +240,56 @@ Dev has authentication disabled. Pointing it at the production Supabase project 
 who finds the dev URL full admin access to real data through `X-Demo-Role`. Use a separate
 Supabase project and apply `database/migrations/` to it.
 
+
+## Background jobs
+
+Six sweeps keep the reservation lifecycle moving: no-show detection, auto check-out, check-in
+reminders, waiting-list offer expiry, temporary-seat expiry and cluster-authorisation re-lock.
+Self-hosted, they are `setInterval` tickers inside `backend/server.ts` and there is nothing to
+configure. On Vercel `startServer()` never runs, so every one of them has to be driven from
+outside by calling:
+
+```
+GET /api/cron/sweep?job=all
+Authorization: Bearer $CRON_SECRET
+```
+
+`job=all` runs all six in parallel and reports each separately; it answers `200` when they all
+succeed and `500` when any failed, so a scheduler that only watches the status code still notices.
+Individual jobs remain addressable by name (`?job=no-show`) for debugging. Without `CRON_SECRET`
+set the route refuses to run at all, and an unauthenticated call is rejected - an open endpoint
+here would let anyone force no-show detection across the whole site.
+
+### Why the schedule is not in `vercel.json`
+
+It used to be, and it could not have worked. Vercel's Hobby plan permits at most one cron run per
+day and **rejects a finer expression at deploy time** rather than degrading quietly, so the six
+`*/5` and `0 * * * *` entries would have failed the deployment outright. Daily resolution is not a
+workable fallback either: no-show detection is what releases a desk into the BPMN D5 waiting-list
+cascade, so a seat freed at 09:05 would not reach the queue until the following day, and a
+15-minute waiting-list offer would expire roughly 96 times before anything noticed.
+
+So `crons` is gone from `vercel.json` and the schedule lives with an external caller. Pick one:
+
+| Option | Notes |
+|---|---|
+| **External pinger** (cron-job.org, UptimeRobot, Better Stack) | Simplest. One URL, one bearer header, intervals down to a minute, no runner minutes to pay for. Recommended on Hobby. |
+| **GitHub Actions** - `.github/workflows/cron-sweep.yml`, already in the repo | Needs repository secret `CRON_SECRET` and variable `APP_URL`. Free on public repos. On a **private** repo, `*/5` is 288 billed runs a day and will exhaust the free monthly allowance on its own - widen the interval or use a pinger instead. |
+| **Vercel Pro** | Restores `crons` in `vercel.json` at the original frequencies. Nothing in the code has to change. |
+
+Whichever you choose, the same `CRON_SECRET` must be set both in Vercel's environment and on the
+caller.
+
+### The guard that used to eat these requests
+
+`PUBLIC_ROUTES` in `backend/middleware/authMiddleware.ts` compared `req.path` against absolute
+paths like `/api/cron`. Because the middleware is mounted with `app.use('/api', ...)`, Express had
+already stripped the prefix and `req.path` read `/cron/sweep`, so the exemption never matched and
+the global JWT guard rejected every sweep with 401 before the route's own `CRON_SECRET` check ran.
+A scheduler would have received 401 forever. Fixed to match on the full path; if you are
+diagnosing a sweep that returns 401, check the response body - `{"code":"AUTH_MISSING"}` is the
+JWT guard, `{"message":"Non autorisé."}` is the route saying the secret does not match.
+
 ---
 
 ## 10. Security posture
