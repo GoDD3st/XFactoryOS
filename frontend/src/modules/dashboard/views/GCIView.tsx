@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { KeyRound, Lock, Layers, Armchair, ShieldCheck, Clock, AlertCircle } from 'lucide-react';
 import { Cluster, ClusterAuthorization } from '../../../types';
 import { apiFetchClusters, apiFetchClusterAccessHistory } from '@/services/api/workspaceApi';
-import { DigitalTwin } from '../../../shared/components/DigitalTwin';
 
 /**
  * GCI Manager home - SRS §8.4: "Responsable de la gouvernance Growth Culture & Collaborative
@@ -233,12 +232,6 @@ export const GCIView: React.FC = () => {
             </div>
           ))}
         </div>
-      </div>
-
-      {/* Digital Twin */}
-      <div>
-        <h2 className="text-sm font-bold text-slate-900 mb-2">Cartographie des clusters - vue gouvernance GCI</h2>
-        <DigitalTwin />
       </div>
     </div>
   );

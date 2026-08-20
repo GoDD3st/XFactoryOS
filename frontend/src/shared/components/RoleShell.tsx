@@ -41,6 +41,14 @@ import { ReservationRulesDrawer } from '../../modules/dashboard/components/Reser
 import { UserProfileDrawer } from '../../modules/dashboard/components/UserProfileDrawer';
 import { ForcePasswordChange } from '../../modules/auth/components/ForcePasswordChange';
 import { apiGetPasswordStatus } from '@/services/api/userApi';
+import { apiFetchMyPermissions, PERMISSIONS_CHANGED_EVENT } from '@/services/api/rolesApi';
+// The tab -> permission mapping and the baseline/policy merge rule live outside this file, in
+// services/rbac, next to the PermissionService the route guards use. Keeping them there is what
+// stops the menu and the guards from naming different permission codes: both are typed against
+// the same PERMISSION_CODES union, so a renamed permission breaks compilation in both places at
+// once instead of leaving one of them silently matching nothing.
+import { TabKey, resolveVisibleTabs } from '@/services/rbac/navigationPolicy';
+import { RoleGrants } from '@/services/rbac/permissionCodes';
 
 import {
   Layers,
@@ -70,14 +78,27 @@ import {
 } from 'lucide-react';
 
 // RBAC Tab definitions per role (SRS Section 13 Matrix)
-type TabKey = 'home' | 'digital-twin' | 'reserve' | 'reservations' | 'calendar' | 'waiting-list' | 'dashboard-exec' | 'workstations' | 'clusters' | 'users' | 'roles' | 'settings' | 'audit' | 'approvals' | 'cluster-auth' | 'late-checkin' | 'notifications';
-
 interface TabDef {
   key: TabKey;
   label: string;
   icon: React.ReactNode;
 }
 
+/**
+ * The per-role lists below are the BASELINE, not the final menu.
+ *
+ * They stay hand-curated - the comments on each block are load-bearing, and several of them
+ * explain why a tab is absent even though the role holds the permission behind it. What changed
+ * is that they are no longer the last word: useVisibleTabs() below overlays the live
+ * `role_permissions` policy on top, so a Super Admin granting a permission in the Roles &
+ * Permissions screen adds the matching tab, and revoking one removes it.
+ *
+ * The rules for how the two combine, and the short list of omissions the policy is not allowed to
+ * undo, are in services/rbac/navigationPolicy.ts. Read that before adding or removing a tab here.
+ *
+ * None of this is a security boundary. Every screen these tabs open is still guarded by
+ * requirePermission on the server, and no route guard was weakened to make this work.
+ */
 const ROLE_TABS: Record<UserRole, TabDef[]> = {
   collaborator: [
     { key: 'home', label: 'Digital Twin', icon: <Layers className="w-3.5 h-3.5" /> },
@@ -195,11 +216,113 @@ const ROLE_TABS: Record<UserRole, TabDef[]> = {
     { key: 'users', label: 'Utilisateurs', icon: <Users className="w-3.5 h-3.5" /> },
     { key: 'audit', label: 'Audit', icon: <FileText className="w-3.5 h-3.5" /> },
   ],
+  // SRS §13 matrix, Security column: R on analytics/audit, and X on "Réserver poste standard" -
+  // a guard supervises the floor, it does not occupy a desk on it. Confirmed as intended rather
+  // than an oversight, so there is no "Réserver" tab here and reservations.routes.ts leaves the role
+  // out of RESERVE_FALLBACK_ROLES; changing it means amending the SRS, not patching this list.
   security_guard: [
     { key: 'home', label: 'Sécurité', icon: <Shield className="w-3.5 h-3.5" /> },
     { key: 'audit', label: 'Audit', icon: <FileText className="w-3.5 h-3.5" /> },
   ],
 };
+
+/**
+ * Canonical label and icon for every tab, used only for tabs the POLICY adds to a role.
+ *
+ * A tab in a role's baseline keeps that role's own wording - 'home' is "Réception" for the
+ * receptionist and "Direction" for the director, 'roles' is "RBAC" on the Super Admin console and
+ * "Rôles" everywhere else. A tab that was never in the baseline has no such wording by
+ * definition, so it gets the neutral name here.
+ */
+const TAB_CATALOG: Record<TabKey, TabDef> = {
+  home: { key: 'home', label: 'Accueil', icon: <Layers className="w-3.5 h-3.5" /> },
+  'digital-twin': { key: 'digital-twin', label: 'Digital Twin', icon: <Layers className="w-3.5 h-3.5" /> },
+  reserve: { key: 'reserve', label: 'Réserver', icon: <CalendarPlus className="w-3.5 h-3.5" /> },
+  reservations: { key: 'reservations', label: 'Réservations', icon: <Calendar className="w-3.5 h-3.5" /> },
+  calendar: { key: 'calendar', label: 'Calendrier', icon: <Clock className="w-3.5 h-3.5" /> },
+  'waiting-list': { key: 'waiting-list', label: "Liste d'Attente", icon: <ListOrdered className="w-3.5 h-3.5" /> },
+  'dashboard-exec': { key: 'dashboard-exec', label: 'Dashboard', icon: <BarChart3 className="w-3.5 h-3.5" /> },
+  workstations: { key: 'workstations', label: 'Postes', icon: <Wrench className="w-3.5 h-3.5" /> },
+  clusters: { key: 'clusters', label: 'Clusters', icon: <Layers className="w-3.5 h-3.5" /> },
+  users: { key: 'users', label: 'Utilisateurs', icon: <Users className="w-3.5 h-3.5" /> },
+  roles: { key: 'roles', label: 'Rôles', icon: <Lock className="w-3.5 h-3.5" /> },
+  settings: { key: 'settings', label: 'Paramètres', icon: <Settings className="w-3.5 h-3.5" /> },
+  audit: { key: 'audit', label: 'Audit', icon: <FileText className="w-3.5 h-3.5" /> },
+  approvals: { key: 'approvals', label: 'Approbations', icon: <CheckCircle2 className="w-3.5 h-3.5" /> },
+  'cluster-auth': { key: 'cluster-auth', label: 'Autorisations', icon: <KeyRound className="w-3.5 h-3.5" /> },
+  'late-checkin': { key: 'late-checkin', label: 'Check-in tardif', icon: <Clock className="w-3.5 h-3.5" /> },
+  notifications: { key: 'notifications', label: 'Notifications', icon: <Bell className="w-3.5 h-3.5" /> },
+};
+
+/**
+ * The menu, resolved from the curated baseline plus the live policy table.
+ *
+ * Three behaviours worth stating, because each one was a decision:
+ *
+ * 1. WHILE THE FETCH IS IN FLIGHT the hook reports `resolved: false` and the nav renders inert
+ *    placeholders rather than the baseline. Painting the baseline first and correcting it a
+ *    moment later would flash tabs a revoked user is not supposed to have - the exact thing this
+ *    feature exists to prevent - and painting nothing would make the header jump. The wait is one
+ *    request against an in-memory cache on the server.
+ *
+ * 2. WHEN THE FETCH FAILS - offline, 500, no session yet, or the server reporting that it could
+ *    not read `role_permissions` - apiFetchMyPermissions() resolves to null and the resolver
+ *    returns the baseline untouched. This mirrors requirePermission: an unreadable policy table
+ *    degrades to the previous behaviour instead of locking everyone out. It is safe precisely
+ *    because it is not the authorization mechanism; the routes behind these tabs are still
+ *    guarded, and they fall back the same way.
+ *
+ * 3. IT RE-READS ON PERMISSIONS_CHANGED_EVENT, so a Super Admin editing their own role's grants
+ *    sees their menu follow immediately instead of after a reload.
+ */
+function useVisibleTabs(role: UserRole, baseline: TabDef[]): { tabs: TabDef[]; resolved: boolean } {
+  const [grants, setGrants] = useState<RoleGrants | null>(null);
+  const [resolved, setResolved] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    // Back to "unknown" on every role change: in demo mode the QA switcher changes role without
+    // remounting, and holding the previous role's grants would resolve the new role's menu
+    // against the wrong policy for one render.
+    setGrants(null);
+    setResolved(false);
+
+    const read = () => {
+      apiFetchMyPermissions()
+        .then((next) => {
+          if (cancelled) return;
+          setGrants(next);
+          setResolved(true);
+        })
+        .catch(() => {
+          // apiFetchMyPermissions already swallows its own failures into null; this is belt and
+          // braces so a rejection can never leave the nav stuck on placeholders forever.
+          if (cancelled) return;
+          setGrants(null);
+          setResolved(true);
+        });
+    };
+
+    read();
+    window.addEventListener(PERMISSIONS_CHANGED_EVENT, read);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(PERMISSIONS_CHANGED_EVENT, read);
+    };
+  }, [role]);
+
+  const tabs = React.useMemo(() => {
+    if (!resolved) return [];
+    return resolveVisibleTabs(
+      role,
+      baseline.map((t) => t.key),
+      grants
+    ).map((key) => baseline.find((t) => t.key === key) ?? TAB_CATALOG[key]);
+  }, [role, baseline, grants, resolved]);
+
+  return { tabs, resolved };
+}
 
 export const RoleShell: React.FC = () => {
   const { currentRole, currentUser, roleConfig, switchRole, canView8Postes, isDemoMode, signOut, sessionIdleWarning, idleSecondsLeft, extendSession } = useAuth();
@@ -390,7 +513,21 @@ export const RoleShell: React.FC = () => {
     }
   };
 
-  const tabs = ROLE_TABS[currentRole] || ROLE_TABS.collaborator;
+  const baselineTabs = ROLE_TABS[currentRole] || ROLE_TABS.collaborator;
+  const { tabs, resolved: tabsResolved } = useVisibleTabs(currentRole, baselineTabs);
+
+  // If the policy removed the tab the user is currently standing on - a Super Admin revoking a
+  // permission from a role they themselves hold, or from their own session in demo mode - send
+  // them back to 'home', which is never policy-removable. Leaving them on the orphaned tab would
+  // show a screen whose every request now 403s, with no tab highlighted to explain why.
+  useEffect(() => {
+    if (!tabsResolved) return;
+    // Reached from the notification bell rather than the tab bar, so its absence from `tabs` is
+    // normal and must not bounce the user out of a notification they just opened.
+    if (activeTab === 'notifications') return;
+    if (!tabs.some((t) => t.key === activeTab)) setActiveTab('home');
+  }, [tabsResolved, tabs, activeTab]);
+
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans antialiased">
@@ -657,7 +794,18 @@ export const RoleShell: React.FC = () => {
       {/* Tab Navigation Bar (SRS Section 28 - RBAC-filtered per role) */}
       <nav className="bg-white border-b border-slate-200 px-4 sm:px-6 shrink-0">
         <div className="max-w-7xl mx-auto w-full flex items-center space-x-1 overflow-x-auto py-1">
-          {tabs.map((tab) => (
+          {/* Inert placeholders while the policy read is in flight. Reserving the row's height
+              keeps the header from jumping, without guessing at tabs that may be about to
+              disappear. See useVisibleTabs for why the baseline is not painted first. */}
+          {!tabsResolved &&
+            [0, 1, 2, 3].map((i) => (
+              <div
+                key={`tab-skeleton-${i}`}
+                aria-hidden
+                className="h-[30px] w-24 rounded-lg bg-slate-100 animate-pulse shrink-0"
+              />
+            ))}
+          {tabsResolved && tabs.map((tab) => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}

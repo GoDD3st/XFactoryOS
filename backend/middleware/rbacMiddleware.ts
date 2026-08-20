@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { UserRole } from '@/frontend/src/types';
-import { PermissionService, PermissionAction } from '@/services/rbac/permissionService';
+import { PermissionService } from '@/services/rbac/permissionService';
+import { PermissionAction, PermissionCode } from '@/services/rbac/permissionCodes';
 
 /**
  * RBAC Middleware - Role-Based Access Control
@@ -65,9 +66,15 @@ export function requireRole(...allowedRoles: UserRole[]) {
  *
  * Super Admin always keeps `manage_roles`, regardless of the table. Without that, toggling one
  * cell would remove the only route capable of toggling it back - an unrecoverable lockout.
+ *
+ * `permissionCode` is typed against PERMISSION_CODES rather than `string`: a code that does not
+ * exist in `public.permissions` never matches a policy row, so the guard would silently sit on
+ * its fallback list forever and the Roles & Permissions screen would show no toggle for it. That
+ * is now a compile error instead. The same union types the navigation policy that decides which
+ * menu tab each code backs, so the menu and the guards cannot name different things.
  */
 export function requirePermission(
-  permissionCode: string,
+  permissionCode: PermissionCode,
   action: PermissionAction,
   fallbackRoles: readonly UserRole[]
 ) {

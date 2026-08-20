@@ -4,15 +4,13 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/index" },
-    { "source": "/(.*)", "destination": "/index.html" }
-  ],
-  "crons": [
-    { "path": "/api/cron/sweep?job=no-show", "schedule": "*/5 * * * *" },
-    { "path": "/api/cron/sweep?job=auto-checkout", "schedule": "*/10 * * * *" },
-    { "path": "/api/cron/sweep?job=checkin-reminder", "schedule": "*/5 * * * *" },
-    { "path": "/api/cron/sweep?job=waiting-list-expiry", "schedule": "*/5 * * * *" },
-    { "path": "/api/cron/sweep?job=temp-seat-expiry", "schedule": "0 * * * *" },
-    { "path": "/api/cron/sweep?job=cluster-auth-expiry", "schedule": "0 * * * *" }
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
   ]
 }

@@ -9,20 +9,87 @@ These were backfilled out of Supabase on 2026-08-14. Until then the history exis
 hosted project: every migration had been applied through the API and none had a counterpart in
 git.
 
-## The sequence does not yet build a database from empty
+## Bootstrapping a database from empty
 
 Supabase's recorded history begins at `20260806160035_fix_missing_rls_policies_and_hardening`a
 *correction*, not a schema creation. Everything it corrects was created before migrations were used
-at all, directly against the hosted project. Nothing in this directory issues a `CREATE TABLE`,
-defines the `has_role()` helper every policy calls, or declares the enum types; the first file
-assumes all of it already exists.
+at all, directly against the hosted project, so none of it was ever captured: no file in the
+recorded history issues a `CREATE TABLE`, defines the `has_role()` helper every policy calls, or
+declares the enum types. The first file assumes all of it already exists.
 
-So these 19 files replay the history faithfully but cannot bootstrap a new environment. Standing up
-a second database (staging, CI, a local stack) still requires cloning the schema out of the hosted
-project first. Closing this needs a baseline file capturing the pre-migration schema, ordered ahead
-of `20260806160035`.
+`00000000000000_baseline_schema.sql` is that missing first step, written on 2026-08-19 by reading
+the live project's catalogs and subtracting what the recorded migrations add. Its version is
+all-zeroes so it sorts ahead of every real migration, and it carries no `schema_migrations` entry
+because it never ran against the hosted project - it describes what that project already had.
 
-## Why that mattered
+It captures the schema **as of just before `20260806160035`**, not the schema as it stands today,
+and that is deliberate. The migrations that follow have to stay meaningful when they replay, and
+several are not re-runnable: `20260807121205`, `20260814131641` and `20260815122426` issue bare
+`create table` / `create type`, and most of the early files issue bare `create policy`. A baseline
+holding today's schema would make all three fail on a fresh database. So the later additions are
+absent on purpose - `waiting_list_entries.notes`, `reservations.check_in_at`,
+`users.must_change_password`, the `LOGOUT` audit action, `cluster_vip_members`,
+`late_check_in_requests`, `ai_provider_config` - and `settings_change_requests` is present even
+though `20260818083753` drops it, because `20260806160035` writes a policy on it first.
+
+Security fixes are the one exception. Where a later migration's statement is idempotent, the
+baseline already reflects its outcome: pinned `search_path`, `security_invoker` on the view,
+narrowed EXECUTE on the auth trigger functions, no INSERT grant or policy on `audit_logs`, and
+`mv_reservation_daily_stats` granted to `service_role` alone. The migration re-applies each as a
+no-op. A fresh project should not spend a migration run with a forgeable audit trail.
+
+### Order
+
+1. `00000000000000_baseline_schema.sql`
+2. `00000000000001_seed_roles.sql`
+3. Every remaining file in filename order
+4. `database/seeder.ts` (idempotent: it seeds only when `clusters` is empty)
+
+Steps 1 and 2 are the two files that have to run first and in that order; everything after them
+is the recorded history, unchanged.
+
+### The `roles` rows, and why they are a migration
+
+The ten role rows used to exist only in the hosted project: not in the baseline, which is
+schema-only by design, not in `seeder.ts`, not in any migration. `00000000000001_seed_roles.sql`
+now creates them, and it is the one place in this directory where seed data belongs. Two things
+depend on those rows, and neither fails loudly without them:
+
+- `handle_new_auth_user()` looks up `code = 'EMPLOYEE'` to give each new account its default role.
+  With no such row the insert selects nothing, the trigger still succeeds, and the account lands
+  with no roles at all.
+- `20260811132256` joins every matrix cell against `roles.code`. Against an empty `roles` it
+  inserts zero rows and the RBAC matrix comes up empty - which fails the way the next section
+  describes, quietly.
+
+So these are not sample data. They are the vocabulary every policy, every route guard and every
+matrix cell in the project is written against, which is why they sit in the migration history
+rather than in the seeder. The codes are `SUPER_ADMIN`, `ADMIN`, `BUILDING_MANAGER`,
+`GCI_MANAGER`, `RECEPTIONIST`, `DIRECTOR`, `EXECUTIVE_ASSISTANT`, `IT_ADMIN`, `SECURITY`,
+`EMPLOYEE`; `SUPER_ADMIN` and `ADMIN` carry `is_critical = true`. Ids are left to the column
+default - nothing anywhere references a role by id literal, only by `code`, which is also the
+conflict target that makes the file a no-op on a database that already has them.
+
+### The baseline is execution-verified
+
+It has been run, not just read. The file was rewritten into a throwaway schema - every
+`public.<obj>` reference repointed, the enum-existence guards repointed with them so they could
+not find production's types and skip the `create type` statements - executed in full against that
+empty namespace, and rolled back by a deliberate exception on the last line. Everything ran: 13
+enum types, 22 tables, the constraint loop, 4 functions, indexes, triggers, the view and
+materialized view, RLS and its policies.
+
+That run is also what shaped the file. `has_role()` is `LANGUAGE SQL`, so PostgreSQL resolves its
+body at `CREATE` time rather than at first call, and the statement fails outright against a
+database where `public.user_roles` does not exist yet. The `Functions` section therefore comes
+after `Tables`, and that ordering is load-bearing - moving it back to the top of the file, where
+a schema dump would conventionally put it, breaks the bootstrap.
+
+Two statements are excluded from that proof, both `create extension` (`citext`, `btree_gist`).
+They are cluster-wide and already installed, so the verification run skips them; on a genuinely
+fresh project they are the first thing the baseline does.
+
+## Why an empty matrix is worse than a crash
 
 `20260811132256_seed_permissions_and_role_permissions_matrix.sql` populates `role_permissions`,
 the table every route guard reads through `PermissionService`. When that table is empty,
@@ -35,6 +102,10 @@ signal is one `[RBAC]` warning on boot.
 
 ## Conventions
 
+- **The baseline is not a place to add things.** It states what the hosted project already had.
+  A change to the schema is a new timestamped migration, even when the baseline is where the
+  object it touches is defined. Edit the baseline only to correct a mis-transcription of the
+  pre-migration schema - and check the change against the live catalogs first.
 - **Never edit an applied migration.** `20260811132256` re-applies every cell via
   `on conflict do update`, so it is authoritative for the whole matrix on replay. Corrections go
   in a later file`20260814134906_align_approver_pools_with_business_rules.sql` is the worked

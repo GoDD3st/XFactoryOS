@@ -1,0 +1,80 @@
+name: Background sweeps
+
+# Why this file exists instead of `crons` in vercel.json:
+#
+# Vercel's Hobby plan caps cron jobs at one run per day, and rejects any finer expression at
+# deploy time rather than silently degrading. Every sweep this app needs is sub-daily - no-show
+# detection is what releases a desk into the BPMN D5 waiting-list cascade, so at daily resolution
+# a seat freed at 09:05 would not reach the queue until the next day. The schedule therefore has
+# to come from outside Vercel.
+#
+# BEFORE THIS WORKS, set two things on the repository:
+#   Settings > Secrets and variables > Actions
+#     Secret   CRON_SECRET  - the same value as the CRON_SECRET env var in Vercel
+#     Variable APP_URL      - the deployment origin, e.g. https://xfactory-os.vercel.app
+# Without them the workflow fails fast rather than pretending to sweep.
+#
+# COST WARNING: on a PRIVATE repo, scheduled runs consume Actions minutes, and GitHub bills each
+# run rounded up to the minute. At */5 that is 288 runs/day, which alone exceeds the free monthly
+# allowance for private repos. If this repo is private, either widen the interval, or drop this
+# workflow and point a free external pinger (cron-job.org, UptimeRobot) at the same URL - the
+# endpoint takes a plain GET with a bearer token and does not care what calls it. Public repos
+# get unlimited Actions minutes and can leave this as-is.
+#
+# GitHub also disables scheduled workflows after 60 days without repository activity, and does not
+# guarantee punctual firing under load. Neither matters much for idempotent sweeps, but it is why
+# this is a stopgap for a Hobby deployment and not the design you would choose on a paid plan.
+
+on:
+  schedule:
+    # Every 5 minutes. GitHub's minimum interval, and it may run late under load.
+    - cron: '*/5 * * * *'
+  # So it can be triggered by hand from the Actions tab, which is also how you smoke-test the
+  # secret and URL without waiting for the schedule.
+  workflow_dispatch:
+
+# A late run must never pile up behind the previous one.
+concurrency:
+  group: background-sweeps
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Run every sweep
+        env:
+          APP_URL: ${{ vars.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${APP_URL}" ]; then
+            echo "::error::Repository variable APP_URL is not set."
+            exit 1
+          fi
+          if [ -z "${CRON_SECRET}" ]; then
+            echo "::error::Repository secret CRON_SECRET is not set."
+            exit 1
+          fi
+
+          # job=all runs the six sweeps in parallel inside one request and reports each one's
+          # outcome separately. It answers 500 if ANY of them failed, which is what makes the
+          # --fail-with-body below meaningful.
+          http_code=$(curl --silent --show-error \
+            --max-time 60 \
+            --retry 2 --retry-delay 5 --retry-connrefused \
+            --write-out '%{http_code}' \
+            --output response.json \
+            --header "Authorization: Bearer ${CRON_SECRET}" \
+            "${APP_URL}/api/cron/sweep?job=all")
+
+          echo "HTTP ${http_code}"
+          cat response.json
+          echo
+
+          if [ "${http_code}" != "200" ]; then
+            echo "::error::Sweep returned HTTP ${http_code} - see the body above for which job failed."
+            exit 1
+          fi

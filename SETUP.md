@@ -88,13 +88,27 @@ touching it. Two rules matter most:
   dropped in SQL but left in a route's `fallbackRoles` regains the permission the moment the
   policy table cannot be read.
 
-### The sequence does not build a database from empty
+### Building a database from empty
 
 Supabase's recorded history begins at a *correction* (`20260806160035`), not a schema creation.
-Nothing in the directory issues a `CREATE TABLE`, defines the `has_role()` helper, or declares the
-enum types - the first file assumes all of it exists. Standing up a fresh environment still
-requires cloning the schema out of the hosted project first. Closing this needs a baseline file
-ordered ahead of `20260806160035`.
+Nothing in the recorded history issues a `CREATE TABLE`, defines the `has_role()` helper, or
+declares the enum types - the first file assumes all of it exists.
+
+`00000000000000_baseline_schema.sql` supplies the missing first step. It holds the schema as of
+just before `20260806160035`, so the recorded migrations still replay meaningfully on top of it,
+and every statement in it is guarded so re-running it against an existing database is a no-op.
+`00000000000001_seed_roles.sql` then creates the ten `roles` rows, which are not optional: both
+`handle_new_auth_user()` and the RBAC matrix migration are written against `roles.code`, and a
+database missing them comes up serving every request on the route guards' hardcoded fallback
+lists, with one `[RBAC]` warning as the only signal that the matrix never loaded.
+
+Order for a fresh project: baseline, seed roles, the remaining migrations in filename order, then
+`database/seeder.ts`.
+
+The baseline has been executed, not merely reviewed - built in full against an empty schema and
+rolled back - so the order above is known to work rather than assumed to.
+`database/migrations/README.md` carries the detail, including the one ordering constraint inside
+the file that is load-bearing.
 
 ---
 
@@ -161,10 +175,9 @@ RBAC resolves through `role_permissions` via `PermissionService`. `can()` return
   it is ineffective on serverless.
 - **`RoleShell.tsx` imports `database/repositories/settingsRepository`**, pulling server-side data
   access into the browser bundle.
-- **The waiting-list unique index ignores the date**, so a user cannot queue for the same desk on
-  two different days.
-- **`xlsx@0.18.5` carries two high-severity advisories** with no fix on npm. Used only for
-  dashboard exports.
+- **`xlsx@0.18.5` carries two high-severity advisories** with no fix on npm. Kept deliberately -
+  see the security notes below for why they are not reachable, and what it would cost to remove
+  them.
 - **The Digital Twin under-reports occupancy** for Director, Executive Assistant, IT Admin and
   Security Guard: its client-side path is RLS-filtered and those roles are outside
   `p_reservations_owner_read`.
@@ -194,7 +207,7 @@ demo-mode bypass survives in the copy nobody remembered to patch.
 | `DEMO_MODE` | `false` | `true` |
 | `VITE_DEMO_MODE` | `false` | `true` |
 | Supabase project | production ref | a separate ref - never the same database |
-| `CRON_SECRET` | set | optional |
+| `CRON_SECRET` | required - see Background jobs | optional |
 
 Both build from the same commit. The only difference is environment variables.
 
@@ -227,6 +240,76 @@ Dev has authentication disabled. Pointing it at the production Supabase project 
 who finds the dev URL full admin access to real data through `X-Demo-Role`. Use a separate
 Supabase project and apply `database/migrations/` to it.
 
+
+## Background jobs
+
+Six sweeps keep the reservation lifecycle moving: no-show detection, auto check-out, check-in
+reminders, waiting-list offer expiry, temporary-seat expiry and cluster-authorisation re-lock.
+Self-hosted, they are `setInterval` tickers inside `backend/server.ts` and there is nothing to
+configure. On Vercel `startServer()` never runs, so every one of them has to be driven from
+outside by calling:
+
+```
+GET /api/cron/sweep?job=all
+Authorization: Bearer $CRON_SECRET
+```
+
+`job=all` runs all six in parallel and reports each separately; it answers `200` when they all
+succeed and `500` when any failed, so a scheduler that only watches the status code still notices.
+Individual jobs remain addressable by name (`?job=no-show`) for debugging. Without `CRON_SECRET`
+set the route refuses to run at all, and an unauthenticated call is rejected - an open endpoint
+here would let anyone force no-show detection across the whole site.
+
+### Why the schedule is not in `vercel.json`
+
+It used to be, and it could not have worked. Vercel's Hobby plan permits at most one cron run per
+day and **rejects a finer expression at deploy time** rather than degrading quietly, so the six
+`*/5` and `0 * * * *` entries would have failed the deployment outright. Daily resolution is not a
+workable fallback either: no-show detection is what releases a desk into the BPMN D5 waiting-list
+cascade, so a seat freed at 09:05 would not reach the queue until the following day, and a
+15-minute waiting-list offer would expire roughly 96 times before anything noticed.
+
+So `crons` is gone from `vercel.json` and the schedule lives with an external caller. Pick one:
+
+| Option | Notes |
+|---|---|
+| **External pinger** (cron-job.org, UptimeRobot, Better Stack) | Simplest. One URL, one bearer header, intervals down to a minute, no runner minutes to pay for. Recommended on Hobby. |
+| **GitHub Actions** - `.github/workflows/cron-sweep.yml`, already in the repo | Needs repository secret `CRON_SECRET` and variable `APP_URL`. Free on public repos. On a **private** repo, `*/5` is 288 billed runs a day and will exhaust the free monthly allowance on its own - widen the interval or use a pinger instead. |
+| **Vercel Pro** | Restores `crons` in `vercel.json` at the original frequencies. Nothing in the code has to change. |
+
+Whichever you choose, the same `CRON_SECRET` must be set both in Vercel's environment and on the
+caller.
+
+### Where `CRON_SECRET` comes from
+
+Nowhere - you invent it. It is not issued by Vercel and there is nothing to look up; it is just a
+shared secret this app compares against the `Authorization: Bearer` header, so that the sweep
+endpoint cannot be triggered by anyone who finds the URL. Generate one:
+
+```
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+Paste the same value into both places: Vercel > Project > Settings > Environment Variables
+(Production), and the scheduler - a repository secret named `CRON_SECRET` for the GitHub Actions
+workflow, or the request-header field of whichever pinger you use. Redeploy after adding it;
+environment variables are read at boot.
+
+It is not needed for local development. Running `npm run dev` starts the in-process tickers in
+`backend/server.ts` instead, so the sweeps already run every 60-120 seconds without any scheduler.
+`GET /api/cron/sweep` answering `503 CRON_SECRET absent` on localhost is the expected result, not
+a misconfiguration.
+
+### The guard that used to eat these requests
+
+`PUBLIC_ROUTES` in `backend/middleware/authMiddleware.ts` compared `req.path` against absolute
+paths like `/api/cron`. Because the middleware is mounted with `app.use('/api', ...)`, Express had
+already stripped the prefix and `req.path` read `/cron/sweep`, so the exemption never matched and
+the global JWT guard rejected every sweep with 401 before the route's own `CRON_SECRET` check ran.
+A scheduler would have received 401 forever. Fixed to match on the full path; if you are
+diagnosing a sweep that returns 401, check the response body - `{"code":"AUTH_MISSING"}` is the
+JWT guard, `{"message":"Non autorisé."}` is the route saying the secret does not match.
+
 ---
 
 ## 10. Security posture
@@ -250,7 +333,12 @@ reading `ai_provider_config`, self-granting a role, writing `settings`.
   guesses a minute.
 - **Rate limiting is per-instance.** In-process counters bound abuse per serverless instance, not
   globally. For a true global limit use Vercel WAF or a shared store.
-- **`xlsx@0.18.5` advisories are not reachable here.** Both require *parsing* attacker-controlled
-  input; this codebase only writes (`book_new` / `json_to_sheet` / `writeFile`) and never calls
-  `XLSX.read`. It will still fail `npm audit`, which has no fix on npm - upgrading means the
-  SheetJS CDN build or a different library.
+- **`xlsx@0.18.5` advisories are not reachable here, and the dependency is kept on purpose.**
+  Both require *parsing* attacker-controlled input; this codebase only writes (`book_new` /
+  `json_to_sheet` / `writeFile`) and never calls `XLSX.read`. There is no fix on npm, so removing
+  the finding means either the SheetJS CDN build or rewriting the Excel export against a different
+  library - and the export was rebuilt on this API in the same breath as this decision, so the
+  swap would carry more regression risk than the vulnerability it retires. `npm audit` will keep
+  reporting 1 high; that is expected, not an oversight. Revisit if the app ever gains a path that
+  *reads* a spreadsheet - an upload, an import - because that is the day the advisories start to
+  apply.
