@@ -97,7 +97,14 @@ export const SeatBookingModal: React.FC<SeatBookingModalProps> = ({
     };
   }, [isOpen, onClose]);
 
-  /** What the seat is actually free for on the chosen day, straight from the overlay. */
+  /**
+   * What the seat is actually free for on the chosen day, straight from the overlay.
+   *
+   * The overlay the parent loads covers the START date only. Over a multi-day range this answer is
+   * therefore about the first day, and the caption below says so rather than implying the whole
+   * span was checked - the server validates every day of the range on confirm, and answers with
+   * the conflicting seat if one is taken.
+   */
   const availability = useMemo(() => {
     const info = workstation.availability;
     if (workstation.status === 'maintenance') return { text: 'Poste en maintenance', tone: 'bad' as const };
@@ -159,36 +166,52 @@ export const SeatBookingModal: React.FC<SeatBookingModalProps> = ({
             </div>
           </div>
 
+          {/* Du / Au.
+              The quick "Aujourd'hui" / "Demain" buttons are gone. They only ever set both ends to
+              the same day, which meant the one thing this dialog could not express was the booking
+              the rest of the stack was already built for: validateReservationConstraints has taken
+              a start and an end from the beginning, counts business days across them, and decides
+              from that span whether the request needs extension approval. Two fields say what one
+              field plus two shortcuts could not. */}
           <div>
             <label className="flex items-center gap-1.5 text-[11px] font-bold text-slate-600 uppercase tracking-wide mb-2">
-              <CalendarDays className="w-3.5 h-3.5" /> Date
+              <CalendarDays className="w-3.5 h-3.5" /> Dates
             </label>
-            <div className="flex flex-wrap gap-2">
-              {[
-                { label: "Aujourd'hui", value: isoDay(0) },
-                { label: 'Demain', value: isoDay(1) },
-              ].map((d) => (
-                <button
-                  key={d.value}
-                  type="button"
-                  onClick={() => onSlotChange({ startDate: d.value, endDate: d.value, startTime, endTime })}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
-                    startDate === d.value && !isMultiDay
-                      ? 'bg-[#008751] border-[#008751] text-white'
-                      : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
-                  }`}
-                >
-                  {d.label}
-                </button>
-              ))}
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) =>
-                  onSlotChange({ startDate: e.target.value, endDate: e.target.value, startTime, endTime })
-                }
-                className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-white border border-slate-200 text-slate-700"
-              />
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Du</span>
+                <input
+                  type="date"
+                  value={startDate}
+                  min={isoDay(0)}
+                  onChange={(e) => {
+                    const nextStart = e.target.value;
+                    // A start dragged past the end would submit a backwards range that only the
+                    // server would reject. Carry the end along instead of letting it go stale -
+                    // same rule the hour selects below already follow.
+                    const nextEnd = !endDate || endDate < nextStart ? nextStart : endDate;
+                    onSlotChange({ startDate: nextStart, endDate: nextEnd, startTime, endTime });
+                  }}
+                  className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-white border border-slate-200 text-slate-700"
+                  aria-label="Date de début"
+                />
+              </div>
+
+              <span className="pb-2 text-xs text-slate-400 font-bold">→</span>
+
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Au</span>
+                <input
+                  type="date"
+                  value={endDate || startDate}
+                  min={startDate}
+                  onChange={(e) =>
+                    onSlotChange({ startDate, endDate: e.target.value || startDate, startTime, endTime })
+                  }
+                  className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-white border border-slate-200 text-slate-700"
+                  aria-label="Date de fin"
+                />
+              </div>
             </div>
           </div>
 
@@ -203,7 +226,7 @@ export const SeatBookingModal: React.FC<SeatBookingModalProps> = ({
                   type="button"
                   onClick={() => {
                     setShowCustom(false);
-                    onSlotChange({ startDate, endDate: startDate, startTime: s.start, endTime: s.end });
+                    onSlotChange({ startDate, endDate, startTime: s.start, endTime: s.end });
                   }}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
                     slotActive(s) && !showCustom
@@ -249,7 +272,7 @@ export const SeatBookingModal: React.FC<SeatBookingModalProps> = ({
                             )
                           ]
                         : endTime;
-                    onSlotChange({ startDate, endDate: startDate, startTime: nextStart, endTime: nextEnd });
+                    onSlotChange({ startDate, endDate, startTime: nextStart, endTime: nextEnd });
                   }}
                   className="flex-1 bg-white border border-slate-300 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-800"
                   aria-label="Heure de début"
@@ -266,7 +289,7 @@ export const SeatBookingModal: React.FC<SeatBookingModalProps> = ({
                 <select
                   value={endTime}
                   onChange={(e) =>
-                    onSlotChange({ startDate, endDate: startDate, startTime, endTime: e.target.value })
+                    onSlotChange({ startDate, endDate, startTime, endTime: e.target.value })
                   }
                   className="flex-1 bg-white border border-slate-300 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-800"
                   aria-label="Heure de fin"
@@ -294,6 +317,12 @@ export const SeatBookingModal: React.FC<SeatBookingModalProps> = ({
               }`}
             >
               {availability.text}
+              {isMultiDay && (
+                <span className="block mt-0.5 font-medium opacity-80">
+                  Disponibilité vérifiée pour le {startDate} - les autres jours sont contrôlés à la
+                  confirmation.
+                </span>
+              )}
             </div>
           )}
 
