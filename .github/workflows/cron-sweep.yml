@@ -26,11 +26,24 @@ name: Background sweeps
 # this is a stopgap for a Hobby deployment and not the design you would choose on a paid plan.
 
 on:
-  schedule:
-    # Every 5 minutes. GitHub's minimum interval, and it may run late under load.
-    - cron: '*/5 * * * *'
-  # So it can be triggered by hand from the Actions tab, which is also how you smoke-test the
-  # secret and URL without waiting for the schedule.
+  # THE SCHEDULE IS DELIBERATELY COMMENTED OUT until the two values below are configured.
+  #
+  # Enabled from the start, this fired every 5 minutes from the default branch, failed in two
+  # seconds on the missing APP_URL / CRON_SECRET, and mailed a failure notice each time. A job
+  # that cannot possibly succeed should not be on a timer.
+  #
+  # To turn it on: set the repository variable APP_URL and the repository secret CRON_SECRET
+  # (Settings > Secrets and variables > Actions), confirm it works with "Run workflow" from the
+  # Actions tab, then uncomment the two lines below.
+  #
+  # Before you do, re-read the cost warning above: on a private repo, */5 is 288 billed runs a day
+  # and will exhaust the free monthly allowance on its own. A free external pinger against the same
+  # URL avoids that entirely and is the better fit on Hobby.
+  #
+  # schedule:
+  #   - cron: '*/5 * * * *'   # GitHub's minimum interval; may run late under load.
+
+  # Manual runs stay available - this is how you smoke-test the URL and secret.
   workflow_dispatch:
 
 # A late run must never pile up behind the previous one.
