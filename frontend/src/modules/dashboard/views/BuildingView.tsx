@@ -16,8 +16,10 @@ import { SiteTelemetrySummary } from '@/services/telemetry/telemetryService';
 import { apiFetchOccupancy } from '@/services/api/telemetryApi';
 import { apiFetchNoShowStats, NoShowStats } from '@/services/api/noShowApi';
 import { apiFetchPendingClusterAccessRequests } from '@/services/api/workspaceApi';
+import { useAuth } from '../../auth/context/AuthContext';
 
 export const BuildingView: React.FC = () => {
+  const { currentUser } = useAuth();
   const [editingWorkstation, setEditingWorkstation] = useState<Workstation | null>(null);
   const [telemetry, setTelemetry] = useState<SiteTelemetrySummary | null>(null);
   const [noShowStats, setNoShowStats] = useState<NoShowStats>({ today: 0, thisWeek: 0, perCluster: {} });
@@ -76,18 +78,12 @@ export const BuildingView: React.FC = () => {
             <span className="px-2.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold text-xs">
               Rôle : Building Manager
             </span>
-            <span className="text-xs text-slate-400">Gestion Opérationnelle Open Space Safi</span>
           </div>
-          <h1 className="text-xl font-bold mt-1">Supervision de l'Occupation &amp; des Réservations</h1>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Disponibilité, discipline et reporting de l'Open Space - occupation, réservations, anomalies et clusters réservés.
-          </p>
+          <h1 className="text-xl font-bold mt-2">
+            Bienvenue {currentUser.full_name}
+          </h1>
         </div>
 
-        <div className="bg-slate-800 px-3.5 py-2 rounded-xl border border-slate-700 flex items-center space-x-2">
-          <Activity className="w-4 h-4 text-emerald-400" />
-          <span className="text-xs text-slate-200">Temps réel</span>
-        </div>
       </div>
 
       {actionMessage && (

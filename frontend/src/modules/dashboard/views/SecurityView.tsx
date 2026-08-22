@@ -12,6 +12,7 @@ import { DigitalTwin } from '../../../shared/components/DigitalTwin';
 import { apiFetchEvacuationRoster, OccupantRosterItem } from '@/services/api/securityApi';
 import { apiFetchAuditLogs } from '@/services/api/auditApi';
 import { AuditLogEntry } from '../../../types';
+import { useAuth } from '../../auth/context/AuthContext';
 
 /**
  * Security home - SRS §13 matrix, Security column: R on Audit logs and Analytics, R (view only)
@@ -22,6 +23,7 @@ import { AuditLogEntry } from '../../../types';
  * clickable booking flow would contradict the matrix.
  */
 export const SecurityView: React.FC = () => {
+  const { currentUser } = useAuth();
   const [roster, setRoster] = useState<OccupantRosterItem[] | null>(null);
   const [rosterError, setRosterError] = useState<string | null>(null);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
@@ -104,12 +106,10 @@ export const SecurityView: React.FC = () => {
             <span className="px-2.5 py-0.5 rounded bg-slate-700 text-slate-200 font-bold text-xs">
               Rôle : Sécurité
             </span>
-            <span className="text-xs text-slate-400">Contrôle d'accès - Site Safi</span>
           </div>
-          <h1 className="text-xl font-bold mt-1">Surveillance &amp; registre de présence</h1>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Présents sur site en temps réel, registre d'évacuation et consultation des journaux d'audit.
-          </p>
+          <h1 className="text-xl font-bold mt-2">
+            Bienvenue {currentUser.full_name}
+          </h1>
         </div>
 
         <div className="flex items-center gap-2">

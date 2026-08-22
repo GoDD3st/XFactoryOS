@@ -318,6 +318,26 @@ export const UserProfileDrawer: React.FC<Props> = ({ isOpen, onClose }) => {
               )}
             </div>
           </div>
+
+          {/* Sign out lives here, last, and deliberately below everything else.
+              It used to sit in the header next to the notification bell, a single tap away from
+              whatever the user was doing and reachable by accident. Ending a session is the most
+              destructive thing this screen offers - unsaved edits in the form above are lost with
+              it - so it belongs at the end of the panel the user opened on purpose, after the
+              account details it applies to. */}
+          <div className="border-t border-slate-200 p-4">
+            <button
+              type="button"
+              onClick={async () => {
+                onClose();
+                await signOut();
+              }}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:border-red-300 font-bold text-xs transition-colors"
+            >
+              <LogOut className="w-4 h-4" />
+              Se déconnecter
+            </button>
+          </div>
         </div>
       </aside>
     </div>

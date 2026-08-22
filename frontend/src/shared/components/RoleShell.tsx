@@ -677,19 +677,9 @@ export const RoleShell: React.FC = () => {
               )}
               </div>
             ) : (
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => signOut()}
-                  className="shrink-0 text-[10px] font-bold text-slate-400 hover:text-red-600 uppercase tracking-wide px-2 py-1.5 rounded-lg hover:bg-red-50 transition-all"
-                  title="Se déconnecter"
-                  aria-label="Se déconnecter"
-                >
-                  {/* Same action, same place; only the label folds down to its icon where there
-                      is no room for eleven characters of uppercase text. */}
-                  <span className="hidden sm:inline">Déconnexion</span>
-                  <LogOut className="w-4 h-4 sm:hidden" />
-                </button>
-              </div>
+              /* Sign out moved into the profile panel, at the bottom - see UserProfileDrawer.
+                 Nothing is rendered here now: the avatar to the right opens that panel. */
+              null
             )}
 
             {/* Collaborators get the reservation rules instead of the AI assistant: Module 1 does

@@ -146,9 +146,12 @@ export const ReceptionView: React.FC = () => {
             <span className="px-2.5 py-0.5 rounded bg-teal-500/20 text-teal-300 font-bold text-xs">
               Rôle : Réceptionniste
             </span>
-            <span className="text-xs text-slate-400">Accueil - Site Safi</span>
           </div>
-          <h1 className="text-xl font-bold mt-1">Bonjour, {currentUser.full_name?.split(' ')[0] || 'Réception'}</h1>
+          <h1 className="text-xl font-bold mt-2">
+            Bienvenue {currentUser.full_name}
+          </h1>
+          {/* The date stays - it is information the desk actually uses, not a claim about the
+              product like the taglines that were removed from these banners. */}
           <p className="text-xs text-slate-400 mt-0.5 capitalize">{today}</p>
         </div>
 
