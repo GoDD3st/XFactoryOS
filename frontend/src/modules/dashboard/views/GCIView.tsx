@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { KeyRound, Lock, Layers, Armchair, ShieldCheck, Clock, AlertCircle } from 'lucide-react';
 import { Cluster, ClusterAuthorization } from '../../../types';
 import { apiFetchClusters, apiFetchClusterAccessHistory } from '@/services/api/workspaceApi';
+import { useAuth } from '../../auth/context/AuthContext';
 
 /**
  * GCI Manager home - SRS §8.4: "Responsable de la gouvernance Growth Culture & Collaborative
@@ -17,6 +18,7 @@ import { apiFetchClusters, apiFetchClusterAccessHistory } from '@/services/api/w
 const IN_USE_STATUSES = new Set(['réservé', 'occupé']);
 
 export const GCIView: React.FC = () => {
+  const { currentUser } = useAuth();
   const [clusters, setClusters] = useState<Cluster[]>([]);
   const [authorizations, setAuthorizations] = useState<ClusterAuthorization[]>([]);
   const [loading, setLoading] = useState(true);
@@ -96,12 +98,10 @@ export const GCIView: React.FC = () => {
           <span className="px-2.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-bold text-xs">
             Rôle : GCI Manager
           </span>
-          <span className="text-xs text-slate-400">Growth Culture &amp; Collaborative Innovation - Site Safi</span>
         </div>
-        <h1 className="text-xl font-bold mt-1">Gouvernance des espaces &amp; clusters Management</h1>
-        <p className="text-xs text-slate-400 mt-0.5">
-          Autorisation temporaire des clusters Management (BR-09) et suivi de la valeur d'usage.
-        </p>
+          <h1 className="text-xl font-bold mt-2">
+            Bienvenue {currentUser.full_name}
+          </h1>
       </div>
 
       {error && (

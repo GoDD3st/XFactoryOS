@@ -14,6 +14,7 @@ import { apiFetchHardwareDiagnostics, apiResetHardwarePort } from '@/services/ap
 import { apiFetchHealth, HealthReport, HealthStatus } from '@/services/api/healthApi';
 import { apiFetchAuditLogs } from '@/services/api/auditApi';
 import { HardwareDiagnosticsInfo, AuditLogEntry } from '@/frontend/src/types';
+import { useAuth } from '../../auth/context/AuthContext';
 
 /**
  * SRS §8: the IT Administrator owns "Administration technique" (CRUD) and is read-only on every
@@ -48,6 +49,7 @@ const FUTURE_INTEGRATIONS = [
 const SECURITY_ACTIONS = new Set(['LOGIN', 'LOGOUT', 'ROLE_CHANGE', 'SETTINGS_CHANGE', 'EXPORT']);
 
 export const ITAdminView: React.FC = () => {
+  const { currentUser } = useAuth();
   const [diagnostics, setDiagnostics] = useState<HardwareDiagnosticsInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -110,12 +112,10 @@ export const ITAdminView: React.FC = () => {
             <span className="px-2.5 py-0.5 rounded bg-blue-500/20 text-blue-300 font-bold text-xs">
               Rôle : IT Admin Infrastructure
             </span>
-            <span className="text-xs text-slate-400">Administration Technique - Site Safi</span>
           </div>
-          <h1 className="text-xl font-bold mt-1">Supervision du Parc Matériel</h1>
-          <p className="text-xs text-slate-400 mt-0.5">
-            État des ports réseau par poste - {diagnostics.length} poste(s) supervisé(s).
-          </p>
+          <h1 className="text-xl font-bold mt-2">
+            Bienvenue {currentUser.full_name}
+          </h1>
         </div>
 
         <button

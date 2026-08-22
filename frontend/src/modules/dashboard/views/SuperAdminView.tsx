@@ -19,8 +19,10 @@ import { apiFetchRoles } from '@/services/api/rolesApi';
 import { apiFetchAuditLogs } from '@/services/api/auditApi';
 import { SettingsService } from '@/services/settings/settingsService';
 import { UserProfile, RoleWithCount, AuditLogEntry, SystemSettings } from '@/frontend/src/types';
+import { useAuth } from '../../auth/context/AuthContext';
 
 export const SuperAdminView: React.FC = () => {
+  const { currentUser } = useAuth();
   const [telemetry, setTelemetry] = useState<SiteTelemetrySummary | null>(null);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [roles, setRoles] = useState<RoleWithCount[]>([]);
@@ -51,16 +53,10 @@ export const SuperAdminView: React.FC = () => {
             <span className="px-2.5 py-0.5 rounded bg-violet-500/20 text-violet-300 font-bold text-xs">
               Rôle : Super Administrator
             </span>
-            <span className="text-xs text-slate-400">Gouvernance & Administration XFactory OS</span>
           </div>
-          <h1 className="text-xl font-bold mt-1">Configuration de la Plateforme</h1>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Utilisateurs, rôles &amp; permissions, politiques de réservation et référentiels - la gouvernance fonctionnelle du site Safi.
-          </p>
-        </div>
-        <div className="bg-slate-800 px-3.5 py-2 rounded-xl border border-slate-700 flex items-center space-x-2">
-          <ShieldCheck className="w-4 h-4 text-emerald-400" />
-          <span className="text-xs text-slate-200">Plateforme opérationnelle</span>
+          <h1 className="text-xl font-bold mt-2">
+            Bienvenue {currentUser.full_name}
+          </h1>
         </div>
       </div>
 

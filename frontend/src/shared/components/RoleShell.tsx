@@ -130,7 +130,6 @@ const ROLE_TABS: Record<UserRole, TabDef[]> = {
     { key: 'clusters', label: 'Clusters', icon: <Layers className="w-3.5 h-3.5" /> },
     { key: 'late-checkin', label: 'Check-in tardif', icon: <Clock className="w-3.5 h-3.5" /> },
     { key: 'users', label: 'Utilisateurs', icon: <Users className="w-3.5 h-3.5" /> },
-    { key: 'audit', label: 'Audit', icon: <FileText className="w-3.5 h-3.5" /> },
   ],
   // SRS §13 matrix, GCI Manager column: R dashboard/analytics/audit, C+U reservations (incl.
   // others'), A on "Autoriser cluster management", RU postes/clusters, R users. Roles and
@@ -145,7 +144,6 @@ const ROLE_TABS: Record<UserRole, TabDef[]> = {
     { key: 'reservations', label: 'Réservations', icon: <Calendar className="w-3.5 h-3.5" /> },
     { key: 'calendar', label: 'Calendrier', icon: <Clock className="w-3.5 h-3.5" /> },
     { key: 'users', label: 'Utilisateurs', icon: <Users className="w-3.5 h-3.5" /> },
-    { key: 'audit', label: 'Audit', icon: <FileText className="w-3.5 h-3.5" /> },
   ],
   // SRS §13 matrix, Executive Assistant column: A on "Approuver longue durée" (its whole
   // mandate), R on Dashboard exécutif and Analytics, C on "Réserver poste standard", U on its
@@ -214,7 +212,6 @@ const ROLE_TABS: Record<UserRole, TabDef[]> = {
     { key: 'home', label: 'IT Admin', icon: <Wrench className="w-3.5 h-3.5" /> },
     { key: 'reserve', label: 'Réserver', icon: <CalendarPlus className="w-3.5 h-3.5" /> },
     { key: 'users', label: 'Utilisateurs', icon: <Users className="w-3.5 h-3.5" /> },
-    { key: 'audit', label: 'Audit', icon: <FileText className="w-3.5 h-3.5" /> },
   ],
   // SRS §13 matrix, Security column: R on analytics/audit, and X on "Réserver poste standard" -
   // a guard supervises the floor, it does not occupy a desk on it. Confirmed as intended rather
@@ -222,7 +219,6 @@ const ROLE_TABS: Record<UserRole, TabDef[]> = {
   // out of RESERVE_FALLBACK_ROLES; changing it means amending the SRS, not patching this list.
   security_guard: [
     { key: 'home', label: 'Sécurité', icon: <Shield className="w-3.5 h-3.5" /> },
-    { key: 'audit', label: 'Audit', icon: <FileText className="w-3.5 h-3.5" /> },
   ],
 };
 
@@ -681,27 +677,9 @@ export const RoleShell: React.FC = () => {
               )}
               </div>
             ) : (
-              <div className="flex items-center gap-2">
-                <div className="flex items-center bg-slate-100 rounded-full px-2.5 sm:px-3.5 py-1.5 gap-2 border border-slate-200 text-slate-700 min-w-0">
-                  <Shield className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span
-                    className={`text-[10px] px-2 py-0.5 rounded-full font-bold truncate max-w-[6rem] sm:max-w-none ${roleConfig.badgeColor}`}
-                  >
-                    {roleConfig.label}
-                  </span>
-                </div>
-                <button
-                  onClick={() => signOut()}
-                  className="shrink-0 text-[10px] font-bold text-slate-400 hover:text-red-600 uppercase tracking-wide px-2 py-1.5 rounded-lg hover:bg-red-50 transition-all"
-                  title="Se déconnecter"
-                  aria-label="Se déconnecter"
-                >
-                  {/* Same action, same place; only the label folds down to its icon where there
-                      is no room for eleven characters of uppercase text. */}
-                  <span className="hidden sm:inline">Déconnexion</span>
-                  <LogOut className="w-4 h-4 sm:hidden" />
-                </button>
-              </div>
+              /* Sign out moved into the profile panel, at the bottom - see UserProfileDrawer.
+                 Nothing is rendered here now: the avatar to the right opens that panel. */
+              null
             )}
 
             {/* Collaborators get the reservation rules instead of the AI assistant: Module 1 does

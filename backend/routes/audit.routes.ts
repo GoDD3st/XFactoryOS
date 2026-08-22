@@ -43,7 +43,13 @@ const CAN_SEE_ALL = ['super_admin'] as const;
 // Director is excluded on a deliberate override: the matrix row grants it R, but the SRS section
 // naming the audit-log actors lists only Super Administrator, Security and IT Administrator - 
 // the two contradict each other and the narrative section was chosen.
-auditRouter.get('/', requirePermission('audit_logs', 'read', ['super_admin', 'admin', 'building_manager', 'gci_manager', 'it_admin', 'security_guard']), async (req, res) => {
+// Fallback for when role_permissions cannot be read. Admin and Super Admin only, matching the
+// policy table after 20260822: the audit log is an administration surface, and the roles that were
+// reading it by default now need an explicit grant from the Roles & Permissions screen. Widening
+// this list would silently re-grant on the one path where the policy table has no say.
+const AUDIT_FALLBACK_ROLES = ['super_admin', 'admin'] as const;
+
+auditRouter.get('/', requirePermission('audit_logs', 'read', AUDIT_FALLBACK_ROLES), async (req, res) => {
   try {
     const data = await AuditService.getAuditLogs();
     const role = req.user!.role;
