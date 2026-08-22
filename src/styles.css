@@ -239,3 +239,73 @@
     color: #64748b;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Device-agnostic defaults
+
+   Nothing here pins a width, a height or a breakpoint to a particular handset.
+   These are the rules that let the same layout land correctly on any screen,
+   and each one exists because its absence shows up on a real device:
+
+   - 100dvh, not 100vh. On iOS Safari 100vh is the height the viewport has when
+     the toolbars are COLLAPSED, so a `min-height: 100vh` page is taller than
+     what you can actually see and the bottom of the app hides behind the
+     browser chrome. dvh tracks the viewport as the chrome shows and hides.
+
+   - Safe-area insets. With viewport-fit=cover the page finally reaches the
+     screen edges, which also means it reaches under the notch and the home
+     indicator. These pad only by however much the device actually reserves -
+     zero on a device with no cutout - so nothing is hardcoded per handset.
+
+   - text-size-adjust. iOS inflates font sizes in landscape unless told not to,
+     which silently breaks any layout tuned in portrait.
+
+   - overflow-wrap. Free text is user data and can contain a 60-character
+     unbroken token. Without a wrap opportunity one such token is enough to
+     push a whole page wider than the screen.
+   --------------------------------------------------------------------------- */
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  width: 100%;
+  min-height: 100dvh;
+  overflow-wrap: break-word;
+}
+
+#root {
+  width: 100%;
+  min-height: 100dvh;
+}
+
+/* Media never widens its container, whatever its intrinsic size. */
+img,
+svg,
+video,
+canvas {
+  max-width: 100%;
+}
+
+/* The two full-bleed bars are the only places the insets matter: everything
+   else sits inside them. max() keeps the existing padding on devices that
+   reserve nothing. */
+header.sticky {
+  padding-left: max(0.75rem, env(safe-area-inset-left));
+  padding-right: max(0.75rem, env(safe-area-inset-right));
+}
+
+@media (min-width: 640px) {
+  header.sticky {
+    padding-left: max(1.5rem, env(safe-area-inset-left));
+    padding-right: max(1.5rem, env(safe-area-inset-right));
+  }
+}
+
+footer {
+  padding-bottom: env(safe-area-inset-bottom);
+  height: auto;
+  min-height: 2rem;
+}

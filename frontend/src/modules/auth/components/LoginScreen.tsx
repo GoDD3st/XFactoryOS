@@ -62,7 +62,7 @@ export const LoginScreen: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+    <div className="min-h-dvh bg-slate-50 flex items-center justify-center p-4">
       <div className="w-full max-w-sm bg-white rounded-2xl shadow-xl border border-slate-200 p-8 space-y-6">
         <div className="flex flex-col items-center text-center gap-2">
           {/* Same site mark as the authenticated header (RoleShell): the uploaded logo when one is

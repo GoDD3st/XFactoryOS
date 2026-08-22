@@ -530,7 +530,7 @@ export const RoleShell: React.FC = () => {
 
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans antialiased">
+    <div className="min-h-dvh bg-slate-50 text-slate-900 flex flex-col font-sans antialiased">
       {/* FR-04 idle session expiration warning */}
       {sessionIdleWarning && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4">

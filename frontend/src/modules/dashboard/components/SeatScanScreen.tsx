@@ -35,7 +35,7 @@ export const SeatScanScreen: React.FC<SeatScanScreenProps> = ({ seatToken, onDon
   }, [seatToken]);
 
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+    <div className="min-h-dvh bg-slate-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 text-center space-y-4">
         {state.phase === 'loading' && (
           <>
