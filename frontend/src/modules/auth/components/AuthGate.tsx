@@ -43,7 +43,7 @@ export const AuthGate: React.FC = () => {
 
   if (!isDemoMode && authLoading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-dvh bg-slate-50 flex items-center justify-center">
         <div className="flex items-center gap-2 text-slate-400 text-xs font-bold uppercase tracking-wide">
           <div className="w-4 h-4 border-2 border-slate-300 border-t-emerald-600 rounded-full animate-spin" />
           Vérification de la session...

@@ -2,7 +2,11 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover lets the page use the full screen on a notched phone; without it
+         iOS letterboxes the page inside the safe area. The insets are then honoured
+         explicitly in src/styles.css, so content never sits under the notch or the home
+         indicator. No width or scale is pinned - the device decides. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>X Factory</title>
   </head>
   <body>
