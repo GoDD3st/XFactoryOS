@@ -7,3 +7,6 @@ coverage/
 .env*
 CLAUDE_CODE_HANDOFF.md
 Livrables/
+
+# Server bundle for the Vercel function - produced by `npm run build:server`.
+server-dist/

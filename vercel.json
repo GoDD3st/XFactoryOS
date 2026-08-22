@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "buildCommand": "npm run build",
+  "buildCommand": "npm run build && npm run build:server",
   "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
@@ -12,5 +12,10 @@
       "source": "/(.*)",
       "destination": "/index.html"
     }
-  ]
+  ],
+  "functions": {
+    "api/index.ts": {
+      "includeFiles": "server-dist/**"
+    }
+  }
 }

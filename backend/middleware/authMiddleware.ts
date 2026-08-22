@@ -39,10 +39,28 @@ const DEMO_MODE = process.env.DEMO_MODE === 'true';
  * wrongly is exactly the mistake this is guarding against - `false` is one keystroke from `true`.
  */
 export function assertDemoModeIsSafe(): void {
-  const isProduction =
-    process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+  // VERCEL_ENV decides when it is present; NODE_ENV only when it is not.
+  //
+  // The original test ORed the two, which looks stricter and was in fact broken: Vercel sets
+  // NODE_ENV=production on EVERY deployment, previews included. So a preview with DEMO_MODE=true -
+  // which is exactly what SETUP.md prescribes for the dev environment - threw here, inside
+  // createExpressApp(), which api/index.ts calls at module scope. The function then crashed on
+  // cold start and every single route answered 500, including ones that touch nothing. Nothing in
+  // the response said why; the reason was only in the function log.
+  //
+  // Reading VERCEL_ENV first fixes that without loosening the guard where it matters. A real
+  // production deployment still reports VERCEL_ENV=production and is still refused, and a
+  // self-hosted `NODE_ENV=production` with no VERCEL_ENV is still refused. Only the case the old
+  // test could not distinguish - a Vercel preview - is now allowed to run in demo mode, which is
+  // the entire point of having a preview environment.
+  const vercelEnv = process.env.VERCEL_ENV;
+  const isProduction = vercelEnv ? vercelEnv === 'production' : process.env.NODE_ENV === 'production';
 
   if (DEMO_MODE && isProduction) {
+    // Logged as well as thrown: the throw becomes an opaque 500 on every route, and this line is
+    // the only thing that tells whoever is reading the logs which of the many possible boot
+    // failures they are looking at.
+    console.error('[BOOT] REFUS DE DEMARRAGE - DEMO_MODE=true en production.');
     throw new Error(
       'REFUS DE DEMARRAGE : DEMO_MODE=true dans un environnement de production. ' +
         "Le mode demonstration contourne entierement l'authentification (en-tete X-Demo-Role). " +
