@@ -8,5 +8,7 @@ coverage/
 CLAUDE_CODE_HANDOFF.md
 Livrables/
 
-# Server bundle for the Vercel function - produced by `npm run build:server`.
-server-dist/
+# NOTE: server-dist/ is deliberately NOT ignored. It is build output, but it is also the file
+# the Vercel function imports, and committing it means the bundle is present in the uploaded
+# source rather than depending on build ordering for functions.includeFiles to find it.
+# Rebuild it with `npm run build:server` whenever backend/, services/ or database/ change.
