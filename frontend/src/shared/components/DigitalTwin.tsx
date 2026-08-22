@@ -140,11 +140,34 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
   // Selected Cluster filter (null = all 7 clusters)
   const [activeClusterId, setActiveClusterId] = useState<string | null>(null);
 
-  // Selected seat detail view modal/tooltip
-  const [activeHoverSeat, setActiveHoverSeat] = useState<{
+  // Detail dialog for a seat the user CANNOT simply book - one that is taken and can be queued
+  // for, or a locked management cluster. A bookable seat never lands here: clicking it goes
+  // straight to the booking form, which is the only thing the old bar did for it anyway.
+  //
+  // It used to be `seatDetail`, opened on mouseenter as well as click, and rendered as a bar
+  // appended below the floor plan. On a zoomed plan that bar was off-screen, so clicking a seat
+  // looked like nothing happened until you scrolled - the same complaint that moved the booking
+  // form into a modal. It is a dialog now, and it opens only on a deliberate click.
+  const [seatDetail, setSeatDetail] = useState<{
     workstation: Workstation;
     cluster: Cluster;
   } | null>(null);
+
+  // Escape closes the seat dialog, and the page behind stops scrolling while it is up - the same
+  // contract SeatBookingModal offers, so the two dialogs do not behave differently.
+  useEffect(() => {
+    if (!seatDetail) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSeatDetail(null);
+    };
+    window.addEventListener('keydown', onKey);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [seatDetail]);
 
   // BR-09 / SRS §14.4 - request temporary access to a locked management cluster
   const [accessRequestCluster, setAccessRequestCluster] = useState<Cluster | null>(null);
@@ -390,22 +413,35 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
               // Queueable seats stay clickable so the drawer can offer the waiting list - a
               // fully-booked seat is still a destination, just not a bookable one.
               const isQueueable = isSeatQueueable(ws, cluster);
+              // A locked management cluster is neither bookable nor queueable, but it IS a
+              // destination: the dialog is where "Demander l'accès" lives. While the detail panel
+              // also opened on hover this did not matter, because hovering a disabled button still
+              // fires mouseenter. Now that it opens on click alone, leaving these disabled would
+              // quietly remove the only route to a BR-09 access request.
+              const opensDetail =
+                isQueueable ||
+                (!readOnly && !adminEditMode && ws.status === 'management_reserved');
 
               return (
                 <div key={ws.id} className="relative group">
                   {/* Seat Pill Button */}
                   <button
-                    disabled={readOnly || (!isSelectable && !isQueueable)}
+                    disabled={readOnly || (!isSelectable && !opensDetail)}
                     onClick={() => {
+                      // One click, one outcome. A bookable seat opens the booking form and
+                      // nothing else - it used to ALSO open the detail bar, which repeated the
+                      // seat's name and offered a "Sélectionner ce poste" button for the form
+                      // that had already opened. Everything else opens the detail dialog, which
+                      // is where queuing and access requests live.
                       if (onSelectSeat && isSelectable) {
                         onSelectSeat(ws, cluster);
+                        return;
                       }
-                      setActiveHoverSeat({ workstation: ws, cluster });
+                      setSeatDetail({ workstation: ws, cluster });
                     }}
-                    onMouseEnter={() => setActiveHoverSeat({ workstation: ws, cluster })}
                     className={`w-full py-2.5 px-1 rounded-xl text-center flex flex-col items-center justify-center transition-all border font-bold text-xs seat-pill shadow-xs ${statusColor} ${
                       isSelected ? 'ring-4 ring-emerald-500 ring-offset-2 ring-offset-white scale-105 z-10' : ''
-                    } ${!isSelectable && !isQueueable ? 'cursor-not-allowed opacity-90' : 'cursor-pointer'}`}
+                    } ${!isSelectable && !opensDetail ? 'cursor-not-allowed opacity-90' : 'cursor-pointer'}`}
                   >
                     <span className="text-[10px] tracking-tight opacity-90">{ws.code.split('-')[2]}</span>
                     <span className="text-[11px] truncate w-full font-extrabold">{ws.code}</span>
@@ -638,50 +674,65 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
         />
       )}
 
-      {/* Selected/Hovered Seat Detail Drawer / Modal */}
-      {activeHoverSeat && (
-        <div className="bg-slate-900 text-white border border-slate-800 rounded-2xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mt-2 shadow-lg animate-in fade-in">
-          <div className="flex items-center space-x-3">
+      {/* Seat detail dialog - taken seats and locked clusters.
+          Floating, like the booking form, and for the same reason: appended below the floor plan
+          it sat off-screen on a zoomed plan, so the answer to "can I have this desk?" was a scroll
+          away from the question. */}
+      {seatDetail && (
+        <div
+          className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-slate-900/60 backdrop-blur-sm p-0 sm:p-4"
+          onClick={() => setSeatDetail(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Poste ${seatDetail.workstation.code}`}
+        >
+          <div
+            className="bg-slate-900 text-white border border-slate-800 w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-5 shadow-2xl space-y-4 animate-in fade-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+          <div className="flex items-start space-x-3">
             <span
               className={`w-4 h-4 rounded-full inline-block ${
-                activeHoverSeat.workstation.status === 'disponible'
+                seatDetail.workstation.status === 'disponible'
                   ? 'bg-[#00b050]'
-                  : activeHoverSeat.workstation.status === 'partiel'
+                  : seatDetail.workstation.status === 'partiel'
                   ? 'bg-[#eab308]'
-                  : activeHoverSeat.workstation.status === 'réservé'
+                  : seatDetail.workstation.status === 'réservé'
                   ? 'bg-[#e05252]'
-                  : activeHoverSeat.workstation.status === 'occupé'
+                  : seatDetail.workstation.status === 'occupé'
                   ? 'bg-[#3b82f6]'
-                  : activeHoverSeat.workstation.status === 'maintenance'
+                  : seatDetail.workstation.status === 'maintenance'
                   ? 'bg-[#f59e0b]'
                   : 'bg-[#6366f1]'
               }`}
             />
-            <div>
-              <div className="flex items-center space-x-2">
-                <span className="font-extrabold text-base text-white">{activeHoverSeat.workstation.code}</span>
+            <div className="min-w-0">
+              {/* Cluster on its own line: at dialog width the three of these on one row wrapped
+                  mid-name. The bar had a whole screen to spread across; this does not. */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-extrabold text-base text-white">{seatDetail.workstation.code}</span>
                 <span className="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-200 font-semibold border border-slate-700">
-                  {getStatusLabel(activeHoverSeat.workstation.status)}
-                </span>
-                <span className="text-xs text-slate-400">
-                  Cluster: {activeHoverSeat.cluster.name} ({activeHoverSeat.cluster.code})
+                  {getStatusLabel(seatDetail.workstation.status)}
                 </span>
               </div>
-              <p className="text-xs text-slate-300 mt-1">Poste {activeHoverSeat.workstation.seat_number}</p>
-              {activeHoverSeat.workstation.availability && (
+              <p className="text-xs text-slate-400 mt-1 truncate">
+                Cluster: {seatDetail.cluster.name} ({seatDetail.cluster.code})
+              </p>
+              <p className="text-xs text-slate-300 mt-0.5">Poste {seatDetail.workstation.seat_number}</p>
+              {seatDetail.workstation.availability && (
                 <div className="mt-1.5 space-y-0.5">
-                  {activeHoverSeat.workstation.availability.busy.length > 0 && (
+                  {seatDetail.workstation.availability.busy.length > 0 && (
                     <p className="text-[11px] text-rose-300">
                       Occupé&nbsp;:{' '}
-                      {activeHoverSeat.workstation.availability.busy
+                      {seatDetail.workstation.availability.busy
                         .map((b) => `${b.start} - ${b.end}`)
                         .join(', ')}
                     </p>
                   )}
-                  {activeHoverSeat.workstation.availability.gaps.length > 0 && (
+                  {seatDetail.workstation.availability.gaps.length > 0 && (
                     <p className="text-[11px] text-emerald-300">
                       Libre&nbsp;:{' '}
-                      {activeHoverSeat.workstation.availability.gaps
+                      {seatDetail.workstation.availability.gaps
                         .map((g) => `${g.start} - ${g.end}`)
                         .join(', ')}
                     </p>
@@ -691,15 +742,15 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center space-x-3 w-full md:w-auto justify-end">
-            {onSelectSeat && !readOnly && isSeatBookable(activeHoverSeat.workstation, activeHoverSeat.cluster) && (
+          <div className="flex flex-col gap-2 pt-1 border-t border-slate-800">
+            {onSelectSeat && !readOnly && isSeatBookable(seatDetail.workstation, seatDetail.cluster) && (
               <button
-                onClick={() => onSelectSeat(activeHoverSeat.workstation, activeHoverSeat.cluster)}
-                className="bg-[#00b050] hover:bg-[#009040] text-white px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 shadow-md"
+                onClick={() => onSelectSeat(seatDetail.workstation, seatDetail.cluster)}
+                className="w-full bg-[#00b050] hover:bg-[#009040] text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center space-x-1.5 shadow-md"
               >
                 <Check className="w-4 h-4" />
                 <span>
-                  {activeHoverSeat.workstation.status === 'partiel'
+                  {seatDetail.workstation.status === 'partiel'
                     ? 'Réserver ce créneau'
                     : 'Sélectionner ce poste'}
                 </span>
@@ -708,10 +759,13 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
 
             {/* Queue for a seat that can't be booked for this window - the no-show cascade offers
                 it to the first person waiting if the holder never checks in. */}
-            {isSeatQueueable(activeHoverSeat.workstation, activeHoverSeat.cluster) && (
+            {isSeatQueueable(seatDetail.workstation, seatDetail.cluster) && (
               <button
-                onClick={() => onQueueSeat?.(activeHoverSeat.workstation, activeHoverSeat.cluster, slot)}
-                className="bg-amber-500 hover:bg-amber-400 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 shadow-md"
+                onClick={() => {
+                  onQueueSeat?.(seatDetail.workstation, seatDetail.cluster, slot);
+                  setSeatDetail(null);
+                }}
+                className="w-full bg-amber-500 hover:bg-amber-400 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center space-x-1.5 shadow-md"
               >
                 <Clock className="w-4 h-4" />
                 <span>Rejoindre la liste d'attente</span>
@@ -719,23 +773,27 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
             )}
             {!readOnly &&
               !adminEditMode &&
-              activeHoverSeat.workstation.status === 'management_reserved' &&
+              seatDetail.workstation.status === 'management_reserved' &&
               !canAccessManagementClusters &&
-              !activeHoverSeat.cluster.vipMemberIds?.includes(currentUser.id) && (
+              !seatDetail.cluster.vipMemberIds?.includes(currentUser.id) && (
                 <button
-                  onClick={() => openAccessRequest(activeHoverSeat.cluster)}
-                  className="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 shadow-md"
+                  onClick={() => {
+                    openAccessRequest(seatDetail.cluster);
+                    setSeatDetail(null);
+                  }}
+                  className="w-full bg-purple-600 hover:bg-purple-500 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center space-x-1.5 shadow-md"
                 >
                   <KeyRound className="w-4 h-4" />
                   <span>Demander l'accès</span>
                 </button>
               )}
             <button
-              onClick={() => setActiveHoverSeat(null)}
-              className="text-xs text-slate-400 hover:text-white px-2 py-1 font-semibold"
+              onClick={() => setSeatDetail(null)}
+              className="w-full text-xs text-slate-400 hover:text-white px-2 py-2 font-semibold"
             >
               Fermer
             </button>
+          </div>
           </div>
         </div>
       )}
