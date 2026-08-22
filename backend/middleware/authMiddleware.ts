@@ -177,6 +177,30 @@ async function resolveDemoIdentity(role: UserRole): Promise<ResolvedDemoIdentity
   return resolved;
 }
 
+/**
+ * Establishes WHO is calling. Every /api route passes through here except PUBLIC_ROUTES.
+ *
+ * Business context: this is the boundary where an anonymous HTTP request becomes a known user.
+ * Everything downstream - permission checks, ownership checks, audit attribution - trusts
+ * req.user, so this is the only place identity may be decided.
+ *
+ * Flow:
+ *   1. Public route? pass through (see PUBLIC_ROUTES and the note there about full-path matching).
+ *   2. DEMO_MODE? resolve a fabricated user from the X-Demo-Role header. Never reachable in
+ *      production - assertDemoModeIsSafe refuses to build the app at all.
+ *   3. Otherwise require `Authorization: Bearer <token>` and verify it WITH SUPABASE. The
+ *      signature is not checked locally; Supabase is asked, so a revoked or expired session is
+ *      rejected rather than merely a malformed one.
+ *   4. Resolve the user's role FROM THE DATABASE and attach req.user.
+ *
+ * THE ROLE IS NEVER TAKEN FROM THE REQUEST. Not from a header, not from the body, not from a
+ * claim the client can influence. A client that could name its own role would make every
+ * permission check downstream decorative.
+ *
+ * Consequence for new routes: mounting a route outside this middleware means it has no
+ * req.user at all, and any code reading req.user!.id there will throw at runtime rather than
+ * fail closed. Add routes under /api and let this run.
+ */
 export async function authenticateJWT(req: Request, res: Response, next: NextFunction): Promise<void> {
   // Full request path, not req.path.
   //

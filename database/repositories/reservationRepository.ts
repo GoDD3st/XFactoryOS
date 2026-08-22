@@ -57,7 +57,34 @@ export class ReservationRepository {
   }
 
   /**
-   * Check for double-booking conflicts on the same workstation
+   * The double-booking check. This is the single point that makes two people unable to hold the
+   * same desk at the same time.
+   *
+   * Business context: FR-24. Availability the client showed a user is a snapshot that was already
+   * stale when it rendered - somebody else may have booked in between. This runs immediately
+   * before the insert, against the database, which is why the database and not the UI is the
+   * authority on availability.
+   *
+   * Overlap test: `newStart < rEnd && newEnd > rStart`. Touching endpoints do NOT overlap, so a
+   * booking ending at 12:00 and another starting at 12:00 both stand - that is the half-open
+   * interval the whole app assumes, and changing it here without changing seatAvailability.ts
+   * would make the grid and the conflict check disagree about the same two bookings.
+   *
+   * Statuses excluded (CANCELLED, NO_SHOW, COMPLETED) are the ones that no longer hold the desk.
+   * Everything else blocks - including pending approvals, deliberately: a reservation awaiting a
+   * Director's decision has reserved the desk provisionally, and letting someone else take it
+   * would mean approving a booking for a desk that is gone.
+   *
+   * Multi-day: `endDate` extends the window to the last day. Omitting it silently checks only the
+   * first day, which is why ReservationService always passes `effectiveEndDate`.
+   *
+   * FAILS CLOSED. Any error - unreadable table, bad response - throws rather than returning
+   * false. "We could not check" must never be treated as "there is no conflict"; that would hand
+   * out a double booking on exactly the paths where something is already wrong.
+   *
+   * @param excludeReservationId - the reservation being MODIFIED, so it does not conflict with
+   *   itself. Omit it on create.
+   * @returns true when the requested window overlaps a live reservation on that desk.
    */
   static async checkConflict(
     workstationCode: string,

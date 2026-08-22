@@ -23,6 +23,36 @@ export class SeatQRTokenService {
     return `${payloadB64}.${signature}`;
   }
 
+  /**
+   * Verifies a scanned desk badge and returns which desk it names.
+   *
+   * ─────────────────────────────────────────────────────────────────────────────────────────
+   * SECURITY MODEL - read this before treating the result as an authorisation.
+   *
+   * A valid token proves ONE thing: this string was signed by us and names workstation X. It
+   * proves nothing whatsoever about WHO scanned it.
+   *
+   * The token is deliberately not a secret. It is printed on a sticker on a desk in a shared
+   * office; anyone who walks past can photograph it, and it never expires. Treating it as
+   * evidence of identity would mean anyone who has seen a desk could check in as its owner.
+   *
+   * What makes the flow safe is what the CALLER does with this result: /api/checkinout/scan-seat
+   * takes the user from the JWT - never from the request body - and then requires a reservation
+   * matching that user AND this workstation, right now. Scanning a stranger's desk finds no
+   * matching reservation and does nothing.
+   *
+   * IF YOU REUSE THIS FUNCTION SOMEWHERE NEW, carry that rule with it. A caller that acts on the
+   * workstation id alone has built an unauthenticated endpoint.
+   * ─────────────────────────────────────────────────────────────────────────────────────────
+   *
+   * Rejects on a malformed shape and on a signature mismatch. The comparison is over the payload
+   * exactly as received, so altering the workstation id inside the token invalidates it - which
+   * is the point: without the signature, a scanner could simply edit the id and check into any
+   * desk in the building.
+   *
+   * Depends on QR_HMAC_SECRET. Rotating it invalidates every badge already printed and taped to a
+   * desk - they all have to be reprinted. See README §18.
+   */
   static verifySeatToken(token: string): { valid: boolean; workstationId?: string; error?: string } {
     try {
       const parts = token.split('.');

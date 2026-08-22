@@ -26,8 +26,46 @@ import { SettingsService } from '@/services/settings/settingsService';
 import { useAuth } from '../../modules/auth/context/AuthContext';
 import { DateTimePicker24h } from './DateTimePicker24h';
 
+/**
+ * The reservation table, shared by every role that manages bookings.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────────────────────
+ * BEFORE YOU MODIFY THIS
+ *
+ * Six views render this component:
+ *   AdminView, SuperAdminView, BuildingView, DirectionView, ReceptionView, ApprovalsView
+ *
+ * They differ only by the two props below. A change to the columns, the action buttons or the
+ * status handling lands in all six at once - including screens for roles that must NOT be able to
+ * act on someone else's reservation. Check `userOnly` and `currentRole` before adding an action.
+ * ─────────────────────────────────────────────────────────────────────────────────────────────
+ *
+ * Data: reads through reservationService and workspaceService rather than holding its own copy,
+ * so it sees the same rows the rest of the app does. It re-reads on the app's
+ * `xfactory_*_changed` events instead of polling - a booking made on the Digital Twin repaints
+ * this table without either component knowing about the other.
+ *
+ * Settings are read live and refreshed on `xfactory_settings_changed`, because an administrator
+ * changing the booking window while this table is open must not leave it validating against the
+ * previous rules.
+ *
+ * Writes go through the service, never straight to a repository: the guard chain in
+ * ReservationService.createReservation (quotas, conflicts, approval routing) is the whole reason
+ * a reservation is legal, and calling the repository directly would skip all of it.
+ */
 interface ReservationsTableProps {
+  /**
+   * Which slice to open on. 'upcoming' and 'checkin' are the operational views (Reception,
+   * Building); 'all' is the administrative one. Only the initial state - the user can change it.
+   */
   initialFilter?: 'all' | 'upcoming' | 'checkin' | 'cancelled';
+  /**
+   * Restrict to the signed-in user's own reservations.
+   *
+   * This is a UI convenience, NOT a security boundary. The server decides what a caller may read
+   * and modify (see requireOwnerOrAdmin in backend/middleware/rbacMiddleware.ts). Passing false
+   * does not grant anything; it only stops filtering client-side.
+   */
   userOnly?: boolean;
 }
 

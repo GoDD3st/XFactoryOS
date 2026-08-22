@@ -123,6 +123,62 @@ export class ReservationService {
     }
   }
 
+  /**
+   * Creates a reservation, applying every rule that decides whether one is allowed to exist.
+   *
+   * ───────────────────────────────────────────────────────────────────────────────────────────
+   * BEFORE YOU MODIFY THIS
+   *
+   * This is the only sanctioned way to create a reservation. It is called from
+   * POST /api/reservations, from the Digital Twin and form booking paths, and from the
+   * waiting-list acceptOffer flow. Writing to ReservationRepository.createReservation directly
+   * skips EVERY rule below - quotas, conflicts, VIP locks, approval routing - and produces a row
+   * the rest of the system believes was validated.
+   * ───────────────────────────────────────────────────────────────────────────────────────────
+   *
+   * TWO EXECUTION CONTEXTS, ONE FUNCTION.
+   * In the browser it forwards to the authenticated API and returns - the rules below do NOT run
+   * client-side, because a browser cannot be trusted to enforce them and its Supabase client is
+   * RLS-limited anyway. Everything after that early return is the server path. The client still
+   * calls validateReservationConstraints() separately for live feedback; that is a courtesy to
+   * the user, not a control.
+   *
+   * ORDER OF CHECKS (it matters - cheap and absolute before expensive and conditional):
+   *
+   *  1. Workspace lockdown. Applies to EVERYONE, including bypass roles. A closed building is a
+   *     physical fact, not an access-control rule; there is nothing to be privileged about.
+   *  2. Weekend / public holiday. Configurable, skipped for bypass roles.
+   *  3. Conflict over the whole span (see ReservationRepository.checkConflict). On conflict this
+   *     throws ReservationConflictError CARRYING ALTERNATIVE DESKS, so the UI can offer a way
+   *     forward instead of only refusing. Keep that payload if you touch the error.
+   *  4. BR-07 VIP / management lock: a non-reservable desk needs a privileged role or membership
+   *     in cluster_vip_members. This was once enforced only by disabling the button, which a
+   *     direct POST ignored.
+   *  5. Booking window: settings.bookingWindowDays minimum lead time.
+   *  6. Quotas: per day and per week, counted from the user's existing reservations.
+   *  7. Approval routing (below).
+   *
+   * APPROVAL ROUTING - two distinct pools, per SRS 8.6 and 8.7:
+   *   - longer than maxReservationDaysWithoutApproval HOURS  → 'en attente', Executive Assistant
+   *   - a multi-day span exceeding that many BUSINESS DAYS   → 'en attente', Director,
+   *     with duration_days recorded
+   * Both were once hardcoded to the EA while the client separately created a duplicate 'director'
+   * row. That is why multi-day routing lives here and must not be recreated client-side.
+   *
+   * WHY EVERY RULE IS REPEATED SERVER-SIDE even though the UI checks it: client validation cannot
+   * stop a direct POST, and two users can pass the same client-side availability check at the
+   * same instant because both validated against data that was already stale. Do not remove a
+   * check here on the grounds that the interface already prevents it.
+   *
+   * Side effects: writes the reservation, refreshes the local cache, creates an approval request
+   * when one is required, and notifies the approver pool.
+   *
+   * @param userRole - the CALLER'S role, used for bypass and VIP decisions. The route passes
+   *   req.user.role; it is never taken from the request body.
+   * @param dbClient - the request-scoped Supabase client, so RLS evaluates as the calling user.
+   * @throws ReservationConflictError with alternatives, or Error with a user-facing French
+   *   message for any other rule.
+   */
   static async createReservation(
     payload: Partial<Reservation>,
     userRole?: UserRole,
