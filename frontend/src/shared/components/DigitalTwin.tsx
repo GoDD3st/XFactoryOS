@@ -436,8 +436,16 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
               // also opened on hover this did not matter, because hovering a disabled button still
               // fires mouseenter. Now that it opens on click alone, leaving these disabled would
               // quietly remove the only route to a BR-09 access request.
+              // A seat you already hold: not bookable (it is taken - by you) and deliberately not
+              // queueable, but it must stay clickable, because the dialog is the only place the
+              // owner can read their booking back or release it. Suppressing the queue without
+              // adding this made your own desk unclickable with a not-allowed cursor - the same
+              // trap as the management-cluster case below, which is why both are listed here
+              // rather than inferred from isQueueable.
+              const ownsSeat = !!ws.availability?.ownReservation;
               const opensDetail =
                 isQueueable ||
+                (!readOnly && ownsSeat) ||
                 (!readOnly && !adminEditMode && ws.status === 'management_reserved');
 
               return (
