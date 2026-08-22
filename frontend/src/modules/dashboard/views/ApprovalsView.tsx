@@ -90,7 +90,7 @@ export const ApprovalsView: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header Banner */}
-      <div className="bg-slate-900 text-white rounded-2xl p-6 border border-slate-800 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-slate-900 text-white rounded-2xl p-4 sm:p-6 border border-slate-800 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center space-x-2">
             <span className="px-2.5 py-0.5 rounded bg-purple-500/20 text-purple-300 font-bold text-xs capitalize">
@@ -126,7 +126,7 @@ export const ApprovalsView: React.FC = () => {
       </div>
 
       {/* Pending VIP Approvals Queue */}
-      <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-4">
+      <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-sm space-y-4">
         <h3 className="text-sm font-bold text-slate-900 flex items-center justify-between">
           <span className="flex items-center gap-2">
             <Award className="w-4 h-4 text-purple-600" />

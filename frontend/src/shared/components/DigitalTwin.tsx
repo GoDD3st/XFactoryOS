@@ -713,7 +713,7 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
           aria-label={`Poste ${seatDetail.workstation.code}`}
         >
           <div
-            className="bg-slate-900 text-white border border-slate-800 w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-5 shadow-2xl space-y-4 animate-in fade-in"
+            className="bg-slate-900 text-white border border-slate-800 w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-4 sm:p-5 shadow-2xl space-y-4 animate-in fade-in"
             onClick={(e) => e.stopPropagation()}
           >
           <div className="flex items-start space-x-3">

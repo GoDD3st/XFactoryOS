@@ -88,7 +88,7 @@ export const AdminView: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="bg-slate-900 text-white rounded-2xl p-6 border border-slate-800 shadow-lg">
+      <div className="bg-slate-900 text-white rounded-2xl p-4 sm:p-6 border border-slate-800 shadow-lg">
         <div className="flex items-center space-x-2">
           <span className="px-2.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-bold text-xs">
             Rôle : Administrator

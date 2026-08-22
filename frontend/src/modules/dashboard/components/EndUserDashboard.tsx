@@ -467,7 +467,7 @@ export const EndUserDashboard: React.FC = () => {
       )}
 
       {/* Hero Reservation Banner */}
-      <div className="bg-white text-slate-900 rounded-2xl p-6 sm:p-8 border border-slate-200 shadow-sm relative overflow-hidden">
+      <div className="bg-white text-slate-900 rounded-2xl p-4 sm:p-8 border border-slate-200 shadow-sm relative overflow-hidden">
         <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/5 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
 
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
@@ -517,7 +517,7 @@ export const EndUserDashboard: React.FC = () => {
           time-critical thing this role does was absent from its home screen. */}
       {todayPresence && (
         <div
-          className={`rounded-2xl p-5 border shadow-sm space-y-3 ${
+          className={`rounded-2xl p-4 sm:p-5 border shadow-sm space-y-3 ${
             todayPresence.status === 'check-in'
               ? 'bg-emerald-50 border-emerald-200'
               : presenceMinutesLeft !== null && presenceMinutesLeft <= 0
@@ -597,7 +597,7 @@ export const EndUserDashboard: React.FC = () => {
           For the user who knows where they want to sit. The cluster filter and the slot selector
           live inside the twin, so the seat being clicked and the hours chosen are never in two
           distant places on the page. */}
-      <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-5">
+      <div className="bg-white rounded-2xl p-4 sm:p-6 border border-slate-200 shadow-sm space-y-5">
         <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3">
           <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
             <span className="w-6 h-6 rounded-full bg-[#008751] text-white text-xs flex items-center justify-center font-black">1</span>
@@ -622,7 +622,7 @@ export const EndUserDashboard: React.FC = () => {
       {/* PATH B - from the form.
           For the user who knows WHEN and does not mind which desk. The cluster genuinely narrows
           the seat list here; previously it only zoomed the plan while seat choice stayed global. */}
-      <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-5">
+      <div className="bg-white rounded-2xl p-4 sm:p-6 border border-slate-200 shadow-sm space-y-5">
         <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3">
           <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
             <span className="w-6 h-6 rounded-full bg-slate-800 text-white text-xs flex items-center justify-center font-black">2</span>

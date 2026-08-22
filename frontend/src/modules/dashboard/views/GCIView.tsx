@@ -91,7 +91,7 @@ export const GCIView: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="bg-slate-900 text-white rounded-2xl p-6 border border-slate-800 shadow-lg">
+      <div className="bg-slate-900 text-white rounded-2xl p-4 sm:p-6 border border-slate-800 shadow-lg">
         <div className="flex items-center space-x-2">
           <span className="px-2.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-bold text-xs">
             Rôle : GCI Manager

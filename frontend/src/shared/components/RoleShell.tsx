@@ -563,7 +563,7 @@ export const RoleShell: React.FC = () => {
       )}
 
       {/* Top Enterprise Header Bar - Professional Polish Design Theme */}
-      <header className="sticky top-0 z-40 h-14 bg-white border-b border-slate-200 flex items-center justify-between px-4 sm:px-6 shrink-0 shadow-sm">
+      <header className="sticky top-0 z-40 h-14 bg-white border-b border-slate-200 flex items-center justify-between px-3 sm:px-6 shrink-0 shadow-sm">
         <div className="max-w-7xl mx-auto w-full flex items-center justify-between gap-4">
           
           {/* App Logo & Title */}
@@ -807,7 +807,7 @@ export const RoleShell: React.FC = () => {
       </header>
 
       {/* Tab Navigation Bar (SRS Section 28 - RBAC-filtered per role) */}
-      <nav className="bg-white border-b border-slate-200 px-4 sm:px-6 shrink-0">
+      <nav className="bg-white border-b border-slate-200 px-3 sm:px-6 shrink-0">
         <div className="max-w-7xl mx-auto w-full flex items-center space-x-1 overflow-x-auto py-1">
           {/* Inert placeholders while the policy read is in flight. Reserving the row's height
               keeps the header from jumping, without guessing at tabs that may be about to
@@ -838,7 +838,9 @@ export const RoleShell: React.FC = () => {
       </nav>
 
       {/* Main Role View Content Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      {/* Tighter gutter on a phone. At 375px the 16px page padding and a card's own 24px came
+          to 80px - 21% of the screen - before any content. Unchanged from sm upwards. */}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6">
         {renderActiveView()}
       </main>
 
@@ -848,7 +850,7 @@ export const RoleShell: React.FC = () => {
           database while Postgres was down, and the version contradicted the repository. Neither
           is a collaborator's, receptionist's, director's or approver's concern - real platform
           health is probed by /api/health and shown in the IT Administrator console. */}
-      <footer className="h-8 bg-[#005A36] text-white flex items-center justify-between px-4 sm:px-6 shrink-0 text-[10px]">
+      <footer className="h-8 bg-[#005A36] text-white flex items-center justify-between px-3 sm:px-6 shrink-0 text-[10px]">
         <div className="flex items-center gap-2 min-w-0">
           <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
           {/* A long site name has nowhere to go in a fixed 2rem bar - truncate rather than push
