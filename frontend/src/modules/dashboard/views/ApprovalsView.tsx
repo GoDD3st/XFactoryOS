@@ -107,16 +107,18 @@ export const ApprovalsView: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="bg-slate-800 px-4 py-2 rounded-xl border border-slate-700 text-center min-w-[92px]">
+        {/* Three 92px-minimum tiles plus gaps do not fit a 375px screen beside the heading. They
+            share the row evenly on a phone and keep their fixed width from sm upwards. */}
+        <div className="grid grid-cols-3 gap-2 sm:flex sm:items-center sm:gap-3 w-full sm:w-auto">
+          <div className="bg-slate-800 px-2 sm:px-4 py-2 rounded-xl border border-slate-700 text-center sm:min-w-[92px]">
             <div className="text-xs text-slate-400">En attente</div>
             <div className="text-lg font-black text-purple-400">{loading ? '...' : pendingRequests.length}</div>
           </div>
-          <div className="bg-slate-800 px-4 py-2 rounded-xl border border-slate-700 text-center min-w-[92px]">
+          <div className="bg-slate-800 px-2 sm:px-4 py-2 rounded-xl border border-slate-700 text-center sm:min-w-[92px]">
             <div className="text-xs text-slate-400">Approuvées</div>
             <div className="text-lg font-black text-emerald-400">{loading ? '...' : approvedCount}</div>
           </div>
-          <div className="bg-slate-800 px-4 py-2 rounded-xl border border-slate-700 text-center min-w-[92px]">
+          <div className="bg-slate-800 px-2 sm:px-4 py-2 rounded-xl border border-slate-700 text-center sm:min-w-[92px]">
             <div className="text-xs text-slate-400">Refusées</div>
             <div className="text-lg font-black text-rose-400">{loading ? '...' : rejectedCount}</div>
           </div>
@@ -172,7 +174,10 @@ export const ApprovalsView: React.FC = () => {
                     <FileText className="w-3.5 h-3.5 text-purple-600" />
                     <span>Objectif &amp; Description Détaillée de la Demande :</span>
                   </div>
-                  <p className="text-slate-800 leading-relaxed font-semibold pl-5">
+                  {/* break-words: this is free text the requester typed. A single long unbroken token - a
+                      pasted id, a URL, or just a run of characters - had no wrap opportunity and
+                      pushed the whole page into horizontal scrolling on a phone. */}
+                  <p className="text-slate-800 leading-relaxed font-semibold pl-5 break-words">
                     "{req.objective || req.reason}"
                   </p>
                 </div>

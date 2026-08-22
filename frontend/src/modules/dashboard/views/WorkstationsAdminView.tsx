@@ -150,7 +150,8 @@ export const WorkstationsAdminView: React.FC = () => {
               : 'Supervision et gestion opérationnelle des postes Open Space - maintenance et visibilité'}
           </p>
         </div>
-        <div className="flex items-center space-x-2">
+        {/* Wraps on a phone: two buttons plus the stat pills came to more than a 375px screen. */}
+        <div className="flex flex-wrap items-center gap-2">
           {isAdminOrSuperAdmin && (
             <button
               onClick={() => {

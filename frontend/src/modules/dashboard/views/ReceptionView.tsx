@@ -292,7 +292,7 @@ export const ReceptionView: React.FC = () => {
           {!loading && todaysReservations.length === 0 && (
             <p className="text-xs text-slate-400 italic">Aucune réservation aujourd'hui.</p>
           )}
-          <div className="max-h-80 overflow-y-auto">
+          <div className="max-h-80 overflow-y-auto overflow-x-auto">
             <table className="w-full text-xs">
               <thead className="sticky top-0 bg-white">
                 <tr className="text-left text-[10px] uppercase text-slate-400 border-b border-slate-200">
