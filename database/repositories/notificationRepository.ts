@@ -47,6 +47,7 @@ export class NotificationRepository {
         type: this.mapEventToType(n.event_code),
         read: !!n.read_at,
         created_at: n.created_at,
+        reservation_id: n.reservation_id || undefined,
       }));
     } catch (err) {
       console.warn('Fetch notifications fallback:', err);

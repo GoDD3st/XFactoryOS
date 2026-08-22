@@ -21,9 +21,45 @@ const PUBLIC_ROUTES = [
   '/api/auth/login',
   '/api/auth/register',
   '/api/auth/reset-password',
+  // Called by Vercel Cron, which carries no user session. It is NOT unauthenticated: the handler
+  // requires `Authorization: Bearer $CRON_SECRET` and refuses to run when CRON_SECRET is unset.
+  // Listing it here only skips the JWT check, which would otherwise reject the scheduler outright.
+  '/api/cron',
 ];
 
 const DEMO_MODE = process.env.DEMO_MODE === 'true';
+
+/**
+ * Demo mode is a complete authentication bypass: it trusts the X-Demo-Role header and performs no
+ * credential check whatsoever, so any caller can present themselves as super_admin. That is
+ * acceptable on a throwaway dev deployment and catastrophic anywhere else.
+ *
+ * Refusing to start is deliberate. A misconfigured production environment that boots and quietly
+ * serves an open admin API is far worse than one that fails loudly on deploy, and an env var set
+ * wrongly is exactly the mistake this is guarding against - `false` is one keystroke from `true`.
+ */
+export function assertDemoModeIsSafe(): void {
+  const isProduction =
+    process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+
+  if (DEMO_MODE && isProduction) {
+    throw new Error(
+      'REFUS DE DEMARRAGE : DEMO_MODE=true dans un environnement de production. ' +
+        "Le mode demonstration contourne entierement l'authentification (en-tete X-Demo-Role). " +
+        'Definissez DEMO_MODE=false et VITE_DEMO_MODE=false, puis reconstruisez.'
+    );
+  }
+
+  if (DEMO_MODE) {
+    console.warn('');
+    console.warn('  ******************************************************************');
+    console.warn('  *  DEMO_MODE=true - AUTHENTICATION IS DISABLED                   *');
+    console.warn('  *  Any caller may set X-Demo-Role and act as any role,           *');
+    console.warn('  *  including super_admin. Never expose this deployment.          *');
+    console.warn('  ******************************************************************');
+    console.warn('');
+  }
+}
 
 // Demo users mapping (same as authService defaults)
 const DEMO_USERS: Record<UserRole, { id: string; email: string; full_name: string; department: string }> = {
@@ -124,7 +160,20 @@ async function resolveDemoIdentity(role: UserRole): Promise<ResolvedDemoIdentity
 }
 
 export async function authenticateJWT(req: Request, res: Response, next: NextFunction): Promise<void> {
-  const path = req.path || req.originalUrl;
+  // Full request path, not req.path.
+  //
+  // This middleware is mounted with app.use('/api', authenticateJWT), and Express strips the
+  // mount point before handing the request over - so req.path reads "/cron/sweep" while
+  // PUBLIC_ROUTES lists "/api/cron". The startsWith test could therefore never match, and every
+  // route in that list was being authenticated anyway.
+  //
+  // It went unnoticed because of which routes are on the list. /api/health is registered ahead of
+  // this middleware and never reaches it, and the /api/auth/* entries are vestigial - the browser
+  // signs in against Supabase directly through realAuthService, not through this API. That left
+  // /api/cron, where it mattered: the scheduler sends `Authorization: Bearer $CRON_SECRET`, which
+  // is not a Supabase JWT, so every sweep was rejected here with 401 before the route's own
+  // CRON_SECRET check ever ran. Background jobs were dead on any deployment that relies on them.
+  const path = (req.originalUrl || req.url || '').split('?')[0];
   if (PUBLIC_ROUTES.some(route => path.startsWith(route))) {
     return next();
   }

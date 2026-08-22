@@ -104,6 +104,20 @@ approvalRouter.put(
   }
 );
 
+// GET /api/approvals/mine - the caller's OWN requests, any status.
+//
+// Not gated on the approver permission: this is a requester reading their own file. It is what
+// drives the "the validator wants more detail" prompt, which previously had no data source it
+// could actually use - the dashboard searched the pending-only list for a needs_info row.
+approvalRouter.get('/mine', async (req, res) => {
+  try {
+    const mine = await ApprovalService.getRequestsForUser(req.user!.id);
+    res.json(mine);
+  } catch (error: any) {
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
 // GET /api/approvals/history - Approvers only
 approvalRouter.get('/history', requirePermission('approve_long_duration', 'approve', APPROVER_ROLES), async (req, res) => {
   try {

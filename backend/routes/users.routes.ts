@@ -195,6 +195,26 @@ usersRouter.patch('/:id', requirePermission('manage_users', 'update', ['admin', 
 // first; this list is only the DB-outage fallback, so the matrix must agree with it.
 const PASSWORD_RECOVERY_ROLES = ['super_admin'] as const;
 
+// POST /api/users/me/bootstrap - ensure the signed-in user's profile row and role exist.
+//
+// Sign-in happens client-side against Supabase Auth directly, so nothing server-side ran for an
+// existing account and the browser was calling UserRepository.ensureUserProfile itself: a database
+// repository executing in the client, inserting into public.users and public.user_roles. Under RLS
+// those inserts are only permitted for SUPER_ADMIN/ADMIN, so for an ordinary user they failed
+// silently anyway. Identity here comes from the verified JWT, never from the body.
+usersRouter.post('/me/bootstrap', async (req, res) => {
+  try {
+    await UserRepository.ensureUserProfile({
+      id: req.user!.id,
+      email: req.user!.email,
+      user_metadata: { full_name: req.user!.full_name, department: req.user!.department },
+    });
+    res.json({ status: 'success' });
+  } catch (error: any) {
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
 // POST /api/users/:id/reset-password - FR-14/§25.1: generate a temporary password.
 //
 // The generated value is returned exactly once, in this response, for the Super Admin to hand

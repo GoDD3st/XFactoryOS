@@ -11,6 +11,9 @@ import {
 } from 'lucide-react';
 import { UserNotification } from '../../../types';
 import { apiFetchNotifications, apiMarkNotificationRead } from '@/services/api/notificationApi';
+import { apiFetchMyApprovalRequests, apiCompleteApprovalRequest } from '@/services/api/approvalApi';
+import { ExtensionRequestModal } from '@/frontend/src/shared/components/ExtensionRequestModal';
+import { ApprovalRequest } from '../../../types';
 
 /**
  * Full notifications screen.
@@ -72,11 +75,35 @@ export const NotificationsView: React.FC = () => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>('all');
   const [query, setQuery] = useState('');
+  // BPMN D2: a notification saying "the validator wants more detail" was previously a dead end -
+  // it could be read but not acted on, so the request stalled. Cross-referencing the caller's own
+  // approval requests turns the matching notification into the form itself.
+  const [myApprovals, setMyApprovals] = useState<ApprovalRequest[]>([]);
+  const [reclarifyTarget, setReclarifyTarget] = useState<ApprovalRequest | null>(null);
 
   const load = async () => {
-    const data = await apiFetchNotifications();
+    const [data, approvals] = await Promise.all([
+      apiFetchNotifications(),
+      apiFetchMyApprovalRequests(),
+    ]);
     setNotifications(data);
+    setMyApprovals(approvals);
     setLoading(false);
+  };
+
+  /**
+   * The request this notification is asking the user to complete, if any.
+   *
+   * Matched on reservation_id, which notifications have always carried in the database but which
+   * was dropped on the way to the client until now - never on the title text, which is copy and
+   * would break the moment someone rewords it.
+   */
+  const actionableRequest = (n: UserNotification | null): ApprovalRequest | null => {
+    if (!n?.reservation_id) return null;
+    return (
+      myApprovals.find((a) => a.reservation_id === n.reservation_id && a.status === 'needs_info') ||
+      null
+    );
   };
 
   useEffect(() => {
@@ -246,10 +273,53 @@ export const NotificationsView: React.FC = () => {
               <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-wrap">
                 {selected.message || 'Cette notification ne comporte pas de contenu détaillé.'}
               </p>
+
+              {actionableRequest(selected) && (
+                <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-300 space-y-2">
+                  <p className="text-[11px] text-amber-900 font-semibold">
+                    Le valideur attend des précisions avant de décider. Votre réservation reste en
+                    attente tant que vous n'avez pas répondu.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setReclarifyTarget(actionableRequest(selected))}
+                    className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-sm"
+                  >
+                    Compléter ma demande
+                  </button>
+                </div>
+              )}
             </article>
           )}
         </div>
       </div>
+
+      {reclarifyTarget && (
+        <ExtensionRequestModal
+          isOpen
+          isReLoop
+          onClose={() => setReclarifyTarget(null)}
+          onSubmit={async ({ objective, motif }) => {
+            try {
+              await apiCompleteApprovalRequest(reclarifyTarget.id, objective, motif);
+              setReclarifyTarget(null);
+              await load();
+              window.dispatchEvent(new CustomEvent('xfactory_reservations_changed'));
+            } catch {
+              /* keep the modal open so the typed text is not lost */
+            }
+          }}
+          businessDays={reclarifyTarget.duration_days || 0}
+          startDate={reclarifyTarget.reservation_date || ''}
+          endDate={reclarifyTarget.end_date || reclarifyTarget.reservation_date || ''}
+          workstationCode={reclarifyTarget.workstation_code || ''}
+          clusterName={reclarifyTarget.cluster_name || ''}
+          initialObjective={reclarifyTarget.objective || ''}
+          initialMotif={reclarifyTarget.reason || ''}
+          approverFeedbackNote={reclarifyTarget.decision_note}
+          totalHours={reclarifyTarget.total_hours}
+        />
+      )}
     </div>
   );
 };

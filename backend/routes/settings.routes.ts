@@ -11,6 +11,33 @@ import { SystemSettings } from '@/frontend/src/types';
 
 export const settingsRouter = Router();
 
+/**
+ * Pre-login branding, mounted OUTSIDE the JWT guard (see backend/server.ts).
+ *
+ * The login screen shows the site name and the site mark, and it has no session yet. GET
+ * /api/settings sits behind the global authenticateJWT and answers AUTH_MISSING to an anonymous
+ * caller, so the login screen was falling back to its hardcoded default - the "XF" initials -
+ * even on a site that had uploaded a logo.
+ *
+ * This returns the two branding fields and nothing else. They are already public by nature: both
+ * are painted on the page any visitor sees before authenticating. Everything the settings object
+ * actually protects - booking rules, quotas, bypass roles, closure dates - stays behind the guard.
+ */
+export const brandingRouter = Router();
+
+brandingRouter.get('/', async (_req, res) => {
+  try {
+    const settings = await SettingsService.getSettings();
+    res.json({
+      siteName: settings.siteName,
+      siteLogoDataUrl: settings.siteLogoDataUrl ?? null,
+    });
+  } catch {
+    // The login screen must render even if this fails; it falls back to its own defaults.
+    res.status(200).json({ siteName: null, siteLogoDataUrl: null });
+  }
+});
+
 const SETTINGS_LABELS: Partial<Record<keyof SystemSettings, string>> = {
   bookingWindowDays: 'Délai minimum de réservation',
   minReservationMinutes: 'Durée minimum',

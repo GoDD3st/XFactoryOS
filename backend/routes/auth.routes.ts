@@ -5,6 +5,7 @@ import { UserRepository } from '@/database/repositories/userRepository';
 import { AuditRepository } from '@/database/repositories/auditRepository';
 import { UserRole } from '@/frontend/src/types';
 import { validateBody } from '../middleware/validateBody';
+import { authLimiter } from '../middleware/rateLimiter';
 import { LoginSchema, RegisterSchema } from '../validators';
 import { requireRole } from '../middleware/rbacMiddleware';
 
@@ -32,7 +33,7 @@ authRouter.get('/me', (req, res) => {
 });
 
 // POST /api/auth/login - Supabase Password Authentication
-authRouter.post('/login', validateBody(LoginSchema), async (req, res) => {
+authRouter.post('/login', authLimiter, validateBody(LoginSchema), async (req, res) => {
   try {
     const { email, password } = req.body;
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });

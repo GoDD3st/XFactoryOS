@@ -150,10 +150,14 @@ export class WaitingListRepository {
       .single();
 
     if (error) {
-      // 23505 = the one-active-entry-per-user-per-seat index. Queuing twice for the same desk is
-      // a double click, not an error worth surfacing as a failure - report it as such.
+      // 23505 = waiting_list_entries_one_active_per_user_seat_day. Queuing twice for the same desk
+      // on the same day is a double click, not an error worth surfacing as a failure - report it
+      // as such. The day matters: the same desk on another date is a separate, allowed entry, so
+      // the message has to name the date or it reads as "you can never queue for this desk again".
       if ((error as any).code === '23505') {
-        throw new Error("Vous êtes déjà inscrit sur la liste d'attente pour ce poste.");
+        throw new Error(
+          `Vous êtes déjà inscrit sur la liste d'attente pour ce poste le ${dateStr}.`
+        );
       }
       throw new Error(`Échec de l'inscription en liste d'attente : ${error.message}`);
     }

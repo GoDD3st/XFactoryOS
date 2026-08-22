@@ -86,3 +86,156 @@
 .animate-pulse-subtle {
   animation: pulse-subtle 2s infinite ease-in-out;
 }
+
+
+/* ---------------------------------------------------------------------------
+   Print / "Export PDF"
+
+   The PDF export is the browser's own print-to-PDF, because this stack has no
+   server-side PDF renderer. Until now there were no print rules at all, so it
+   printed the live application: navigation bar, sidebar, the export buttons
+   themselves, and charts drawn with background colours the browser drops by
+   default. The result looked like a screenshot, which is exactly what it was.
+
+   These rules isolate .xf-print-report - the report document rendered inside
+   the executive dashboard - and hide everything else. Isolation is done with
+   `visibility` rather than `display` on purpose: the report sits deep inside
+   the application's layout tree, and hiding its ancestors with display:none
+   would take the report down with them. visibility:hidden lets a descendant
+   opt back in.
+   --------------------------------------------------------------------------- */
+
+@media print {
+  @page {
+    size: A4;
+    margin: 14mm;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+    /* Screen layout constrains height and scrolls internally; on paper that
+       clips everything after the first viewport. */
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  /* The report is portalled onto <body>, so nothing can clip it through the
+     containing-block chain. These two are still worth stating: an ancestor that
+     scrolls internally on screen has no business scrolling on paper, and the
+     glass panels' backdrop-filter is both expensive and invisible in print. */
+  #root,
+  #root * {
+    overflow: visible !important;
+  }
+
+  .xf-print-report,
+  .xf-print-report * {
+    filter: none !important;
+    backdrop-filter: none !important;
+    box-shadow: none !important;
+  }
+
+  .xf-print-report,
+  .xf-print-report * {
+    visibility: visible;
+  }
+
+  /* `hidden` (display:none) keeps it off the screen; print puts it back. */
+  .xf-print-report {
+    display: block !important;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 0;
+    margin: 0;
+    color: #0f172a;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 10pt;
+    line-height: 1.45;
+  }
+
+  .xf-print-header {
+    border-bottom: 2pt solid #008751;
+    padding-bottom: 6pt;
+    margin-bottom: 12pt;
+  }
+
+  .xf-print-header h1 {
+    font-size: 17pt;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    margin: 0;
+    text-transform: uppercase;
+  }
+
+  .xf-print-header p {
+    font-size: 9pt;
+    color: #475569;
+    margin: 2pt 0 0;
+  }
+
+  .xf-print-report h2 {
+    font-size: 11.5pt;
+    font-weight: 700;
+    margin: 14pt 0 5pt;
+    padding-bottom: 2pt;
+    border-bottom: 0.5pt solid #cbd5e1;
+    /* Never leave a section heading alone at the foot of a page. */
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  .xf-print-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 4pt;
+  }
+
+  .xf-print-table th,
+  .xf-print-table td {
+    border: 0.5pt solid #cbd5e1;
+    padding: 3pt 5pt;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .xf-print-table thead th {
+    font-weight: 700;
+    font-size: 9pt;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    /* Long tables (a 365-day trend runs over several pages) repeat their
+       header on each one - that is what <thead> is for. */
+    background: #f1f5f9;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .xf-print-table tbody th[scope='row'] {
+    font-weight: 600;
+    width: 45%;
+  }
+
+  .xf-print-table tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .xf-print-meta tbody th[scope='row'] {
+    width: 30%;
+  }
+
+  .xf-print-footer {
+    margin-top: 14pt;
+    padding-top: 5pt;
+    border-top: 0.5pt solid #cbd5e1;
+    font-size: 8pt;
+    color: #64748b;
+  }
+}

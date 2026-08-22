@@ -42,13 +42,32 @@ async function authHeaders(): Promise<Record<string, string>> {
  * outcome here, not an error worth tearing the dashboard down over. Callers render their own
  * empty state.
  */
+/**
+ * Why the last telemetry call failed, so the UI can say something true.
+ *
+ * 'forbidden' and 'unreachable' look identical to a caller that only sees `null`, and the
+ * dashboard was telling Building Managers they had no analytics access when the real cause was a
+ * dev server that had stopped. Blaming permissions for a network fault sends people to the wrong
+ * fix entirely.
+ */
+export type TelemetryFailure = 'forbidden' | 'unreachable' | 'server-error' | null;
+let lastFailure: TelemetryFailure = null;
+export const getLastTelemetryFailure = (): TelemetryFailure => lastFailure;
+
 async function fetchTelemetry<T>(path: string, fallback: T): Promise<T> {
   try {
     const response = await fetch(`/api/telemetry/${path}`, { headers: await authHeaders() });
-    if (!response.ok) return fallback;
+    if (!response.ok) {
+      lastFailure = response.status === 403 ? 'forbidden' : 'server-error';
+      return fallback;
+    }
+    lastFailure = null;
     const body = await response.json();
     return (body.data as T) ?? fallback;
   } catch {
+    // fetch() rejects (rather than resolving non-ok) when the server cannot be reached at all -
+    // the browser surfaces this as "Failed to fetch".
+    lastFailure = 'unreachable';
     return fallback;
   }
 }

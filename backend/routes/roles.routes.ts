@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { Router } from 'express';
 import { RoleRepository } from '@/database/repositories/roleRepository';
+import { PermissionService } from '@/services/rbac/permissionService';
 import { AuditRepository } from '@/database/repositories/auditRepository';
 import { requirePermission } from '../middleware/rbacMiddleware';
 import { validateBody } from '../middleware/validateBody';
@@ -40,6 +41,33 @@ rolesRouter.get('/permissions-matrix', requirePermission('manage_roles', 'read',
   try {
     const matrix = await RoleRepository.getPermissionsMatrix();
     res.json({ status: 'success', data: matrix });
+  } catch (error: any) {
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
+/**
+ * GET /api/roles/me/permissions - the caller's OWN role's policy cells.
+ *
+ * Authenticated, but deliberately NOT behind requirePermission('manage_roles', 'read'): that
+ * guard admits only Super Admin, Admin and IT Admin, and every role needs this answer. The menu
+ * in RoleShell.tsx builds itself from it, so that a permission a Super Admin grants or revokes
+ * actually appears or disappears from the navigation instead of only changing what the API says.
+ *
+ * Reading your own grants discloses nothing you could not learn by clicking around and counting
+ * 403s. Reading *everyone's* grants is the RBAC policy document, and stays where it was, behind
+ * manage_roles.read on /permissions-matrix. Hence `req.user.role` rather than a route parameter:
+ * there is no way to ask this endpoint about a role that is not yours.
+ *
+ * `permissions: null` means the policy table could not be read. It is not a denial and clients
+ * must not render it as one - see the fallback contract in PermissionService and the navigation
+ * resolver, both of which degrade to previous behaviour rather than to an empty result.
+ */
+rolesRouter.get('/me/permissions', async (req, res) => {
+  try {
+    const role = req.user!.role;
+    const permissions = await PermissionService.forRole(role);
+    res.json({ status: 'success', data: { role, permissions } });
   } catch (error: any) {
     res.status(500).json({ status: 'error', message: error.message });
   }

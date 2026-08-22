@@ -12,6 +12,25 @@ export class ApprovalService {
     return list.filter((a) => a.status === 'pending');
   }
 
+  /**
+   * Every request this user raised, in any state.
+   *
+   * The re-clarification loop needs this. EndUserDashboard used to look for the caller's
+   * needs_info request inside getPendingApprovals(), which filters to status === 'pending' - a
+   * list that by construction can never contain a needs_info row. The banner prompting the user
+   * to re-submit therefore never appeared, and the whole D2 "DEMANDER INFO" branch was
+   * unreachable from the UI even though the backend handled it correctly.
+   */
+  public static async getRequestsForUser(userId: string): Promise<ApprovalRequest[]> {
+    const list = await ApprovalRepository.getApprovals();
+    return list.filter((a) => a.requester_id === userId);
+  }
+
+  /** The caller's requests an approver has sent back for more detail. */
+  public static async getRequestsNeedingInfo(userId: string): Promise<ApprovalRequest[]> {
+    return (await this.getRequestsForUser(userId)).filter((a) => a.status === 'needs_info');
+  }
+
   public static async getApprovalHistory(): Promise<ApprovalRequest[]> {
     const list = await ApprovalRepository.getApprovals();
     return list.filter((a) => a.status !== 'pending');
