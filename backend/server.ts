@@ -2,7 +2,6 @@ import 'dotenv/config';
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
-import { createServer as createViteServer } from 'vite';
 import { authRouter } from './routes/auth.routes';
 import { usersRouter } from './routes/users.routes';
 import { reservationsRouter } from './routes/reservations.routes';
@@ -235,6 +234,15 @@ async function startServer() {
 
   // Vite middleware or Static files handler
   if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
+    // Imported here rather than at the top of the file, and the distinction is not stylistic.
+    //
+    // A static `import ... from 'vite'` is evaluated when the module loads, so the bundled server
+    // called require("vite") on every cold start - including on Vercel, where this branch never
+    // runs. vite is a dev dependency and is not in the deployed lambda, so that require threw
+    // before a single route was registered and every endpoint answered 500. A dev bundler has no
+    // business being loaded by a production server at all; deferring the import to the only place
+    // it is used makes the dependency as conditional as the code that needs it.
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'custom',
