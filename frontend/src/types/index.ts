@@ -34,6 +34,34 @@ export interface SeatAvailabilityInfo {
   gaps: { start: string; end: string }[];
   /** Whether the currently selected window is bookable as-is. */
   windowFree: boolean;
+  /**
+   * The CALLER'S OWN booking on this seat for the selected date, when there is one.
+   *
+   * Deliberately only the caller's. The overlay could just as easily carry every occupant's name
+   * and id - it has the rows in hand - but that would put "who is sitting here" in front of every
+   * colleague who clicks a desk, which is a disclosure this application has never made and is not
+   * ours to start. A seat taken by someone else stays anonymous: busy hours and nothing more.
+   *
+   * Populated only when `currentUserId` is passed to fetchClustersWithOverlays; the read-only
+   * dashboards omit it and get undefined, which is the correct answer for "is this mine" when
+   * nobody asked on behalf of a user.
+   */
+  ownReservation?: OwnSeatReservation;
+}
+
+/** The subset of a Reservation the seat dialog needs to describe a booking back to its owner. */
+export interface OwnSeatReservation {
+  id: string;
+  /** First and last day - equal for a single-day booking. */
+  date: string;
+  endDate?: string;
+  /** The hours booked on the SELECTED date, which on a middle day of a range is the whole day. */
+  start: string;
+  end: string;
+  status: ReservationStatus;
+  purpose?: string;
+  notes?: string;
+  checkInAt?: string | null;
 }
 
 export interface WorkstationMetadata {

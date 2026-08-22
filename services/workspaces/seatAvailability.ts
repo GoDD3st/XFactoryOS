@@ -21,7 +21,9 @@ export const DEFAULT_BUSINESS_START = '08:00';
 export const DEFAULT_BUSINESS_END = '18:00';
 
 /** Reservation statuses that actually hold a seat. A cancelled or no-show booking frees it. */
-const HOLDING_STATUSES = new Set(['confirmée', 'check-in', 'en attente']);
+/** Statuses that actually hold a seat. Exported so callers deciding "is this booking
+ * live?" cannot drift from the occupancy calculation that colours the grid. */
+export const HOLDING_STATUSES = new Set(['confirmée', 'check-in', 'en attente']);
 
 export function toMinutes(hhmm: string): number {
   const [h, m] = (hhmm || '').split(':');

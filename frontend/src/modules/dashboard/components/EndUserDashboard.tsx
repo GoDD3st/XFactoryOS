@@ -243,7 +243,7 @@ export const EndUserDashboard: React.FC = () => {
     let cancelled = false;
     if (!resDate) return;
     setLoadingSeats(true);
-    fetchClustersWithOverlays({ date: resDate, startTime, endTime })
+    fetchClustersWithOverlays({ date: resDate, startTime, endTime, currentUserId: currentUser.id })
       .then((data) => {
         if (!cancelled) setFormClusters(data);
       })
@@ -303,6 +303,31 @@ export const EndUserDashboard: React.FC = () => {
    * taken for exactly these hours. If the holder never checks in, the no-show sweep offers this
    * desk to the queue in order, and the first person to accept gets it.
    */
+  /**
+   * Release a seat the viewer holds, from the seat dialog on the floor plan.
+   *
+   * The Twin renders the floor and does not mutate reservations, so it hands the id back here -
+   * the same division of labour as booking and queuing. deleteReservation is the identical call
+   * "Mes Réservations" makes, so cancelling from the plan and cancelling from the list cannot
+   * diverge in what they do to the record or the audit trail.
+   */
+  const handleCancelOwnReservation = async (
+    reservationId: string,
+    workstation: Workstation
+  ) => {
+    setValidationError(undefined);
+    try {
+      const { deleteReservation } = await import('@/services/reservations/reservationService');
+      await deleteReservation(reservationId);
+      setBookingSuccessMsg(`Réservation du poste ${workstation.code} annulée. Le poste est de nouveau disponible.`);
+      // Repaints the grid and lets the waiting-list cascade see the freed desk, rather than
+      // leaving the seat coloured as taken until something else happens to refresh.
+      window.dispatchEvent(new CustomEvent('xfactory_reservations_changed'));
+    } catch (err: any) {
+      setValidationError(err?.message || "Échec de l'annulation de la réservation.");
+    }
+  };
+
   const handleQueueSeat = async (
     workstation: Workstation,
     cluster: Cluster,
@@ -590,6 +615,7 @@ export const EndUserDashboard: React.FC = () => {
           slotStart={startTime}
           slotEnd={endTime}
           onQueueSeat={handleQueueSeat}
+          onCancelOwnReservation={handleCancelOwnReservation}
         />
       </div>
 

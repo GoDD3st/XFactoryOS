@@ -59,6 +59,16 @@ interface DigitalTwinProps {
     cluster: Cluster,
     slot: { date: string; startTime: string; endTime: string }
   ) => void;
+  /**
+   * Fired when the viewer releases a seat they hold, from the seat dialog. The host owns the
+   * call and the refresh, the same way it owns booking and queuing - the Twin renders the floor,
+   * it does not mutate reservations.
+   */
+  onCancelOwnReservation?: (
+    reservationId: string,
+    workstation: Workstation,
+    cluster: Cluster
+  ) => void;
   /** Hides the date/time selector for screens that only ever show today's live floor state. */
   hideSlotSelector?: boolean;
   /**
@@ -102,6 +112,7 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
   adminEditMode = false,
   onSlotChange,
   onQueueSeat,
+  onCancelOwnReservation,
   hideSlotSelector = false,
   slotDate: slotDateProp,
   slotStart: slotStartProp,
@@ -189,6 +200,8 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
       endTime: slotEnd,
       businessStart: BUSINESS_START,
       businessEnd: BUSINESS_END,
+      // So a seat the viewer booked themselves comes back knowing it is theirs.
+      currentUserId: currentUser.id,
     });
     setClusters(data);
     if (showSpinner) setLoading(false);
@@ -355,6 +368,11 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
   /** Queuing is offered exactly where booking isn't possible but the seat is a real target. */
   const isSeatQueueable = (ws: Workstation, cluster: Cluster): boolean => {
     if (readOnly || adminEditMode || !onQueueSeat) return false;
+    // Never queue for your own desk. Without this the owner of a seat booked 08:00-12:00 clicked
+    // it and was invited to join the waiting list for it - the queue exists to hand the seat over
+    // if the HOLDER never shows up, so offering it to the holder is asking them to wait for
+    // themselves.
+    if (ws.availability?.ownReservation) return false;
     if (ws.status === 'réservé' || ws.status === 'occupé') return true;
     if (ws.status === 'partiel') return ws.availability?.windowFree === false;
     return false;
@@ -418,8 +436,16 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
               // also opened on hover this did not matter, because hovering a disabled button still
               // fires mouseenter. Now that it opens on click alone, leaving these disabled would
               // quietly remove the only route to a BR-09 access request.
+              // A seat you already hold: not bookable (it is taken - by you) and deliberately not
+              // queueable, but it must stay clickable, because the dialog is the only place the
+              // owner can read their booking back or release it. Suppressing the queue without
+              // adding this made your own desk unclickable with a not-allowed cursor - the same
+              // trap as the management-cluster case below, which is why both are listed here
+              // rather than inferred from isQueueable.
+              const ownsSeat = !!ws.availability?.ownReservation;
               const opensDetail =
                 isQueueable ||
+                (!readOnly && ownsSeat) ||
                 (!readOnly && !adminEditMode && ws.status === 'management_reserved');
 
               return (
@@ -742,6 +768,62 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
             </div>
           </div>
 
+          {/* Your booking.
+              A seat you hold reads as "Réservé" to the grid exactly like anyone else's, so before
+              this the owner clicked their own desk and was offered a place in the waiting list for
+              it. What they actually want is the two things below: confirmation of what they booked
+              and a way out of it. */}
+          {seatDetail.workstation.availability?.ownReservation && (
+            <div className="rounded-xl bg-emerald-950/40 border border-emerald-800/60 p-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span className="text-xs font-extrabold text-emerald-300">
+                  Cette réservation est la vôtre
+                </span>
+              </div>
+
+              {(() => {
+                const own = seatDetail.workstation.availability!.ownReservation!;
+                const multiDay = !!own.endDate && own.endDate !== own.date;
+                const rows: [string, string][] = [
+                  ['Date', multiDay ? `${own.date} → ${own.endDate}` : own.date],
+                  ['Créneau', `${own.start} - ${own.end}`],
+                  ['Statut', own.status],
+                  [
+                    'Check-in',
+                    own.checkInAt
+                      ? new Date(own.checkInAt).toLocaleString('fr-FR')
+                      : 'Pas encore effectué',
+                  ],
+                ];
+                if (own.purpose) rows.push(['Motif', own.purpose]);
+                if (own.notes) rows.push(['Notes', own.notes]);
+                rows.push(['Référence', `#${own.id.substring(0, 8)}`]);
+
+                return (
+                  <dl className="space-y-1">
+                    {rows.map(([label, value]) => (
+                      <div key={label} className="flex gap-2 text-[11px]">
+                        <dt className="text-slate-400 w-24 shrink-0">{label}</dt>
+                        <dd className="text-slate-100 font-semibold break-words min-w-0">{value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                );
+              })()}
+
+              {/* Said plainly, because cancelling frees the desk for whoever is queued for it and
+                  there is no undo - re-booking is a fresh request against a seat someone else may
+                  have taken in the meantime. */}
+              {!seatDetail.workstation.availability!.ownReservation!.checkInAt && (
+                <p className="text-[10px] text-amber-300/90 leading-snug">
+                  Sans check-in à l'heure prévue, la réservation est libérée automatiquement
+                  (no-show) et proposée à la liste d'attente.
+                </p>
+              )}
+            </div>
+          )}
+
           <div className="flex flex-col gap-2 pt-1 border-t border-slate-800">
             {onSelectSeat && !readOnly && isSeatBookable(seatDetail.workstation, seatDetail.cluster) && (
               <button
@@ -787,6 +869,29 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
                   <span>Demander l'accès</span>
                 </button>
               )}
+            {seatDetail.workstation.availability?.ownReservation && onCancelOwnReservation && (
+              <button
+                onClick={() => {
+                  const own = seatDetail.workstation.availability!.ownReservation!;
+                  if (
+                    !window.confirm(
+                      `Annuler votre réservation du poste ${seatDetail.workstation.code} ` +
+                        `(${own.date}, ${own.start} - ${own.end}) ?\n\n` +
+                        "Le poste redevient disponible immédiatement et sera proposé aux personnes en liste d'attente."
+                    )
+                  ) {
+                    return;
+                  }
+                  onCancelOwnReservation(own.id, seatDetail.workstation, seatDetail.cluster);
+                  setSeatDetail(null);
+                }}
+                className="w-full bg-rose-600 hover:bg-rose-500 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center space-x-1.5 shadow-md"
+              >
+                <X className="w-4 h-4" />
+                <span>Annuler la réservation</span>
+              </button>
+            )}
+
             <button
               onClick={() => setSeatDetail(null)}
               className="w-full text-xs text-slate-400 hover:text-white px-2 py-2 font-semibold"
