@@ -610,7 +610,7 @@ const BulkImportModal: React.FC<{ onClose: () => void; onImported: () => void }>
               )}
             </div>
 
-            <div className="max-h-64 overflow-y-auto rounded-xl border border-slate-200">
+            <div className="max-h-64 overflow-y-auto overflow-x-auto rounded-xl border border-slate-200">
               <table className="w-full text-[11px]">
                 <thead className="sticky top-0 bg-slate-50">
                   <tr className="text-left text-slate-500 uppercase text-[10px]">

@@ -207,15 +207,17 @@ export const AuditLogsView: React.FC = () => {
           )}
         </div>
 
-        <div className="flex items-center space-x-3">
-          <div className="relative">
+        {/* Wraps on a phone. A single non-wrapping row of filter + two action buttons was 428px
+            wide and pushed the whole page into horizontal scrolling at 375px. */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative min-w-0 flex-1 sm:flex-none">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Filtrer les événements..."
-              className="pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-[#008751]"
+              className="w-full sm:w-auto pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-[#008751]"
             />
           </div>
 

@@ -74,8 +74,8 @@ import {
   Wrench,
   ListOrdered,
   History,
-  KeyRound, CalendarPlus
-} from 'lucide-react';
+  KeyRound, CalendarPlus, LogOut }
+from 'lucide-react';
 
 // RBAC Tab definitions per role (SRS Section 13 Matrix)
 interface TabDef {
@@ -563,11 +563,14 @@ export const RoleShell: React.FC = () => {
       )}
 
       {/* Top Enterprise Header Bar - Professional Polish Design Theme */}
-      <header className="sticky top-0 z-40 h-14 bg-white border-b border-slate-200 flex items-center justify-between px-4 sm:px-6 shrink-0 shadow-sm">
+      <header className="sticky top-0 z-40 h-14 bg-white border-b border-slate-200 flex items-center justify-between px-3 sm:px-6 shrink-0 shadow-sm">
         <div className="max-w-7xl mx-auto w-full flex items-center justify-between gap-4">
           
           {/* App Logo & Title */}
-          <div className="flex items-center space-x-3 shrink-0">
+          {/* Was shrink-0, which meant the brand block kept its full width on a 375px screen and
+              pushed the controls off the right edge. The mark stays fixed; the title is what
+              yields. */}
+          <div className="flex items-center space-x-2 sm:space-x-3 min-w-0">
             {/* Site mark: the uploaded logo when one is configured, otherwise the XF initials.
                 Falling back rather than showing a broken image keeps the header intact on a fresh
                 install, and if the stored data URI ever fails to decode. */}
@@ -586,7 +589,7 @@ export const RoleShell: React.FC = () => {
             <div className="flex items-center space-x-3">
               <div>
                 <div className="flex items-center space-x-2">
-                  <h1 className="text-lg font-black tracking-tight uppercase text-slate-800 underline underline-offset-4 decoration-[#008751]">
+                  <h1 className="text-base sm:text-lg font-black tracking-tight uppercase text-slate-800 underline underline-offset-4 decoration-[#008751] truncate max-w-[5.5rem] sm:max-w-none">
                     {siteName}
                   </h1>
                 </div>
@@ -598,10 +601,13 @@ export const RoleShell: React.FC = () => {
             </div>
           </div>
 
-          {/* Center / Right: QA Testing 10-Role Switcher (demo mode only) */}
-          <div className="flex items-center space-x-3">
+          {/* Center / Right: QA Testing 10-Role Switcher (demo mode only)
+              min-w-0 and a tighter gap on mobile: this group is the reason the header used to
+              push the page 521px wide on a 375px screen. Its children could not shrink, so the
+              row simply ran off the side and took horizontal scrolling with it. */}
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             {isDemoMode ? (
-              <div className="relative" ref={roleMenuRef}>
+              <div className="relative min-w-0" ref={roleMenuRef}>
               {/* Click-to-open, not hover: the menu sits below the trigger with a gap, so moving
                   the pointer down to pick a role left the hover area and closed it before any
                   option could be reached. */}
@@ -616,10 +622,10 @@ export const RoleShell: React.FC = () => {
                     : 'bg-slate-100 hover:bg-slate-200/80 border-slate-200'
                 }`}
               >
-                <Shield className="w-4 h-4 text-emerald-600" />
-                <div className="flex items-center space-x-1.5 text-xs font-semibold text-slate-700">
+                <Shield className="w-4 h-4 text-emerald-600 shrink-0" />
+                <div className="flex items-center space-x-1.5 text-xs font-semibold text-slate-700 min-w-0">
                   <span className="text-[10px] font-bold text-slate-400 uppercase hidden md:inline">Role Switcher:</span>
-                  <span className="font-bold text-slate-800">{roleConfig.label}</span>
+                  <span className="font-bold text-slate-800 hidden sm:inline">{roleConfig.label}</span>
                   <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${roleConfig.badgeColor}`}>
                     {roleConfig.route}
                   </span>
@@ -676,18 +682,24 @@ export const RoleShell: React.FC = () => {
               </div>
             ) : (
               <div className="flex items-center gap-2">
-                <div className="flex items-center bg-slate-100 rounded-full px-3.5 py-1.5 gap-2 border border-slate-200 text-slate-700">
-                  <Shield className="w-4 h-4 text-emerald-600" />
-                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${roleConfig.badgeColor}`}>
+                <div className="flex items-center bg-slate-100 rounded-full px-2.5 sm:px-3.5 py-1.5 gap-2 border border-slate-200 text-slate-700 min-w-0">
+                  <Shield className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span
+                    className={`text-[10px] px-2 py-0.5 rounded-full font-bold truncate max-w-[6rem] sm:max-w-none ${roleConfig.badgeColor}`}
+                  >
                     {roleConfig.label}
                   </span>
                 </div>
                 <button
                   onClick={() => signOut()}
-                  className="text-[10px] font-bold text-slate-400 hover:text-red-600 uppercase tracking-wide px-2 py-1.5 rounded-lg hover:bg-red-50 transition-all"
+                  className="shrink-0 text-[10px] font-bold text-slate-400 hover:text-red-600 uppercase tracking-wide px-2 py-1.5 rounded-lg hover:bg-red-50 transition-all"
                   title="Se déconnecter"
+                  aria-label="Se déconnecter"
                 >
-                  Déconnexion
+                  {/* Same action, same place; only the label folds down to its icon where there
+                      is no room for eleven characters of uppercase text. */}
+                  <span className="hidden sm:inline">Déconnexion</span>
+                  <LogOut className="w-4 h-4 sm:hidden" />
                 </button>
               </div>
             )}
@@ -698,7 +710,7 @@ export const RoleShell: React.FC = () => {
             {canUseAssistant ? (
               <button
                 onClick={() => setIsAIOpen(true)}
-                className="p-2 rounded-xl bg-[#008751] hover:bg-emerald-600 text-white transition-colors shadow-sm"
+                className="shrink-0 p-2 rounded-xl bg-[#008751] hover:bg-emerald-600 text-white transition-colors shadow-sm"
                 title="XFactory AI Assistant"
               >
                 <Bot className="w-4 h-4 text-amber-300" />
@@ -706,7 +718,7 @@ export const RoleShell: React.FC = () => {
             ) : (
               <button
                 onClick={() => setIsRulesOpen(true)}
-                className="p-2 rounded-xl bg-[#008751] hover:bg-emerald-600 text-white transition-colors shadow-sm"
+                className="shrink-0 p-2 rounded-xl bg-[#008751] hover:bg-emerald-600 text-white transition-colors shadow-sm"
                 title="Règles de réservation"
               >
                 <Scale className="w-4 h-4 text-amber-300" />
@@ -717,7 +729,7 @@ export const RoleShell: React.FC = () => {
             <div className="relative">
               <button
                 onClick={handleOpenNotifications}
-                className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-600 transition-colors relative"
+                className="shrink-0 p-2 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-600 transition-colors relative"
               >
                 <Bell className="w-4 h-4" />
                 {unreadCount > 0 && (
@@ -776,9 +788,12 @@ export const RoleShell: React.FC = () => {
               type="button"
               onClick={() => setIsProfileOpen(true)}
               title="Mon profil"
-              className="hidden sm:flex items-center space-x-2.5 border-l pl-4 border-slate-200 hover:opacity-80 transition-opacity"
+              className="shrink-0 flex items-center space-x-2.5 sm:border-l sm:pl-4 border-slate-200 hover:opacity-80 transition-opacity"
             >
-              <div className="text-right text-xs">
+              {/* The name and department are what a narrow header cannot afford; the avatar is
+                  what makes the profile panel reachable. Hiding the whole capsule below sm hid the
+                  button too, so on a phone there was no route into the panel at all. */}
+              <div className="hidden sm:block text-right text-xs">
                 <div className="font-bold text-slate-800 leading-none">{currentUser.full_name}</div>
                 <div className="text-[10px] text-slate-400 leading-none mt-1">{currentUser.department}</div>
               </div>
@@ -792,7 +807,7 @@ export const RoleShell: React.FC = () => {
       </header>
 
       {/* Tab Navigation Bar (SRS Section 28 - RBAC-filtered per role) */}
-      <nav className="bg-white border-b border-slate-200 px-4 sm:px-6 shrink-0">
+      <nav className="bg-white border-b border-slate-200 px-3 sm:px-6 shrink-0">
         <div className="max-w-7xl mx-auto w-full flex items-center space-x-1 overflow-x-auto py-1">
           {/* Inert placeholders while the policy read is in flight. Reserving the row's height
               keeps the header from jumping, without guessing at tabs that may be about to
@@ -823,7 +838,9 @@ export const RoleShell: React.FC = () => {
       </nav>
 
       {/* Main Role View Content Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      {/* Tighter gutter on a phone. At 375px the 16px page padding and a card's own 24px came
+          to 80px - 21% of the screen - before any content. Unchanged from sm upwards. */}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6">
         {renderActiveView()}
       </main>
 
@@ -833,10 +850,12 @@ export const RoleShell: React.FC = () => {
           database while Postgres was down, and the version contradicted the repository. Neither
           is a collaborator's, receptionist's, director's or approver's concern - real platform
           health is probed by /api/health and shown in the IT Administrator console. */}
-      <footer className="h-8 bg-[#005A36] text-white flex items-center justify-between px-6 shrink-0 text-[10px]">
-        <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-amber-400" />
-          <span className="font-bold uppercase tracking-wider text-amber-100">{siteName}</span>
+      <footer className="h-8 bg-[#005A36] text-white flex items-center justify-between px-3 sm:px-6 shrink-0 text-[10px]">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
+          {/* A long site name has nowhere to go in a fixed 2rem bar - truncate rather than push
+              the build tag off the screen. */}
+          <span className="font-bold uppercase tracking-wider text-amber-100 truncate">{siteName}</span>
         </div>
         <span className="text-emerald-200 font-mono tracking-widest hidden md:inline">SFI-XFACTORY</span>
       </footer>

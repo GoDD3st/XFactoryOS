@@ -140,7 +140,7 @@ export const ReceptionView: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="bg-slate-900 text-white rounded-2xl p-6 border border-slate-800 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-slate-900 text-white rounded-2xl p-4 sm:p-6 border border-slate-800 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center space-x-2">
             <span className="px-2.5 py-0.5 rounded bg-teal-500/20 text-teal-300 font-bold text-xs">
@@ -219,7 +219,7 @@ export const ReceptionView: React.FC = () => {
       </div>
 
       {/* Action queue */}
-      <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-3">
+      <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-sm space-y-3">
         <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
           <UserCheck className="w-4 h-4 text-teal-600" />
           Actions immédiates
@@ -287,12 +287,12 @@ export const ReceptionView: React.FC = () => {
 
       {/* Today's list + free seats */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-2 bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-3">
+        <div className="lg:col-span-2 bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-sm space-y-3">
           <h3 className="text-sm font-bold text-slate-900">Réservations du jour</h3>
           {!loading && todaysReservations.length === 0 && (
             <p className="text-xs text-slate-400 italic">Aucune réservation aujourd'hui.</p>
           )}
-          <div className="max-h-80 overflow-y-auto">
+          <div className="max-h-80 overflow-y-auto overflow-x-auto">
             <table className="w-full text-xs">
               <thead className="sticky top-0 bg-white">
                 <tr className="text-left text-[10px] uppercase text-slate-400 border-b border-slate-200">
@@ -325,7 +325,7 @@ export const ReceptionView: React.FC = () => {
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-3">
+        <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-sm space-y-3">
           <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
             <Armchair className="w-4 h-4 text-emerald-600" />
             Postes disponibles
