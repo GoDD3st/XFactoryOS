@@ -8,8 +8,7 @@ import {
   deriveSeatAvailability,
   toHHMM,
   DEFAULT_BUSINESS_START,
-  DEFAULT_BUSINESS_END,
-} from './seatAvailability';
+  DEFAULT_BUSINESS_END, HOLDING_STATUSES } from './seatAvailability';
 
 export const INITIAL_CLUSTERS: Cluster[] = [
   { id: 'cl-a', code: 'CL-A', name: 'Cluster A', description: 'Cluster A', desk_count: 4, is_management_only: false, enabled: true, location_zone: 'Openspace', workstations: [] },
@@ -57,6 +56,13 @@ export class WorkspaceService {
     endTime?: string;
     businessStart?: string;
     businessEnd?: string;
+    /**
+     * Who is asking. When given, each seat this user has booked on `date` carries its own booking
+     * back in availability.ownReservation, so the seat dialog can show the owner their reservation
+     * instead of offering them a place in the queue for a desk that is already theirs.
+     * Omit it and no ownership is computed at all - nobody else's booking is ever attributed.
+     */
+    currentUserId?: string;
   }): Promise<Cluster[]> {
     const wsMap = await WorkstationRepository.getWorkstations();
     const clusters = await WorkstationRepository.getClusters();
@@ -121,6 +127,19 @@ export class WorkspaceService {
 
       if (availability.intervals.length === 0) return ws;
 
+      // The caller's own booking on this seat, if any. Same date and status rules the occupancy
+      // calculation uses, so a row that colours the seat is exactly a row that can appear here -
+      // a cancelled booking neither blocks the seat nor claims it.
+      const own = options?.currentUserId
+        ? seatReservations.find(
+            (r) =>
+              r.user_id === options.currentUserId &&
+              HOLDING_STATUSES.has(r.status) &&
+              r.reservation_date <= date &&
+              (r.end_date || r.reservation_date) >= date
+          )
+        : undefined;
+
       return {
         ...ws,
         status: availability.status as SeatStatus,
@@ -131,6 +150,21 @@ export class WorkspaceService {
           busy: availability.intervals.map((i) => ({ start: toHHMM(i.start), end: toHHMM(i.end) })),
           gaps: availability.gaps.map((i) => ({ start: toHHMM(i.start), end: toHHMM(i.end) })),
           windowFree: availability.windowFree,
+          ownReservation: own
+            ? {
+                id: own.id,
+                date: own.reservation_date,
+                endDate: own.end_date,
+                // On a middle day of a multi-day booking the seat is held all day, not from the
+                // start_time the user picked on day one - mirror what the occupancy maths does.
+                start: own.reservation_date === date ? own.start_time : businessStart,
+                end: (own.end_date || own.reservation_date) === date ? own.end_time : businessEnd,
+                status: own.status,
+                purpose: own.purpose,
+                notes: own.notes,
+                checkInAt: own.check_in_at,
+              }
+            : undefined,
         },
       };
     };
