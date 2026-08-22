@@ -15,8 +15,7 @@ import {
   Zap,
   BookmarkCheck,
   AlertCircle,
-  FileText
-} from 'lucide-react';
+  FileText, ScanLine } from 'lucide-react';
 import { DigitalTwin } from '../../../shared/components/DigitalTwin';
 import { DateTimePicker24h } from '../../../shared/components/DateTimePicker24h';
 import { ExtensionRequestModal } from '../../../shared/components/ExtensionRequestModal';
@@ -32,6 +31,7 @@ import { ReservationConflictError } from '@/services/api/reservationApi';
 import { ApprovalService } from '@/services/approval/approvalService';
 import { SettingsService } from '@/services/settings/settingsService';
 import { useAuth } from '../../../modules/auth/context/AuthContext';
+import { SelfSeatScanModal } from '@/frontend/src/shared/components/SelfSeatScanModal';
 
 
 // Returns the first valid booking date = today + bookingWindowDays, skipping weekends
@@ -64,6 +64,7 @@ export const EndUserDashboard: React.FC = () => {
   const [endTime, setEndTime] = useState<string>('18:00');
   const [purpose, setPurpose] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
+  const [showSeatScan, setShowSeatScan] = useState(false);
   const [businessDaysCount, setBusinessDaysCount] = useState<number>(1);
   const [requiresExtension, setRequiresExtension] = useState<boolean>(false);
   const [validationError, setValidationError] = useState<string | undefined>();
@@ -480,6 +481,22 @@ export const EndUserDashboard: React.FC = () => {
             <p className="text-xs sm:text-sm text-slate-600 leading-relaxed font-medium">
               Réservez votre poste de travail Smart Open Space. (08:00 - 18:00).
             </p>
+
+            {/* Scanning the badge on the desk is the check-in, and it already worked from the
+                phone's own camera app - the QR encodes this site with ?scan=<token>. This button
+                is for when the app is already open, where being told to leave it, open the camera
+                app and come back is absurd, and for desktops, which have no camera app to leave
+                to. Same endpoint either way: the server reads the user from the session and the
+                desk from the signed token, and acts only if a reservation matches both. */}
+            <button
+              type="button"
+              onClick={() => setShowSeatScan(true)}
+              className="mt-1 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-sm transition-colors"
+              title="Scanner le QR code collé sur le poste pour faire votre check-in ou check-out"
+            >
+              <ScanLine className="w-4 h-4 text-amber-300" />
+              Scanner le QR du poste
+            </button>
           </div>
 
           {activeHeroRes ? (
@@ -796,6 +813,17 @@ export const EndUserDashboard: React.FC = () => {
           approverFeedbackNote={reLoopRequest.decision_note}
         />
       )}
+      {showSeatScan && (
+        <SelfSeatScanModal
+          onClose={() => setShowSeatScan(false)}
+          onDone={() => {
+            // A scan changes a reservation's status, so the floor and the user's own list have to
+            // repaint - the same event the booking path dispatches.
+            window.dispatchEvent(new CustomEvent('xfactory_reservations_changed'));
+          }}
+        />
+      )}
     </div>
+
   );
 };
