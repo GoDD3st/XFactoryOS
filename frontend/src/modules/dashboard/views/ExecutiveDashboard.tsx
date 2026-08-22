@@ -16,6 +16,7 @@ import {
   getLastTelemetryFailure,
 } from '@/services/api/telemetryApi';
 import { apiLogExport } from '@/services/api/auditApi';
+import { bucketTrends } from '@/services/telemetry/trendBuckets';
 import { useAuth } from '../../auth/context/AuthContext';
 import { BarChart3, TrendingUp, Clock, AlertTriangle, Download, Sparkles, Building, Layers, FileSpreadsheet, Printer, LineChart, CheckCircle2, CalendarClock, Users, Sparkle } from 'lucide-react';
 
@@ -294,10 +295,14 @@ export const ExecutiveDashboard: React.FC = () => {
     window.print();
   };
 
-  const maxTrendCount = Math.max(1, ...trends.map((t) => t.count));
-  // One label per bar is unreadable past ~30 bars, so show roughly a dozen dates whatever the
-  // window: every day at 14, every other at 30, every fortnight at a year.
-  const labelEvery = Math.max(1, Math.ceil(trends.length / 12));
+  // Days below a year, months from a year up - see services/telemetry/trendBuckets.ts. The API
+  // always answers in days; this only decides how the series is drawn.
+  const { buckets: trendBuckets, granularity: trendGranularity } = bucketTrends(trends, trendDays);
+  const maxTrendCount = Math.max(1, ...trendBuckets.map((b) => b.count));
+  // One label per bar is unreadable past ~30 bars, so show roughly a dozen whatever the window:
+  // every bar at 14 days, every other at 30, every fortnight at 90. Monthly buckets never exceed
+  // ~24 bars, so they all get a label.
+  const labelEvery = Math.max(1, Math.ceil(trendBuckets.length / 12));
   const trendPeriodLabel =
     trendDays === 1
       ? 'dernier jour'
@@ -419,7 +424,7 @@ export const ExecutiveDashboard: React.FC = () => {
           <div className="flex items-center space-x-2">
             <LineChart className="w-5 h-5 text-[#008751]" />
             <h3 className="font-bold text-sm text-slate-800">
-              Tendance des Réservations ({trendPeriodLabel})
+              Tendance des Réservations ({trendPeriodLabel}{trendGranularity === 'month' ? ' · par mois' : ''})
             </h3>
           </div>
 
@@ -454,34 +459,31 @@ export const ExecutiveDashboard: React.FC = () => {
           </div>
         </div>
 
-        {trends.length === 0 ? (
+        {trendBuckets.length === 0 ? (
           <p className="text-xs text-slate-400 text-center py-6">Données insuffisantes pour établir une tendance.</p>
         ) : (
-          <div className={`flex items-end h-32 ${trends.length > 45 ? 'gap-px' : 'gap-1.5'}`}>
-            {trends.map((t) => (
-              <div key={t.date} className="flex-1 flex flex-col items-center justify-end gap-1 group relative">
-                <div className="text-[9px] font-bold text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity absolute -top-4">
-                  {t.count}
+          <div className={`flex items-end h-32 ${trendBuckets.length > 45 ? 'gap-px' : 'gap-1.5'}`}>
+            {trendBuckets.map((b, i) => (
+              <div key={b.key} className="flex-1 flex flex-col items-center justify-end gap-1 group relative">
+                <div className="text-[9px] font-bold text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity absolute -top-4 whitespace-nowrap">
+                  {b.count}
                 </div>
                 <div className="w-full flex flex-col justify-end" style={{ height: '100px' }}>
-                  {t.noShows > 0 && (
+                  {b.noShows > 0 && (
                     <div
                       className="w-full bg-red-400 rounded-t"
-                      style={{ height: `${(t.noShows / maxTrendCount) * 100}px` }}
+                      style={{ height: `${(b.noShows / maxTrendCount) * 100}px` }}
                     />
                   )}
                   <div
                     className="w-full bg-[#008751]"
-                    style={{ height: `${((t.count - t.noShows) / maxTrendCount) * 100}px` }}
+                    style={{ height: `${((b.count - b.noShows) / maxTrendCount) * 100}px` }}
                   />
                 </div>
                 <div className="text-[8px] text-slate-400 font-medium">
-                  {trends.indexOf(t) % labelEvery === 0
-                    ? new Date(t.date + 'T00:00:00').toLocaleDateString('fr-FR', {
-                        day: '2-digit',
-                        month: '2-digit',
-                      })
-                    : ''}
+                  {/* Index from map, not indexOf: with monthly buckets two months can hold equal
+                      counts, and indexOf on the value would label the wrong bar. */}
+                  {i % labelEvery === 0 ? b.label : ''}
                 </div>
               </div>
             ))}
