@@ -587,6 +587,26 @@ restart. Several bugs in this project's history were a stale server.
 | `VITE_DEMO_MODE` | **build time** | Compile-time constant — setting it at runtime does nothing |
 | `CRON_SECRET` | server | You invent it. See §16 of `SETUP.md`. |
 | `QR_HMAC_SECRET` | server | Signs both token families. **Rotating it invalidates every printed badge.** |
+| `TZ` | server | Optional. Defaults to `Africa/Casablanca` (see below). Set it only to relocate the site. |
+
+### The site timezone
+
+Reservation times are wall clocks - a user picks 08:00 and means eight in the morning at Site
+Safi - stored as `timestamptz`, which is an instant. Converting between the two needs a zone,
+and the process is pinned to `Africa/Casablanca` by `services/time/siteTime.ts`, imported first
+in `backend/server.ts`.
+
+**Decision: pin the process rather than convert at each call site.** Every reservation path
+builds dates with `new Date('<date>T<time>')`, which means "in whatever zone this process runs
+in". On Vercel that is UTC, so 08:00 was stored as 08:00Z - 09:00 in Morocco. It looked right
+because it was read back the same way, and only broke where the instant meets real time:
+no-show detection ran an hour late, and the waiting-list cascade with it.
+
+**Consequence.** A zone NAME, never an offset: Morocco is UTC+1 most of the year and UTC+0
+during Ramadan, so a hardcoded `+01:00` would be wrong for about a month annually. Anything
+comparing a stored wall clock against real time in the BROWSER must use
+`siteWallClockToEpoch`, not `new Date(date + 'T' + time)` - the latter reads the device's zone
+and is right only when the user happens to be in Morocco.
 
 ## 19. Deployment
 
@@ -657,8 +677,10 @@ admitting them.
 - `trg_set_updated_at` exists on `public.floors`, which has **no `updated_at` column** — any
   `UPDATE` on a floor raises. Reproduced deliberately in the baseline rather than silently fixed;
   it deserves its own migration.
-- Reservation dates are written as *floating local times* by the server's clock. Consistent today
-  because the deployment runs UTC, but it is an assumption, not a guarantee.
+- Reservation wall clocks are resolved through the pinned site timezone (see §18). Event
+  timestamps (`created_at`, `check_in_at`, ...) are true instants and are deliberately left
+  alone. If a new column ever stores a user-typed time, it belongs in the first group - the
+  test is whether a human typed it or the clock produced it.
 
 **Unfinished against the SRS**
 - `digital_twin_objects` exists and is empty. FR-39/41/42/43 (SVG floor plan, equipment, disabled

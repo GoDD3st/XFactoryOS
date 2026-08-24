@@ -18,6 +18,7 @@ import { SettingsService } from '@/services/settings/settingsService';
 import { apiFetchClusters } from '@/services/api/workspaceApi';
 import { Reservation, SystemSettings } from '../../../types';
 import { useAuth } from '../../auth/context/AuthContext';
+import { siteWallClockToEpoch } from '@/services/time/siteTime';
 
 /**
  * Receptionist home - SRS §8.5: front-office support. The §13 matrix makes this role X on
@@ -36,29 +37,16 @@ const AWAITING_STATUSES = new Set<Reservation['status']>(['confirmée', 'en atte
 /**
  * Minutes until this reservation flips to no-show; negative once the window has passed.
  *
- * Reconstructed with Date.UTC, NOT setHours, and the difference is not cosmetic.
- *
- * `start_time` is a wall-clock string, and it is rendered by the SERVER
- * (ReservationRepository.mapRowToReservation → formatTime, which uses getHours() in the server's
- * own zone) while `reservation_date` next to it comes from toISOString(), which is UTC. Rebuilding
- * an instant from those two with setHours re-interprets that string in the BROWSER's zone. On a
- * UTC+1 client that shifted every reservation an hour earlier than the server believes it starts,
- * so the desk was told "délai dépassé - passage en no-show imminent" a full hour before
- * NoShowService.detectNoShows would agree - a 08:00 booking flagged as overdue at 08:15 when the
- * server saw 15 of its 30 minutes elapsed.
- *
- * Date.UTC reads the same clock time the server wrote, so this countdown and the sweep that
- * actually flips the status now measure from the same instant.
- *
- * BEFORE YOU CHANGE THIS: the fix belongs here only while start_time stays a server-rendered wall
- * clock. If the domain object ever carries the raw start_at instant, use that instead - it removes
- * the ambiguity rather than compensating for it. See README §22, "floating local times".
+ * Resolved through siteWallClockToEpoch rather than `new Date(date + 'T' + time)`. `start_time` is
+ * a wall clock AT SITE SAFI, and reconstructing it with a plain Date reads it in the DEVICE's
+ * zone - correct only when the receptionist happens to be in Morocco, and silently an hour out
+ * for anyone connecting from elsewhere. This countdown has to agree with NoShowService, which
+ * measures against the stored instant, so it resolves the same wall clock the same way.
  */
 function minutesUntilNoShow(res: Reservation, delayMinutes: number): number {
-  const [h, m] = (res.start_time || '00:00').split(':').map(Number);
-  const [y, mo, d] = (res.reservation_date || '').split('-').map(Number);
-  if (!y || !mo || !d) return Number.POSITIVE_INFINITY;
-  const startMs = Date.UTC(y, mo - 1, d, h || 0, m || 0, 0, 0);
+  if (!res.reservation_date || !res.start_time) return Number.POSITIVE_INFINITY;
+  const startMs = siteWallClockToEpoch(res.reservation_date, res.start_time);
+  if (Number.isNaN(startMs)) return Number.POSITIVE_INFINITY;
   return Math.round((startMs + delayMinutes * 60000 - Date.now()) / 60000);
 }
 
