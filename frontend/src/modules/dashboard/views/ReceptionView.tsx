@@ -33,12 +33,33 @@ import { useAuth } from '../../auth/context/AuthContext';
 const CHECKED_IN_STATUSES = new Set<Reservation['status']>(['check-in', 'check-out', 'terminée']);
 const AWAITING_STATUSES = new Set<Reservation['status']>(['confirmée', 'en attente']);
 
-/** Minutes until this reservation flips to no-show; negative once the window has passed. */
+/**
+ * Minutes until this reservation flips to no-show; negative once the window has passed.
+ *
+ * Reconstructed with Date.UTC, NOT setHours, and the difference is not cosmetic.
+ *
+ * `start_time` is a wall-clock string, and it is rendered by the SERVER
+ * (ReservationRepository.mapRowToReservation → formatTime, which uses getHours() in the server's
+ * own zone) while `reservation_date` next to it comes from toISOString(), which is UTC. Rebuilding
+ * an instant from those two with setHours re-interprets that string in the BROWSER's zone. On a
+ * UTC+1 client that shifted every reservation an hour earlier than the server believes it starts,
+ * so the desk was told "délai dépassé - passage en no-show imminent" a full hour before
+ * NoShowService.detectNoShows would agree - a 08:00 booking flagged as overdue at 08:15 when the
+ * server saw 15 of its 30 minutes elapsed.
+ *
+ * Date.UTC reads the same clock time the server wrote, so this countdown and the sweep that
+ * actually flips the status now measure from the same instant.
+ *
+ * BEFORE YOU CHANGE THIS: the fix belongs here only while start_time stays a server-rendered wall
+ * clock. If the domain object ever carries the raw start_at instant, use that instead - it removes
+ * the ambiguity rather than compensating for it. See README §22, "floating local times".
+ */
 function minutesUntilNoShow(res: Reservation, delayMinutes: number): number {
   const [h, m] = (res.start_time || '00:00').split(':').map(Number);
-  const start = new Date(`${res.reservation_date}T00:00:00`);
-  start.setHours(h || 0, m || 0, 0, 0);
-  return Math.round((start.getTime() + delayMinutes * 60000 - Date.now()) / 60000);
+  const [y, mo, d] = (res.reservation_date || '').split('-').map(Number);
+  if (!y || !mo || !d) return Number.POSITIVE_INFINITY;
+  const startMs = Date.UTC(y, mo - 1, d, h || 0, m || 0, 0, 0);
+  return Math.round((startMs + delayMinutes * 60000 - Date.now()) / 60000);
 }
 
 export const ReceptionView: React.FC = () => {
@@ -243,11 +264,22 @@ export const ReceptionView: React.FC = () => {
         <div className="space-y-2">
           {actionQueue.map(({ res, minutesLeft }) => {
             const overdue = minutesLeft <= 0;
+            // Only a CONFIRMED reservation can be checked in. CheckInOutService.performCheckIn
+            // refuses anything else, so offering the button on a reservation still waiting for a
+            // Director's or an Assistant's decision produced a control that could not work - it
+            // reported a failure the receptionist had no way to resolve from this screen.
+            // Such a reservation is also never marked no-show by the sweep, which only acts on
+            // CONFIRMED, so the no-show countdown does not apply to it either.
+            const awaitingApproval = res.status === 'en attente';
             return (
               <div
                 key={res.id}
                 className={`p-3 rounded-xl border flex items-center justify-between gap-3 ${
-                  overdue ? 'bg-rose-50 border-rose-200' : 'bg-amber-50 border-amber-200'
+                  awaitingApproval
+                    ? 'bg-slate-50 border-slate-200'
+                    : overdue
+                    ? 'bg-rose-50 border-rose-200'
+                    : 'bg-amber-50 border-amber-200'
                 }`}
               >
                 <div className="text-xs min-w-0">
@@ -268,20 +300,28 @@ export const ReceptionView: React.FC = () => {
                     }`}
                   >
                     <AlertTriangle className="w-3 h-3" />
-                    {overdue
+                    {awaitingApproval
+                      ? `En attente d'approbation - check-in impossible tant que la demande n'est pas validée`
+                      : overdue
                       ? `Délai dépassé - passage en no-show imminent`
                       : `Il reste ${minutesLeft} min avant le no-show`}
                   </div>
                 </div>
 
-                <button
-                  onClick={() => handleQuickCheckin(res)}
-                  disabled={pendingId === res.id}
-                  className="shrink-0 bg-[#008751] hover:bg-[#005f38] disabled:opacity-60 text-white px-3.5 py-2 rounded-lg text-xs font-bold transition-all shadow-sm flex items-center gap-1.5"
-                >
-                  <Check className="w-3.5 h-3.5" />
-                  {pendingId === res.id ? 'Enregistrement...' : 'Check-in'}
-                </button>
+                {awaitingApproval ? (
+                  <span className="shrink-0 px-3.5 py-2 rounded-lg text-xs font-bold bg-slate-200 text-slate-600">
+                    À approuver
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => handleQuickCheckin(res)}
+                    disabled={pendingId === res.id}
+                    className="shrink-0 bg-[#008751] hover:bg-[#005f38] disabled:opacity-60 text-white px-3.5 py-2 rounded-lg text-xs font-bold transition-all shadow-sm flex items-center gap-1.5"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    {pendingId === res.id ? 'Enregistrement...' : 'Check-in'}
+                  </button>
+                )}
               </div>
             );
           })}

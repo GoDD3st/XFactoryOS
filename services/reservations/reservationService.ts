@@ -230,6 +230,44 @@ export class ReservationService {
       }
     }
 
+    // Business hours (settings.workingHoursStart / workingHoursEnd).
+    //
+    // This existed ONLY in the browser (validateReservationConstraints in
+    // frontend/src/shared/utils/dateValidation.ts), so the rule held exactly as long as the
+    // request came through the form. Anything else - a direct POST, a seeded row, a future
+    // integration - could book outside opening hours, and production had a live 07:00-17:00
+    // reservation on a site that opens at 08:00 to prove it.
+    //
+    // Placed with the weekend/holiday rules and skipped for bypass roles for the same reason
+    // they are: these are operational scheduling rules, not physical facts about the building.
+    // The lockdown check above is the one that binds everyone, because a closed floor is closed
+    // to everybody.
+    if (!isBypassRole && payload.start_time && payload.end_time) {
+      const toMinutes = (hhmm: string) => {
+        const [h, m] = hhmm.split(':').map(Number);
+        return (h || 0) * 60 + (m || 0);
+      };
+      const openMins = toMinutes(settings.workingHoursStart);
+      const closeMins = toMinutes(settings.workingHoursEnd);
+      const startMins = toMinutes(payload.start_time);
+      const endMins = toMinutes(payload.end_time);
+
+      if (startMins < openMins || startMins >= closeMins) {
+        throw new Error(
+          `L'heure de début doit être comprise entre ${settings.workingHoursStart} et ${settings.workingHoursEnd}.`
+        );
+      }
+      // End is compared with <= because a booking may finish exactly at closing time.
+      if (endMins <= openMins || endMins > closeMins) {
+        throw new Error(
+          `L'heure de fin doit être comprise entre ${settings.workingHoursStart} et ${settings.workingHoursEnd}.`
+        );
+      }
+      if (endMins <= startMins) {
+        throw new Error("L'heure de fin doit être postérieure à l'heure de début.");
+      }
+    }
+
     const effectiveEndDate = payload.end_date || payload.reservation_date;
 
     if (payload.workstation_code && payload.reservation_date && payload.start_time && payload.end_time) {
