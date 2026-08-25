@@ -1,4 +1,15 @@
-# XFactory OS — Module 1: Smart Open Space Management
+## XFactory OS ##
+
+# Summarize the XFACTORY OS app ( not only the openspace) and write all the modules that exist #
+
+
+
+
+
+
+
+
+Module 1: Smart Open Space Management
 
 Reservation and occupancy management for the OCP Digital Factory Open Space, Site Safi.
 
@@ -55,19 +66,19 @@ engine exists because of one of those three problems, not because of a technical
 
 ## 4. Main Features
 
-| Feature | Summary |
-|---|---|
-| Two booking paths | Pick a desk on the Digital Twin floor plan, or fill the form and let it pick |
-| Multi-day bookings | A date range; business days are counted and drive the approval requirement |
-| Approval workflow | Long or multi-day bookings route to the Executive Assistant or the Director |
-| QR check-in / check-out | Scan the badge on the desk, from the phone camera or in-app |
-| Late check-in requests | A user who missed the window can ask for the reservation back |
-| Waiting list | FIFO queue with preference matching; a freed desk is offered automatically |
-| No-show release | Unclaimed desks are released and passed to the queue |
-| Digital Twin | Live floor plan coloured by real availability for a chosen date and window |
-| Dashboards | Occupancy, trends, departments, no-shows, and a statistical forecast |
-| Administration | Users, roles and permissions, desks, clusters, settings, audit |
-| Exports | CSV, Excel and a print-to-PDF report of the executive dashboard |
+| Feature                 |    Summary                                                                    |
+|-------------------------|-------------------------------------------------------------------------------|
+| Two booking paths       | Pick a desk on the Digital Twin floor plan, or fill the form and let it pick  |
+| Multi-day bookings      | A date range; business days are counted and drive the approval requirement    |
+| Approval workflow       | Long or multi-day bookings route to the Executive Assistant or the Director   |
+| QR check-in / check-out | Scan the badge on the desk, from the phone camera or in-app                   |
+| Late check-in requests  | A user who missed the window can ask for the reservation back                 |
+| Waiting list            | FIFO queue with preference matching; a freed desk is offered automatically    |
+| No-show release         | Unclaimed desks are released and passed to the queue                          |
+| Digital Twin            | Live floor plan coloured by real availability for a chosen date and window    |
+| Dashboards              | Occupancy, trends, departments, no-shows, and a statistical forecast          |
+| Administration          | Users, roles and permissions, desks, clusters, settings, audit                |
+| Exports                 | CSV, Excel and a print-to-PDF report of the executive dashboard               |
 
 ---
 

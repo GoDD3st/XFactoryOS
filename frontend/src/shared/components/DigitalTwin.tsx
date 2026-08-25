@@ -132,16 +132,27 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
   const [ownEnd, setOwnEnd] = useState<string>(BUSINESS_END);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
-  // Controlled when the host supplies the slot, uncontrolled otherwise.
+  // Controlled when the host supplies the slot, uncontrolled otherwise. A controlled host that
+  // also listens with onSlotChange keeps the selector usable: the edit is sent up and comes back
+  // as new props, instead of being swallowed the way the old no-op setters did.
   const isControlled = slotDateProp !== undefined;
   const slotDate = slotDateProp ?? ownDate;
   const slotStart = slotStartProp ?? ownStart;
   const slotEnd = slotEndProp ?? ownEnd;
-  const setSlotDate = isControlled ? () => {} : setOwnDate;
-  const setSlotStart = isControlled ? () => {} : setOwnStart;
-  const setSlotEnd = isControlled ? () => {} : setOwnEnd;
 
-  const showSlotSelector = !hideSlotSelector && !isControlled;
+  /** One merged write, so changing two fields at once cannot send a half-stale slot upward. */
+  const applySlot = (patch: Partial<{ date: string; startTime: string; endTime: string }>) => {
+    const next = { date: slotDate, startTime: slotStart, endTime: slotEnd, ...patch };
+    if (isControlled) {
+      onSlotChange?.(next);
+      return;
+    }
+    setOwnDate(next.date);
+    setOwnStart(next.startTime);
+    setOwnEnd(next.endTime);
+  };
+
+  const showSlotSelector = !hideSlotSelector && (!isControlled || !!onSlotChange);
   const slotInvalid = slotStart >= slotEnd;
 
   // 8-postes visibility is a straight permission, not a toggle - admins/super-admins always see
@@ -620,28 +631,37 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
               <input
                 type="date"
                 value={slotDate}
-                onChange={(e) => setSlotDate(e.target.value)}
+                onChange={(e) => applySlot({ date: e.target.value })}
                 className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
               />
               <input
                 type="time"
                 value={slotStart}
-                onChange={(e) => setSlotStart(e.target.value)}
+                onChange={(e) => applySlot({ startTime: e.target.value })}
                 className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
               />
               <span className="text-xs text-slate-400 font-semibold">→</span>
               <input
                 type="time"
                 value={slotEnd}
-                onChange={(e) => setSlotEnd(e.target.value)}
+                onChange={(e) => applySlot({ endTime: e.target.value })}
                 className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
               />
               <button
-                onClick={() => {
-                  setSlotDate(new Date().toISOString().split('T')[0]);
-                  setSlotStart(BUSINESS_START);
-                  setSlotEnd(BUSINESS_END);
-                }}
+                onClick={() =>
+                  // A controlled host owns the date and enforces the booking window on it, so
+                  // only the hours are widened there - jumping to today would hand the booking
+                  // form a date it has to reject.
+                  applySlot(
+                    isControlled
+                      ? { startTime: BUSINESS_START, endTime: BUSINESS_END }
+                      : {
+                          date: new Date().toISOString().split('T')[0],
+                          startTime: BUSINESS_START,
+                          endTime: BUSINESS_END,
+                        }
+                  )
+                }
                 className="text-[11px] font-semibold text-slate-500 hover:text-slate-800 px-2 py-1 rounded-lg hover:bg-slate-100"
               >
                 Journée entière
