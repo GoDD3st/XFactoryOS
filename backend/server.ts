@@ -1,3 +1,8 @@
+// FIRST IMPORT, DELIBERATELY. Pins the process to the site's timezone as an import side
+// effect, so every `new Date('<date>T<time>')` in the reservation path means that wall
+// clock AT SITE SAFI rather than in whatever zone the host happens to run. ES module
+// imports evaluate in order; moving this down means dates are constructed before the pin.
+import '@/services/time/siteTime';
 import 'dotenv/config';
 import express from 'express';
 import path from 'path';

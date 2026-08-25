@@ -1,6 +1,33 @@
 import { UserRole, UserProfile, RoleConfig } from '@/frontend/src/types';
 import { LOCAL_STORAGE_ROLE_KEY } from '@/services/supabase/supabaseClient';
 
+/**
+ * Role PRESENTATION, and the demo-mode identities. Not authorization.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────────────────────
+ * READ THIS BEFORE USING ANYTHING IN THIS FILE TO DECIDE WHAT A USER MAY DO.
+ *
+ * Nothing here grants or checks a permission. Real authorization is:
+ *
+ *   1. `requirePermission(...)` in backend/middleware/rbacMiddleware.ts, which reads the
+ *      `role_permissions` table - this is the gate that actually decides;
+ *   2. Row Level Security in database/rls/policies.sql, as the last line if a query ever
+ *      reaches Postgres without passing through the API.
+ *
+ * See README §9. This file only answers "what colour is this role's badge, and what is it
+ * called in French".
+ * ─────────────────────────────────────────────────────────────────────────────────────────────
+ */
+
+/**
+ * Display metadata per role: label, home route, badge colour, description.
+ *
+ * WARNING - the `permissions` array on each entry is DECORATIVE. It is human-readable prose for
+ * the role description panel, it is not consulted by any guard, and it is not kept in step with
+ * `role_permissions`. Adding a string here grants nothing; removing one revokes nothing. It has
+ * been left in place because the Roles screen renders it, but treat it as documentation of intent
+ * rather than as configuration - if the two ever disagree, the database is right.
+ */
 export const ROLE_CONFIGS: Record<UserRole, RoleConfig> = {
   collaborator: {
     id: 'collaborator',
@@ -84,6 +111,19 @@ export const ROLE_CONFIGS: Record<UserRole, RoleConfig> = {
   }
 };
 
+/**
+ * Fabricated identities, one per role, used ONLY when DEMO_MODE is on.
+ *
+ * In a real session the profile comes from Supabase Auth and is resolved server-side by
+ * `fetchRealUserProfile` - the browser never chooses who it is. These rows exist so the ten role
+ * views can be demonstrated and QA'd without ten real accounts.
+ *
+ * Their ids are human-readable strings ('usr-dir-1'), NOT uuids, which is deliberate and has a
+ * consequence worth knowing: anything writing an actor id to Postgres has to tolerate them, since
+ * `audit_logs.actor_id` is a uuid foreign key. See the id-coercion note in auditRepository.ts.
+ * If you add a demo user, keep that pattern rather than inventing a uuid, so the demo path stays
+ * visibly distinct from a real one in the data.
+ */
 export const DEFAULT_USERS_BY_ROLE: Record<UserRole, UserProfile> = {
   collaborator: {
     id: 'usr-collab-1',
@@ -177,7 +217,26 @@ export const DEFAULT_USERS_BY_ROLE: Record<UserRole, UserProfile> = {
   }
 };
 
+/**
+ * Demo-mode role preference and the lookups around it.
+ *
+ * Every method here is a local-storage or in-memory read. None of it reaches the network, none of
+ * it is trusted by the server, and none of it survives into a real session: with DEMO_MODE off,
+ * AuthContext takes the role from the profile the API resolved from the JWT and ignores the
+ * preference stored here.
+ */
 export class AuthService {
+  /**
+   * The role the demo UI should open on.
+   *
+   * Business context: the role switcher is a QA affordance - it lets one person walk through all
+   * ten SRS role views in a review without ten accounts. Remembering the last choice means a
+   * reload does not throw the reviewer back to the collaborator view mid-demo.
+   *
+   * Falls back to 'collaborator' when nothing is stored, when the stored value is not a role we
+   * still ship (a rename must not strand the UI on a role that no longer exists), and when
+   * localStorage throws - which it does in private-browsing modes and when storage is full.
+   */
   static getInitialRole(): UserRole {
     try {
       if (typeof window !== 'undefined') {
@@ -192,10 +251,21 @@ export class AuthService {
     return 'collaborator';
   }
 
+  /**
+   * The fabricated profile for a role, for DEMO_MODE only.
+   *
+   * Defaults to the collaborator profile rather than throwing: an unknown role here means the
+   * demo switcher and this map have drifted apart, and degrading to the least-privileged identity
+   * is the safe direction to fail in.
+   */
   static getUserForRole(role: UserRole): UserProfile {
     return DEFAULT_USERS_BY_ROLE[role] || DEFAULT_USERS_BY_ROLE.collaborator;
   }
 
+  /**
+   * Remembers the demo role across reloads. Swallows storage failures on purpose - losing a QA
+   * convenience must never break the render path that called it.
+   */
   static saveRolePreference(role: UserRole): void {
     try {
       if (typeof window !== 'undefined') {

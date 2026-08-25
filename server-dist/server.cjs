@@ -58469,7 +58469,34 @@ var init_reservationRepository = __esm({
         }
       }
       /**
-       * Check for double-booking conflicts on the same workstation
+       * The double-booking check. This is the single point that makes two people unable to hold the
+       * same desk at the same time.
+       *
+       * Business context: FR-24. Availability the client showed a user is a snapshot that was already
+       * stale when it rendered - somebody else may have booked in between. This runs immediately
+       * before the insert, against the database, which is why the database and not the UI is the
+       * authority on availability.
+       *
+       * Overlap test: `newStart < rEnd && newEnd > rStart`. Touching endpoints do NOT overlap, so a
+       * booking ending at 12:00 and another starting at 12:00 both stand - that is the half-open
+       * interval the whole app assumes, and changing it here without changing seatAvailability.ts
+       * would make the grid and the conflict check disagree about the same two bookings.
+       *
+       * Statuses excluded (CANCELLED, NO_SHOW, COMPLETED) are the ones that no longer hold the desk.
+       * Everything else blocks - including pending approvals, deliberately: a reservation awaiting a
+       * Director's decision has reserved the desk provisionally, and letting someone else take it
+       * would mean approving a booking for a desk that is gone.
+       *
+       * Multi-day: `endDate` extends the window to the last day. Omitting it silently checks only the
+       * first day, which is why ReservationService always passes `effectiveEndDate`.
+       *
+       * FAILS CLOSED. Any error - unreadable table, bad response - throws rather than returning
+       * false. "We could not check" must never be treated as "there is no conflict"; that would hand
+       * out a double booking on exactly the paths where something is already wrong.
+       *
+       * @param excludeReservationId - the reservation being MODIFIED, so it does not conflict with
+       *   itself. Omit it on create.
+       * @returns true when the requested window overlaps a live reservation on that desk.
        */
       static async checkConflict(workstationCode, reservationDate, startTime, endTime, excludeReservationId, dbClient = supabase, endDate) {
         try {
@@ -60054,6 +60081,62 @@ var init_reservationService = __esm({
           window.dispatchEvent(new CustomEvent("xfactory_reservations_changed"));
         }
       }
+      /**
+       * Creates a reservation, applying every rule that decides whether one is allowed to exist.
+       *
+       * ───────────────────────────────────────────────────────────────────────────────────────────
+       * BEFORE YOU MODIFY THIS
+       *
+       * This is the only sanctioned way to create a reservation. It is called from
+       * POST /api/reservations, from the Digital Twin and form booking paths, and from the
+       * waiting-list acceptOffer flow. Writing to ReservationRepository.createReservation directly
+       * skips EVERY rule below - quotas, conflicts, VIP locks, approval routing - and produces a row
+       * the rest of the system believes was validated.
+       * ───────────────────────────────────────────────────────────────────────────────────────────
+       *
+       * TWO EXECUTION CONTEXTS, ONE FUNCTION.
+       * In the browser it forwards to the authenticated API and returns - the rules below do NOT run
+       * client-side, because a browser cannot be trusted to enforce them and its Supabase client is
+       * RLS-limited anyway. Everything after that early return is the server path. The client still
+       * calls validateReservationConstraints() separately for live feedback; that is a courtesy to
+       * the user, not a control.
+       *
+       * ORDER OF CHECKS (it matters - cheap and absolute before expensive and conditional):
+       *
+       *  1. Workspace lockdown. Applies to EVERYONE, including bypass roles. A closed building is a
+       *     physical fact, not an access-control rule; there is nothing to be privileged about.
+       *  2. Weekend / public holiday. Configurable, skipped for bypass roles.
+       *  3. Conflict over the whole span (see ReservationRepository.checkConflict). On conflict this
+       *     throws ReservationConflictError CARRYING ALTERNATIVE DESKS, so the UI can offer a way
+       *     forward instead of only refusing. Keep that payload if you touch the error.
+       *  4. BR-07 VIP / management lock: a non-reservable desk needs a privileged role or membership
+       *     in cluster_vip_members. This was once enforced only by disabling the button, which a
+       *     direct POST ignored.
+       *  5. Booking window: settings.bookingWindowDays minimum lead time.
+       *  6. Quotas: per day and per week, counted from the user's existing reservations.
+       *  7. Approval routing (below).
+       *
+       * APPROVAL ROUTING - two distinct pools, per SRS 8.6 and 8.7:
+       *   - longer than maxReservationDaysWithoutApproval HOURS  → 'en attente', Executive Assistant
+       *   - a multi-day span exceeding that many BUSINESS DAYS   → 'en attente', Director,
+       *     with duration_days recorded
+       * Both were once hardcoded to the EA while the client separately created a duplicate 'director'
+       * row. That is why multi-day routing lives here and must not be recreated client-side.
+       *
+       * WHY EVERY RULE IS REPEATED SERVER-SIDE even though the UI checks it: client validation cannot
+       * stop a direct POST, and two users can pass the same client-side availability check at the
+       * same instant because both validated against data that was already stale. Do not remove a
+       * check here on the grounds that the interface already prevents it.
+       *
+       * Side effects: writes the reservation, refreshes the local cache, creates an approval request
+       * when one is required, and notifies the approver pool.
+       *
+       * @param userRole - the CALLER'S role, used for bypass and VIP decisions. The route passes
+       *   req.user.role; it is never taken from the request body.
+       * @param dbClient - the request-scoped Supabase client, so RLS evaluates as the calling user.
+       * @throws ReservationConflictError with alternatives, or Error with a user-facing French
+       *   message for any other rule.
+       */
       static async createReservation(payload, userRole, dbClient) {
         if (typeof window !== "undefined") {
           const newReservation2 = await apiCreateReservation(payload, userRole);
@@ -60088,6 +60171,29 @@ var init_reservationService = __esm({
             throw new Error(
               `La date s\xE9lectionn\xE9e est un jour f\xE9ri\xE9 (${getHolidayName(payload.reservation_date, settings.holidays)}). R\xE9servation impossible.`
             );
+          }
+        }
+        if (!isBypassRole && payload.start_time && payload.end_time) {
+          const toMinutes3 = (hhmm) => {
+            const [h, m] = hhmm.split(":").map(Number);
+            return (h || 0) * 60 + (m || 0);
+          };
+          const openMins = toMinutes3(settings.workingHoursStart);
+          const closeMins = toMinutes3(settings.workingHoursEnd);
+          const startMins = toMinutes3(payload.start_time);
+          const endMins = toMinutes3(payload.end_time);
+          if (startMins < openMins || startMins >= closeMins) {
+            throw new Error(
+              `L'heure de d\xE9but doit \xEAtre comprise entre ${settings.workingHoursStart} et ${settings.workingHoursEnd}.`
+            );
+          }
+          if (endMins <= openMins || endMins > closeMins) {
+            throw new Error(
+              `L'heure de fin doit \xEAtre comprise entre ${settings.workingHoursStart} et ${settings.workingHoursEnd}.`
+            );
+          }
+          if (endMins <= startMins) {
+            throw new Error("L'heure de fin doit \xEAtre post\xE9rieure \xE0 l'heure de d\xE9but.");
           }
         }
         const effectiveEndDate = payload.end_date || payload.reservation_date;
@@ -60486,6 +60592,9 @@ var init_workspaceService = __esm({
             businessEnd
           );
           if (availability.intervals.length === 0) return ws;
+          const own = options?.currentUserId ? seatReservations.find(
+            (r) => r.user_id === options.currentUserId && HOLDING_STATUSES.has(r.status) && r.reservation_date <= date5 && (r.end_date || r.reservation_date) >= date5
+          ) : void 0;
           return {
             ...ws,
             status: availability.status,
@@ -60495,7 +60604,20 @@ var init_workspaceService = __esm({
             availability: {
               busy: availability.intervals.map((i) => ({ start: toHHMM(i.start), end: toHHMM(i.end) })),
               gaps: availability.gaps.map((i) => ({ start: toHHMM(i.start), end: toHHMM(i.end) })),
-              windowFree: availability.windowFree
+              windowFree: availability.windowFree,
+              ownReservation: own ? {
+                id: own.id,
+                date: own.reservation_date,
+                endDate: own.end_date,
+                // On a middle day of a multi-day booking the seat is held all day, not from the
+                // start_time the user picked on day one - mirror what the occupancy maths does.
+                start: own.reservation_date === date5 ? own.start_time : businessStart,
+                end: (own.end_date || own.reservation_date) === date5 ? own.end_time : businessEnd,
+                status: own.status,
+                purpose: own.purpose,
+                notes: own.notes,
+                checkInAt: own.check_in_at
+              } : void 0
             }
           };
         };
@@ -61163,6 +61285,37 @@ var init_noShowService = __esm({
       /**
        * Automatically detect no-shows based on configured no_show_window_minutes
        */
+      /**
+       * Releases desks whose holder never arrived. The heart of BPMN D4, and the trigger for D5.
+       *
+       * Business context: the problem this whole system exists to solve is a desk that is booked,
+       * empty, and therefore unusable by anyone else. A booking with no check-in more than
+       * settings.noShowDelayMinutes after its start is treated as abandoned, released, and offered to
+       * whoever is waiting.
+       *
+       * Flow, per reservation still sitting at 'confirmée':
+       *   1. Compare now against reservation_date + start_time.
+       *   2. Past the grace period → status 'no-show'.
+       *   3. Workstation back to 'disponible'.
+       *   4. Hand the freed slot to the waiting-list matcher (BPMN D5).
+       *
+       * THE SLOT HANDED OVER IS THE WHOLE BOOKED SLOT, not the remaining hours. A no-show forfeits
+       * the entire booking, so the whole window is what the desk is free for - and the matcher needs
+       * those exact hours so it does not offer 08:00-18:00 to somebody who only queued for the
+       * afternoon.
+       *
+       * WHY THIS RUNS ON A TIMER RATHER THAN ON READ: a desk is not released by someone looking at
+       * it. Nobody may open the app between 09:30 and the end of the day, and the desk still has to
+       * become available. This is also why the sweep is the one background job that must not be
+       * switched off - see README §16 and SETUP.md. Without it a freed desk never reaches the queue
+       * and the waiting list simply never fires.
+       *
+       * Idempotent: it only ever acts on 'confirmée', so a reservation already marked no-show is
+       * skipped on the next pass. Safe to run more often than necessary, which is what makes an
+       * external scheduler with imprecise timing acceptable.
+       *
+       * @returns how many reservations were marked, for the sweep's log line.
+       */
       static async detectNoShows() {
         const settings = await SettingsRepository.getSettings();
         const noShowDelay = settings.noShowDelayMinutes || 30;
@@ -61299,6 +61452,31 @@ var init_checkInOutService = __esm({
     init_reservationService();
     CHECK_IN_REMINDER_TITLE = "Rappel Check-in";
     CheckInOutService = class {
+      /**
+       * Records a user's arrival at their reserved desk.
+       *
+       * Business context: FR-58. Check-in is what turns a booking into an occupancy. Until it
+       * happens the desk is "réservé" (spoken for but empty) and is on the clock for no-show release;
+       * after it, the desk is "occupé" and safe.
+       *
+       * THE THREE CONDITIONS ARE ALL LOAD-BEARING. It refuses unless:
+       *   - the reservation exists;
+       *   - reservation.user_id === userId - you cannot check in on someone else's booking. The QR
+       *     badge on a desk is public (see services/qr/seatQrTokenService.ts), so this comparison is
+       *     the reason a stranger scanning it achieves nothing;
+       *   - status is exactly 'confirmée' - which blocks re-checking-in an already-active booking,
+       *     and blocks reviving one that was cancelled, rejected, completed or already released as a
+       *     no-show. Widening this to "any non-terminal status" would let a no-show desk that has
+       *     since been offered to the waiting list be silently taken back.
+       *
+       * Returns false rather than throwing: callers include the QR scan path, which turns a false
+       * into a user-facing "no active reservation" rather than an error page.
+       *
+       * Side effects: sets the reservation to 'check-in' with a timestamp, flips the workstation to
+       * 'occupé', appends a CHECK_IN row to check_events, notifies the user, and writes the audit
+       * trail. A receptionist acting on someone's behalf goes through performCheckInOnBehalf, which
+       * records who actually performed it.
+       */
       static async performCheckIn(reservationId, userId) {
         const reservation = await ReservationRepository.getReservationById(reservationId);
         if (!reservation || reservation.user_id !== userId || reservation.status !== "confirm\xE9e") {
@@ -61535,6 +61713,23 @@ __export(server_exports, {
 });
 module.exports = __toCommonJS(server_exports);
 
+// services/time/siteTime.ts
+var SITE_TIMEZONE = "Africa/Casablanca";
+function pinProcessTimezone() {
+  if (typeof process === "undefined" || !process.env) return;
+  const configured = process.env.TZ;
+  if (!configured) {
+    process.env.TZ = SITE_TIMEZONE;
+    return;
+  }
+  if (configured !== SITE_TIMEZONE) {
+    console.warn(
+      `[time] TZ is "${configured}", not the site zone "${SITE_TIMEZONE}". Reservation wall-clock times will be interpreted in that zone. Intentional for a relocated deployment or a test; a mistake anywhere else.`
+    );
+  }
+}
+pinProcessTimezone();
+
 // node_modules/dotenv/config.js
 (function() {
   require_main().config(
@@ -61734,6 +61929,17 @@ var DEFAULT_USERS_BY_ROLE = {
   }
 };
 var AuthService = class {
+  /**
+   * The role the demo UI should open on.
+   *
+   * Business context: the role switcher is a QA affordance - it lets one person walk through all
+   * ten SRS role views in a review without ten accounts. Remembering the last choice means a
+   * reload does not throw the reviewer back to the collaborator view mid-demo.
+   *
+   * Falls back to 'collaborator' when nothing is stored, when the stored value is not a role we
+   * still ship (a rename must not strand the UI on a role that no longer exists), and when
+   * localStorage throws - which it does in private-browsing modes and when storage is full.
+   */
   static getInitialRole() {
     try {
       if (typeof window !== "undefined") {
@@ -61747,9 +61953,20 @@ var AuthService = class {
     }
     return "collaborator";
   }
+  /**
+   * The fabricated profile for a role, for DEMO_MODE only.
+   *
+   * Defaults to the collaborator profile rather than throwing: an unknown role here means the
+   * demo switcher and this map have drifted apart, and degrading to the least-privileged identity
+   * is the safe direction to fail in.
+   */
   static getUserForRole(role) {
     return DEFAULT_USERS_BY_ROLE[role] || DEFAULT_USERS_BY_ROLE.collaborator;
   }
+  /**
+   * Remembers the demo role across reloads. Swallows storage failures on purpose - losing a QA
+   * convenience must never break the render path that called it.
+   */
   static saveRolePreference(role) {
     try {
       if (typeof window !== "undefined") {
@@ -77756,7 +77973,8 @@ var AUDIT_CATEGORY_VISIBILITY = {
   ai_query: ["super_admin", "admin", "building_manager", "gci_manager"]
 };
 var CAN_SEE_ALL = ["super_admin"];
-auditRouter.get("/", requirePermission("audit_logs", "read", ["super_admin", "admin", "building_manager", "gci_manager", "it_admin", "security_guard"]), async (req, res) => {
+var AUDIT_FALLBACK_ROLES = ["super_admin", "admin"];
+auditRouter.get("/", requirePermission("audit_logs", "read", AUDIT_FALLBACK_ROLES), async (req, res) => {
   try {
     const data = await AuditService.getAuditLogs();
     const role = req.user.role;
@@ -80010,6 +80228,36 @@ var SeatQRTokenService = class {
     const signature = import_crypto2.default.createHmac("sha256", QR_SECRET2).update(payloadB64).digest("base64url");
     return `${payloadB64}.${signature}`;
   }
+  /**
+   * Verifies a scanned desk badge and returns which desk it names.
+   *
+   * ─────────────────────────────────────────────────────────────────────────────────────────
+   * SECURITY MODEL - read this before treating the result as an authorisation.
+   *
+   * A valid token proves ONE thing: this string was signed by us and names workstation X. It
+   * proves nothing whatsoever about WHO scanned it.
+   *
+   * The token is deliberately not a secret. It is printed on a sticker on a desk in a shared
+   * office; anyone who walks past can photograph it, and it never expires. Treating it as
+   * evidence of identity would mean anyone who has seen a desk could check in as its owner.
+   *
+   * What makes the flow safe is what the CALLER does with this result: /api/checkinout/scan-seat
+   * takes the user from the JWT - never from the request body - and then requires a reservation
+   * matching that user AND this workstation, right now. Scanning a stranger's desk finds no
+   * matching reservation and does nothing.
+   *
+   * IF YOU REUSE THIS FUNCTION SOMEWHERE NEW, carry that rule with it. A caller that acts on the
+   * workstation id alone has built an unauthenticated endpoint.
+   * ─────────────────────────────────────────────────────────────────────────────────────────
+   *
+   * Rejects on a malformed shape and on a signature mismatch. The comparison is over the payload
+   * exactly as received, so altering the workstation id inside the token invalidates it - which
+   * is the point: without the signature, a scanner could simply edit the id and check into any
+   * desk in the building.
+   *
+   * Depends on QR_HMAC_SECRET. Rotating it invalidates every badge already printed and taped to a
+   * desk - they all have to be reprinted. See README §18.
+   */
   static verifySeatToken(token) {
     try {
       const parts = token.split(".");

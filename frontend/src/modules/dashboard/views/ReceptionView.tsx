@@ -18,6 +18,7 @@ import { SettingsService } from '@/services/settings/settingsService';
 import { apiFetchClusters } from '@/services/api/workspaceApi';
 import { Reservation, SystemSettings } from '../../../types';
 import { useAuth } from '../../auth/context/AuthContext';
+import { siteWallClockToEpoch } from '@/services/time/siteTime';
 
 /**
  * Receptionist home - SRS §8.5: front-office support. The §13 matrix makes this role X on
@@ -33,12 +34,20 @@ import { useAuth } from '../../auth/context/AuthContext';
 const CHECKED_IN_STATUSES = new Set<Reservation['status']>(['check-in', 'check-out', 'terminée']);
 const AWAITING_STATUSES = new Set<Reservation['status']>(['confirmée', 'en attente']);
 
-/** Minutes until this reservation flips to no-show; negative once the window has passed. */
+/**
+ * Minutes until this reservation flips to no-show; negative once the window has passed.
+ *
+ * Resolved through siteWallClockToEpoch rather than `new Date(date + 'T' + time)`. `start_time` is
+ * a wall clock AT SITE SAFI, and reconstructing it with a plain Date reads it in the DEVICE's
+ * zone - correct only when the receptionist happens to be in Morocco, and silently an hour out
+ * for anyone connecting from elsewhere. This countdown has to agree with NoShowService, which
+ * measures against the stored instant, so it resolves the same wall clock the same way.
+ */
 function minutesUntilNoShow(res: Reservation, delayMinutes: number): number {
-  const [h, m] = (res.start_time || '00:00').split(':').map(Number);
-  const start = new Date(`${res.reservation_date}T00:00:00`);
-  start.setHours(h || 0, m || 0, 0, 0);
-  return Math.round((start.getTime() + delayMinutes * 60000 - Date.now()) / 60000);
+  if (!res.reservation_date || !res.start_time) return Number.POSITIVE_INFINITY;
+  const startMs = siteWallClockToEpoch(res.reservation_date, res.start_time);
+  if (Number.isNaN(startMs)) return Number.POSITIVE_INFINITY;
+  return Math.round((startMs + delayMinutes * 60000 - Date.now()) / 60000);
 }
 
 export const ReceptionView: React.FC = () => {
@@ -243,11 +252,22 @@ export const ReceptionView: React.FC = () => {
         <div className="space-y-2">
           {actionQueue.map(({ res, minutesLeft }) => {
             const overdue = minutesLeft <= 0;
+            // Only a CONFIRMED reservation can be checked in. CheckInOutService.performCheckIn
+            // refuses anything else, so offering the button on a reservation still waiting for a
+            // Director's or an Assistant's decision produced a control that could not work - it
+            // reported a failure the receptionist had no way to resolve from this screen.
+            // Such a reservation is also never marked no-show by the sweep, which only acts on
+            // CONFIRMED, so the no-show countdown does not apply to it either.
+            const awaitingApproval = res.status === 'en attente';
             return (
               <div
                 key={res.id}
                 className={`p-3 rounded-xl border flex items-center justify-between gap-3 ${
-                  overdue ? 'bg-rose-50 border-rose-200' : 'bg-amber-50 border-amber-200'
+                  awaitingApproval
+                    ? 'bg-slate-50 border-slate-200'
+                    : overdue
+                    ? 'bg-rose-50 border-rose-200'
+                    : 'bg-amber-50 border-amber-200'
                 }`}
               >
                 <div className="text-xs min-w-0">
@@ -268,20 +288,28 @@ export const ReceptionView: React.FC = () => {
                     }`}
                   >
                     <AlertTriangle className="w-3 h-3" />
-                    {overdue
+                    {awaitingApproval
+                      ? `En attente d'approbation - check-in impossible tant que la demande n'est pas validée`
+                      : overdue
                       ? `Délai dépassé - passage en no-show imminent`
                       : `Il reste ${minutesLeft} min avant le no-show`}
                   </div>
                 </div>
 
-                <button
-                  onClick={() => handleQuickCheckin(res)}
-                  disabled={pendingId === res.id}
-                  className="shrink-0 bg-[#008751] hover:bg-[#005f38] disabled:opacity-60 text-white px-3.5 py-2 rounded-lg text-xs font-bold transition-all shadow-sm flex items-center gap-1.5"
-                >
-                  <Check className="w-3.5 h-3.5" />
-                  {pendingId === res.id ? 'Enregistrement...' : 'Check-in'}
-                </button>
+                {awaitingApproval ? (
+                  <span className="shrink-0 px-3.5 py-2 rounded-lg text-xs font-bold bg-slate-200 text-slate-600">
+                    À approuver
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => handleQuickCheckin(res)}
+                    disabled={pendingId === res.id}
+                    className="shrink-0 bg-[#008751] hover:bg-[#005f38] disabled:opacity-60 text-white px-3.5 py-2 rounded-lg text-xs font-bold transition-all shadow-sm flex items-center gap-1.5"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    {pendingId === res.id ? 'Enregistrement...' : 'Check-in'}
+                  </button>
+                )}
               </div>
             );
           })}

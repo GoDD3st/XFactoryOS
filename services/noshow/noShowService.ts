@@ -10,6 +10,37 @@ export class NoShowService {
   /**
    * Automatically detect no-shows based on configured no_show_window_minutes
    */
+  /**
+   * Releases desks whose holder never arrived. The heart of BPMN D4, and the trigger for D5.
+   *
+   * Business context: the problem this whole system exists to solve is a desk that is booked,
+   * empty, and therefore unusable by anyone else. A booking with no check-in more than
+   * settings.noShowDelayMinutes after its start is treated as abandoned, released, and offered to
+   * whoever is waiting.
+   *
+   * Flow, per reservation still sitting at 'confirmée':
+   *   1. Compare now against reservation_date + start_time.
+   *   2. Past the grace period → status 'no-show'.
+   *   3. Workstation back to 'disponible'.
+   *   4. Hand the freed slot to the waiting-list matcher (BPMN D5).
+   *
+   * THE SLOT HANDED OVER IS THE WHOLE BOOKED SLOT, not the remaining hours. A no-show forfeits
+   * the entire booking, so the whole window is what the desk is free for - and the matcher needs
+   * those exact hours so it does not offer 08:00-18:00 to somebody who only queued for the
+   * afternoon.
+   *
+   * WHY THIS RUNS ON A TIMER RATHER THAN ON READ: a desk is not released by someone looking at
+   * it. Nobody may open the app between 09:30 and the end of the day, and the desk still has to
+   * become available. This is also why the sweep is the one background job that must not be
+   * switched off - see README §16 and SETUP.md. Without it a freed desk never reaches the queue
+   * and the waiting list simply never fires.
+   *
+   * Idempotent: it only ever acts on 'confirmée', so a reservation already marked no-show is
+   * skipped on the next pass. Safe to run more often than necessary, which is what makes an
+   * external scheduler with imprecise timing acceptable.
+   *
+   * @returns how many reservations were marked, for the sweep's log line.
+   */
   public static async detectNoShows(): Promise<number> {
     const settings = await SettingsRepository.getSettings();
     const noShowDelay = settings.noShowDelayMinutes || 30;

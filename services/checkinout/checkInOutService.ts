@@ -11,6 +11,31 @@ import { Reservation } from '@/frontend/src/types';
 const CHECK_IN_REMINDER_TITLE = 'Rappel Check-in';
 
 export class CheckInOutService {
+  /**
+   * Records a user's arrival at their reserved desk.
+   *
+   * Business context: FR-58. Check-in is what turns a booking into an occupancy. Until it
+   * happens the desk is "réservé" (spoken for but empty) and is on the clock for no-show release;
+   * after it, the desk is "occupé" and safe.
+   *
+   * THE THREE CONDITIONS ARE ALL LOAD-BEARING. It refuses unless:
+   *   - the reservation exists;
+   *   - reservation.user_id === userId - you cannot check in on someone else's booking. The QR
+   *     badge on a desk is public (see services/qr/seatQrTokenService.ts), so this comparison is
+   *     the reason a stranger scanning it achieves nothing;
+   *   - status is exactly 'confirmée' - which blocks re-checking-in an already-active booking,
+   *     and blocks reviving one that was cancelled, rejected, completed or already released as a
+   *     no-show. Widening this to "any non-terminal status" would let a no-show desk that has
+   *     since been offered to the waiting list be silently taken back.
+   *
+   * Returns false rather than throwing: callers include the QR scan path, which turns a false
+   * into a user-facing "no active reservation" rather than an error page.
+   *
+   * Side effects: sets the reservation to 'check-in' with a timestamp, flips the workstation to
+   * 'occupé', appends a CHECK_IN row to check_events, notifies the user, and writes the audit
+   * trail. A receptionist acting on someone's behalf goes through performCheckInOnBehalf, which
+   * records who actually performed it.
+   */
   public static async performCheckIn(reservationId: string, userId: string): Promise<boolean> {
     const reservation = await ReservationRepository.getReservationById(reservationId);
 

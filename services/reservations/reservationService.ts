@@ -123,6 +123,62 @@ export class ReservationService {
     }
   }
 
+  /**
+   * Creates a reservation, applying every rule that decides whether one is allowed to exist.
+   *
+   * ───────────────────────────────────────────────────────────────────────────────────────────
+   * BEFORE YOU MODIFY THIS
+   *
+   * This is the only sanctioned way to create a reservation. It is called from
+   * POST /api/reservations, from the Digital Twin and form booking paths, and from the
+   * waiting-list acceptOffer flow. Writing to ReservationRepository.createReservation directly
+   * skips EVERY rule below - quotas, conflicts, VIP locks, approval routing - and produces a row
+   * the rest of the system believes was validated.
+   * ───────────────────────────────────────────────────────────────────────────────────────────
+   *
+   * TWO EXECUTION CONTEXTS, ONE FUNCTION.
+   * In the browser it forwards to the authenticated API and returns - the rules below do NOT run
+   * client-side, because a browser cannot be trusted to enforce them and its Supabase client is
+   * RLS-limited anyway. Everything after that early return is the server path. The client still
+   * calls validateReservationConstraints() separately for live feedback; that is a courtesy to
+   * the user, not a control.
+   *
+   * ORDER OF CHECKS (it matters - cheap and absolute before expensive and conditional):
+   *
+   *  1. Workspace lockdown. Applies to EVERYONE, including bypass roles. A closed building is a
+   *     physical fact, not an access-control rule; there is nothing to be privileged about.
+   *  2. Weekend / public holiday. Configurable, skipped for bypass roles.
+   *  3. Conflict over the whole span (see ReservationRepository.checkConflict). On conflict this
+   *     throws ReservationConflictError CARRYING ALTERNATIVE DESKS, so the UI can offer a way
+   *     forward instead of only refusing. Keep that payload if you touch the error.
+   *  4. BR-07 VIP / management lock: a non-reservable desk needs a privileged role or membership
+   *     in cluster_vip_members. This was once enforced only by disabling the button, which a
+   *     direct POST ignored.
+   *  5. Booking window: settings.bookingWindowDays minimum lead time.
+   *  6. Quotas: per day and per week, counted from the user's existing reservations.
+   *  7. Approval routing (below).
+   *
+   * APPROVAL ROUTING - two distinct pools, per SRS 8.6 and 8.7:
+   *   - longer than maxReservationDaysWithoutApproval HOURS  → 'en attente', Executive Assistant
+   *   - a multi-day span exceeding that many BUSINESS DAYS   → 'en attente', Director,
+   *     with duration_days recorded
+   * Both were once hardcoded to the EA while the client separately created a duplicate 'director'
+   * row. That is why multi-day routing lives here and must not be recreated client-side.
+   *
+   * WHY EVERY RULE IS REPEATED SERVER-SIDE even though the UI checks it: client validation cannot
+   * stop a direct POST, and two users can pass the same client-side availability check at the
+   * same instant because both validated against data that was already stale. Do not remove a
+   * check here on the grounds that the interface already prevents it.
+   *
+   * Side effects: writes the reservation, refreshes the local cache, creates an approval request
+   * when one is required, and notifies the approver pool.
+   *
+   * @param userRole - the CALLER'S role, used for bypass and VIP decisions. The route passes
+   *   req.user.role; it is never taken from the request body.
+   * @param dbClient - the request-scoped Supabase client, so RLS evaluates as the calling user.
+   * @throws ReservationConflictError with alternatives, or Error with a user-facing French
+   *   message for any other rule.
+   */
   static async createReservation(
     payload: Partial<Reservation>,
     userRole?: UserRole,
@@ -171,6 +227,44 @@ export class ReservationService {
         throw new Error(
           `La date sélectionnée est un jour férié (${getHolidayName(payload.reservation_date, settings.holidays)}). Réservation impossible.`
         );
+      }
+    }
+
+    // Business hours (settings.workingHoursStart / workingHoursEnd).
+    //
+    // This existed ONLY in the browser (validateReservationConstraints in
+    // frontend/src/shared/utils/dateValidation.ts), so the rule held exactly as long as the
+    // request came through the form. Anything else - a direct POST, a seeded row, a future
+    // integration - could book outside opening hours, and production had a live 07:00-17:00
+    // reservation on a site that opens at 08:00 to prove it.
+    //
+    // Placed with the weekend/holiday rules and skipped for bypass roles for the same reason
+    // they are: these are operational scheduling rules, not physical facts about the building.
+    // The lockdown check above is the one that binds everyone, because a closed floor is closed
+    // to everybody.
+    if (!isBypassRole && payload.start_time && payload.end_time) {
+      const toMinutes = (hhmm: string) => {
+        const [h, m] = hhmm.split(':').map(Number);
+        return (h || 0) * 60 + (m || 0);
+      };
+      const openMins = toMinutes(settings.workingHoursStart);
+      const closeMins = toMinutes(settings.workingHoursEnd);
+      const startMins = toMinutes(payload.start_time);
+      const endMins = toMinutes(payload.end_time);
+
+      if (startMins < openMins || startMins >= closeMins) {
+        throw new Error(
+          `L'heure de début doit être comprise entre ${settings.workingHoursStart} et ${settings.workingHoursEnd}.`
+        );
+      }
+      // End is compared with <= because a booking may finish exactly at closing time.
+      if (endMins <= openMins || endMins > closeMins) {
+        throw new Error(
+          `L'heure de fin doit être comprise entre ${settings.workingHoursStart} et ${settings.workingHoursEnd}.`
+        );
+      }
+      if (endMins <= startMins) {
+        throw new Error("L'heure de fin doit être postérieure à l'heure de début.");
       }
     }
 
