@@ -9,6 +9,12 @@ import { NotificationService } from '../notifications/notificationService';
 import { supabase } from '@/database/client';
 import { apiCreateReservation, apiFetchReservations } from '../api/reservationApi';
 import { isDateLockedDown, isPublicHoliday, isWeekend, getHolidayName, calculateBusinessDays } from '@/frontend/src/shared/utils/dateValidation';
+import {
+  deriveSeatAvailability,
+  DEFAULT_BUSINESS_START,
+  DEFAULT_BUSINESS_END,
+} from '@/services/workspaces/seatAvailability';
+import { siteClockAt, SiteClock } from '@/services/time/siteTime';
 
 const CACHE_KEY = 'xfactory_reservations_v2';
 
@@ -124,13 +130,72 @@ export class ReservationService {
   }
 
   /**
+   * Does this exact request fall inside hours a desk gave back early?
+   *
+   * The one exception to the lead time (settings.bookingWindowDays). Hours freed by a cancellation
+   * or an early check-out become bookable straight away, because the alternative is a desk sitting
+   * empty for the rest of the day while the rule that protects planning refuses everyone who could
+   * use it.
+   *
+   * Re-derived HERE from the database, with the same deriveSeatAvailability() the floor plan uses,
+   * for two separate reasons. Trust: `availability.windowReleased` reaching this method from the
+   * browser would be a client-supplied permission to skip a business rule, and a direct POST could
+   * simply assert it. Consistency: sharing the derivation is what stops the grid promising a
+   * turquoise desk that the server then refuses.
+   *
+   * Deliberately strict, in three ways:
+   *   - the window must sit ENTIRELY inside a freed stretch, so a fifteen-minute release cannot
+   *     unlock a whole day;
+   *   - hours already past at the site are not freed hours (deriveSeatAvailability clips them),
+   *     so this can never approve a booking whose check-in deadline has gone;
+   *   - single-day requests only. A multi-day span reaches into days nobody released.
+   *
+   * Any failure to read the evidence answers false: the caller then applies the ordinary rule.
+   */
+  private static async isWindowReleasedEarly(
+    payload: Partial<Reservation>,
+    minAllowedStart: Date,
+    now: SiteClock
+  ): Promise<boolean> {
+    const { workstation_id, reservation_date, start_time, end_time } = payload;
+    if (!workstation_id || !reservation_date || !start_time || !end_time) return false;
+    if ((payload.end_date || reservation_date) !== reservation_date) return false;
+
+    try {
+      const seatReservations = await ReservationRepository.getSeatReservationsOnDate(
+        workstation_id,
+        reservation_date
+      );
+      if (seatReservations.length === 0) return false;
+
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const earliestNormalDate = `${minAllowedStart.getFullYear()}-${pad(minAllowedStart.getMonth() + 1)}-${pad(minAllowedStart.getDate())}`;
+
+      const availability = deriveSeatAvailability(
+        seatReservations,
+        reservation_date,
+        start_time,
+        end_time,
+        DEFAULT_BUSINESS_START,
+        DEFAULT_BUSINESS_END,
+        { now, earliestNormalDate }
+      );
+
+      return availability.windowReleased;
+    } catch (err) {
+      console.warn('[Reservations] Release check unavailable, applying the standard lead time:', err);
+      return false;
+    }
+  }
+
+  /**
    * Creates a reservation, applying every rule that decides whether one is allowed to exist.
    *
    * ───────────────────────────────────────────────────────────────────────────────────────────
    * BEFORE YOU MODIFY THIS
    *
    * This is the only sanctioned way to create a reservation. It is called from
-   * POST /api/reservations, from the Digital Twin and form booking paths, and from the
+   * POST /api/reservations, from the Digital Twin booking path, and from the
    * waiting-list acceptOffer flow. Writing to ReservationRepository.createReservation directly
    * skips EVERY rule below - quotas, conflicts, VIP locks, approval routing - and produces a row
    * the rest of the system believes was validated.
@@ -154,7 +219,8 @@ export class ReservationService {
    *  4. BR-07 VIP / management lock: a non-reservable desk needs a privileged role or membership
    *     in cluster_vip_members. This was once enforced only by disabling the button, which a
    *     direct POST ignored.
-   *  5. Booking window: settings.bookingWindowDays minimum lead time.
+   *  5. Booking window: settings.bookingWindowDays minimum lead time, waived only for hours a
+   *     desk released early - see isWindowReleasedEarly() just above.
    *  6. Quotas: per day and per week, counted from the user's existing reservations.
    *  7. Approval routing (below).
    *
@@ -334,17 +400,20 @@ export class ReservationService {
     }
 
     if (!isBypassRole && payload.reservation_date) {
-      const todayStr = new Date().toISOString().split('T')[0];
-      const today = new Date(todayStr + 'T00:00:00');
+      const now = siteClockAt();
+      const today = new Date(now.date + 'T00:00:00');
       const minAllowedStart = new Date(today);
       minAllowedStart.setDate(minAllowedStart.getDate() + settings.bookingWindowDays);
       const requestedDate = new Date(payload.reservation_date + 'T00:00:00');
 
       if (requestedDate < minAllowedStart) {
-        const minFormatted = minAllowedStart.toLocaleDateString('fr-FR');
-        throw new Error(
-          `Les réservations doivent être effectuées au moins ${settings.bookingWindowDays} jour(s) à l'avance. Date minimale : ${minFormatted}.`
-        );
+        const releasedEarly = await this.isWindowReleasedEarly(payload, minAllowedStart, now);
+        if (!releasedEarly) {
+          const minFormatted = minAllowedStart.toLocaleDateString('fr-FR');
+          throw new Error(
+            `Les réservations doivent être effectuées au moins ${settings.bookingWindowDays} jour(s) à l'avance. Date minimale : ${minFormatted}. Seuls les postes libérés (turquoise) sont réservables immédiatement, sur les heures rendues.`
+          );
+        }
       }
     }
 

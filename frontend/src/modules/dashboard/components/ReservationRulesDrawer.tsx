@@ -75,7 +75,8 @@ function buildSections(s: SystemSettings): RuleSection[] {
         `Durée d’un créneau : de ${formatMinutes(s.minReservationMinutes)} à ${formatMinutes(
           s.maxReservationMinutes
         )}.`,
-        `Réservation possible jusqu’à ${s.bookingWindowDays} jour(s) à l’avance.`,
+        `Réservation à effectuer au moins ${s.bookingWindowDays} jour(s) à l’avance (délai d’anticipation).`,
+        'Exception : un poste rendu avant la fin de son créneau (pastille turquoise, « Libéré récemment ») est réservable immédiatement, sur les heures rendues et sans délai d’anticipation.',
         `Horaires d’ouverture : ${s.workingHoursStart} - ${s.workingHoursEnd}${
           workingDays ? ` (${workingDays})` : ''
         }.`,

@@ -24,7 +24,12 @@ export interface UserProfile {
 // 'partiel' is a derived overlay status, never stored: a seat with bookings that leave a bookable
 // gap in the business day. 'réservé' now means taken for the WHOLE day, which is the only case
 // where queuing for a no-show is the sole way in. See services/workspaces/seatAvailability.ts.
-export type SeatStatus = 'disponible' | 'partiel' | 'réservé' | 'maintenance' | 'occupé' | 'extension' | 'management_reserved' | 'disabled';
+//
+// 'libéré' is derived too: a desk whose occupant gave it back before their slot was over, whose
+// remaining hours fall inside the booking lead time. It is the one status that grants something -
+// those hours can be taken immediately, without the usual days of notice - which is why it is
+// worth telling apart from 'disponible' instead of folding into it.
+export type SeatStatus = 'disponible' | 'partiel' | 'réservé' | 'libéré' | 'maintenance' | 'occupé' | 'extension' | 'management_reserved' | 'disabled';
 
 /** Per-seat availability detail for the selected date/window, attached by the overlay. */
 export interface SeatAvailabilityInfo {
@@ -34,6 +39,22 @@ export interface SeatAvailabilityInfo {
   gaps: { start: string; end: string }[];
   /** Whether the currently selected window is bookable as-is. */
   windowFree: boolean;
+  /**
+   * Stretches handed back early by their occupant and still ahead, as "HH:mm - HH:mm" pairs.
+   *
+   * Only ever populated for dates inside the booking lead time, because that is the only place
+   * the distinction changes what a user can do. Empty everywhere else.
+   */
+  released: { start: string; end: string }[];
+  /**
+   * The selected window sits entirely inside one of those stretches.
+   *
+   * This is the flag that waives the lead-time rule for THIS booking. Overlapping is not enough:
+   * releasing a desk for fifteen minutes must not open the whole day to a booking nobody could
+   * otherwise make. The server re-derives the same answer from its own read of the database
+   * before accepting the reservation - this copy only decides what the interface offers.
+   */
+  windowReleased: boolean;
   /**
    * The CALLER'S OWN booking on this seat for the selected date, when there is one.
    *

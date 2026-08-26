@@ -1,4 +1,5 @@
 import { Reservation, SeatStatus } from '@/frontend/src/types';
+import { siteClockAt, SiteClock } from '@/services/time/siteTime';
 
 /**
  * Time-window availability for a single seat on a single day.
@@ -24,6 +25,30 @@ export const DEFAULT_BUSINESS_END = '18:00';
 /** Statuses that actually hold a seat. Exported so callers deciding "is this booking
  * live?" cannot drift from the occupancy calculation that colours the grid. */
 export const HOLDING_STATUSES = new Set(['confirmée', 'check-in', 'en attente']);
+
+/**
+ * Statuses that mean a desk was handed back BEFORE its slot was over.
+ *
+ * 'rejetée' sits with 'annulée' because a refused pending booking frees a slot nobody ever used,
+ * exactly like a cancellation.
+ *
+ * 'no-show' is deliberately absent. Nobody released that desk - the booking expired unclaimed,
+ * and the no-show sweep already hands it to the waiting list. Adding it here is a one-line change
+ * if the site decides an expired booking should also be grabbable without lead time.
+ *
+ * 'terminée' is deliberately absent too, but only because it cannot be judged by status alone: it
+ * covers BOTH leaving early and the automatic check-out that runs after the end time, and only
+ * the first frees anything. releasedIntervalOnDate() reads check_out_at to tell them apart.
+ */
+export const CANCELLING_STATUSES = new Set(['annulée', 'rejetée']);
+
+/** Freed time is offered from the next whole 5 minutes, so nobody has to type 11:37. */
+const RELEASE_START_STEP = 5;
+
+function roundUpToStep(minutes: number, step: number = RELEASE_START_STEP): number {
+  if (!Number.isFinite(minutes)) return minutes;
+  return Math.ceil(minutes / step) * step;
+}
 
 export function toMinutes(hhmm: string): number {
   const [h, m] = (hhmm || '').split(':');
@@ -83,6 +108,50 @@ export function reservationIntervalOnDate(
   return { start, end };
 }
 
+/**
+ * The stretch of `date` a booking gave back by ending early, or null when it gave back nothing.
+ *
+ * A cancelled or rejected booking frees its whole slice of the day - it was never used. An early
+ * check-out frees only what was left after the person walked out, which is why check_out_at is
+ * read rather than trusted to equal the booking's end: the automatic sweep also writes 'terminée',
+ * but it runs AFTER the end time, so the arithmetic below returns null for it without needing to
+ * know which code path wrote the row.
+ *
+ * `floor` clips the result to what is still ahead (site-local minutes when `date` is today, null
+ * otherwise). Offering hours that have already passed would let someone book a window whose
+ * check-in deadline is behind them - the booking would be marked a no-show before they sat down.
+ */
+export function releasedIntervalOnDate(
+  reservation: Reservation,
+  date: string,
+  businessStart: number,
+  businessEnd: number,
+  floor: number | null
+): Interval | null {
+  const base = reservationIntervalOnDate(reservation, date, businessStart, businessEnd);
+  if (!base) return null;
+
+  let freed: Interval | null = null;
+
+  if (CANCELLING_STATUSES.has(reservation.status)) {
+    freed = { start: base.start, end: base.end };
+  } else if (reservation.status === 'terminée' && reservation.check_out_at) {
+    const out = siteClockAt(new Date(reservation.check_out_at));
+    // Checked out on a later day than this one: every hour of THIS day was actually used.
+    if (!out.date || out.date > date) return null;
+    const from = out.date === date ? Math.max(base.start, out.minutes) : base.start;
+    freed = { start: from, end: base.end };
+  }
+
+  if (!freed) return null;
+  if (floor !== null) freed = { start: Math.max(freed.start, floor), end: freed.end };
+
+  // Rounded up, never down: the offer may be smaller than what was freed, never larger. It also
+  // spares whoever takes it from transcribing the minute somebody happened to walk out on.
+  freed = { start: roundUpToStep(freed.start), end: freed.end };
+  return freed.end > freed.start ? freed : null;
+}
+
 /** Merged occupied intervals on `date` for the given reservations (already scoped to one seat). */
 export function occupiedIntervalsOnDate(
   reservations: Reservation[],
@@ -133,11 +202,35 @@ export interface SeatAvailability {
   /** Bookable stretches left in the business day. */
   gaps: Interval[];
   /** Overlay status: 'réservé' only when the whole day is taken, 'partiel' when gaps remain. */
-  status: Extract<SeatStatus, 'disponible' | 'partiel' | 'réservé' | 'occupé'>;
+  status: Extract<SeatStatus, 'disponible' | 'partiel' | 'réservé' | 'occupé' | 'libéré'>;
   /** Whether the requested window is bookable as-is. */
   windowFree: boolean;
   /** Someone is physically checked in for the requested window. */
   checkedIn: boolean;
+  /** Stretches handed back early that are still ahead. Empty unless a ReleaseContext is given. */
+  released: Interval[];
+  /** The requested window sits inside one of them, so the lead-time rule is waived for it. */
+  windowReleased: boolean;
+}
+
+/**
+ * What the release overlay needs to know about real time and the lead-time rule.
+ *
+ * Both are passed in rather than read here: this module is pure arithmetic over one seat and one
+ * day, and the booking window is an admin setting that must be read live (the site can change the
+ * 48h at any moment) instead of being frozen into a constant.
+ */
+export interface ReleaseContext {
+  /** The site's own clock, from siteClockAt(). */
+  now: SiteClock;
+  /**
+   * The first date a booking may normally start - today + settings.bookingWindowDays.
+   *
+   * Freed time from that date onward is NOT flagged: it books the ordinary way, so calling it out
+   * would be noise. The status exists to mark the one case the ordinary rules cannot serve - a
+   * desk freed inside the lead time, which nobody could otherwise take.
+   */
+  earliestNormalDate: string;
 }
 
 /**
@@ -146,6 +239,12 @@ export interface SeatAvailability {
  * 'réservé' is deliberately reserved (no pun intended) for seats taken the entire business day - 
  * those are the ones where queuing for a no-show is the only way in. A seat booked 08:00-09:00 is
  * 'partiel': still clickable, because the rest of the day is genuinely bookable.
+ *
+ * 'libéré' overrides whatever the live bookings say when the seat has time handed back early and
+ * the asked window is free. It has to override rather than blend in, because those hours are the
+ * only ones inside the lead time anybody can book: to the occupancy maths a cancelled booking is
+ * simply absent, so without this the desk would read 'disponible' - indistinguishable from the
+ * desk next to it that looks just as free and cannot be booked at all before the 48h are up.
  */
 export function deriveSeatAvailability(
   reservations: Reservation[],
@@ -153,7 +252,8 @@ export function deriveSeatAvailability(
   windowStart: string,
   windowEnd: string,
   businessStartHHMM: string = DEFAULT_BUSINESS_START,
-  businessEndHHMM: string = DEFAULT_BUSINESS_END
+  businessEndHHMM: string = DEFAULT_BUSINESS_END,
+  release?: ReleaseContext
 ): SeatAvailability {
   const businessStart = toMinutes(businessStartHHMM);
   const businessEnd = toMinutes(businessEndHHMM);
@@ -173,13 +273,36 @@ export function deriveSeatAvailability(
     return !!i && wStart < i.end && wEnd > i.start;
   });
 
+  // Time given back early, and still ahead. Skipped entirely for dates the ordinary rules already
+  // reach, and for a day already over at the site.
+  let released: Interval[] = [];
+  if (release && date < release.earliestNormalDate && date >= release.now.date) {
+    const floor = date === release.now.date ? release.now.minutes : null;
+    released = mergeIntervals(
+      reservations
+        .map((r) => releasedIntervalOnDate(r, date, businessStart, businessEnd, floor))
+        .filter((i): i is Interval => i !== null)
+    );
+    // Hours freed by one booking and taken by another are not free at all. Subtracting the live
+    // occupancy keeps the offer honest: a desk cancelled 08:00-18:00 and rebooked 10:00-12:00
+    // advertises 08:00-10:00 and 12:00-18:00, not the whole day.
+    released = released.flatMap((r) =>
+      freeGaps(intervals, r.start, r.end).filter((g) => g.end > g.start)
+    );
+  }
+
+  const windowReleased =
+    windowFree && released.some((r) => wStart >= r.start && wEnd <= r.end);
+
   let status: SeatAvailability['status'];
   if (intervals.length === 0) status = 'disponible';
   else if (checkedIn) status = 'occupé';
   else if (gaps.length === 0) status = 'réservé';
   else status = 'partiel';
 
-  return { intervals, gaps, status, windowFree, checkedIn };
+  if (windowFree && released.length > 0) status = 'libéré';
+
+  return { intervals, gaps, status, windowFree, checkedIn, released, windowReleased };
 }
 
 /** "08:00 - 09:00, 14:00 - 16:00" for tooltips. */

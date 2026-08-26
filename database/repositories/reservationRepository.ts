@@ -4,6 +4,7 @@ import { Reservation, ReservationStatus } from '@/frontend/src/types';
 import { AuditRepository } from './auditRepository';
 import { WorkstationRepository } from './workstationRepository';
 import { isValidUuid } from '../utils/uuid';
+import { siteWallClockToEpoch } from '@/services/time/siteTime';
 
 /**
  * `reservations` stores only foreign keys - there is no flat `workstation_code`, `user_name` or
@@ -196,6 +197,51 @@ export class ReservationRepository {
       // Fail closed: an unreadable reservation count must never be treated as "zero usage"
       // for quota enforcement (BR-04/BR-05, FR-30).
       throw new DatabaseError('reservations', 'select', "Impossible de vérifier le quota de réservations", err);
+    }
+  }
+
+  /**
+   * Every reservation touching one desk on one day - INCLUDING the cancelled, rejected and
+   * completed rows the other readers filter out.
+   *
+   * Those rows are the point. A desk is only "libéré" because a booking that once held it was
+   * given back early, so the evidence for the lead-time exception lives entirely in statuses the
+   * rest of the application treats as dead. Filtering them here would make the exception
+   * unprovable server-side and hand the decision to the browser.
+   *
+   * Matched on the instant range rather than on a date column, so a multi-day booking that merely
+   * passes through `date` is returned too.
+   *
+   * No client is passed on purpose: resolveClient() prefers the service-role client on the
+   * server, which is what lets this see a release made by SOMEONE ELSE. Under a user-scoped
+   * client RLS shows a collaborator only their own rows, and the check would fail closed - the
+   * booking is refused with the ordinary lead-time message, never wrongly accepted.
+   */
+  static async getSeatReservationsOnDate(
+    workstationId: string,
+    date: string,
+    client?: SupabaseClient
+  ): Promise<Reservation[]> {
+    if (!isValidUuid(workstationId)) return [];
+    const db = client || (await resolveClient());
+
+    const dayStartMs = siteWallClockToEpoch(date, '00:00');
+    if (!Number.isFinite(dayStartMs)) return [];
+    const dayStart = new Date(dayStartMs).toISOString();
+    const dayEnd = new Date(dayStartMs + 24 * 60 * 60 * 1000).toISOString();
+
+    try {
+      const { data, error } = await db
+        .from('reservations')
+        .select(RESERVATION_SELECT)
+        .eq('workstation_id', workstationId)
+        .lt('start_at', dayEnd)
+        .gt('end_at', dayStart);
+      if (error || !data) return [];
+      return data.map((r: any) => this.mapRowToReservation(r));
+    } catch {
+      // Fail closed: no evidence of a release means no exception, not a free pass.
+      return [];
     }
   }
 

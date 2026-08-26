@@ -76,10 +76,13 @@ export const EndUserDashboard: React.FC = () => {
   const [reLoopRequest, setReLoopRequest] = useState<ApprovalRequest | null>(null);
   const [isReLoopModalOpen, setIsReLoopModalOpen] = useState<boolean>(false);
 
-  // Selected Seat state from DigitalTwin
+  // Selected Seat state from DigitalTwin. `forDate` is the day the floor plan had loaded when the
+  // seat was picked, and therefore the only day its attached availability - including any hours
+  // released early - actually describes.
   const [selectedSeat, setSelectedSeat] = useState<{
     workstation: Workstation;
     cluster: Cluster;
+    forDate: string;
   } | null>(null);
 
   const [bookingSuccessMsg, setBookingSuccessMsg] = useState<string | null>(null);
@@ -165,6 +168,9 @@ export const EndUserDashboard: React.FC = () => {
         setPresenceMsg('Check-in effectué - bonne journée !');
       }
       await loadMyData();
+      // Both ends of the day change what the floor shows, and a check-out changes it for everyone:
+      // leaving early hands the rest of the slot back, which is what paints the desk as libéré.
+      window.dispatchEvent(new CustomEvent('xfactory_reservations_changed'));
     } catch (err: any) {
       setPresenceMsg(err?.message || 'Action impossible.');
     } finally {
@@ -174,19 +180,47 @@ export const EndUserDashboard: React.FC = () => {
 
 
 
+  type SeatSelection = { workstation: Workstation; cluster: Cluster; forDate: string };
+
+  /**
+   * Whether a window sits inside hours this desk gave back early.
+   *
+   * The seat overlay publishes the freed stretches; containment is re-tested here rather than
+   * reusing availability.windowReleased because that flag answers for the window the FLOOR PLAN
+   * was showing, and this dialog lets the hours be changed afterwards.
+   *
+   * Three guards, all fail-closed: no seat, a date the overlay was not computed for, or a
+   * multi-day span - which necessarily reaches into days nobody released. The server re-derives
+   * the same answer from the database before accepting anything, so being wrong here costs a
+   * refusal, never an unearned booking.
+   */
+  const releaseGrantFor = (
+    seat: SeatSelection | null,
+    next: { startDate: string; endDate: string; startTime: string; endTime: string }
+  ): boolean => {
+    if (!seat || seat.forDate !== next.startDate) return false;
+    if ((next.endDate || next.startDate) !== next.startDate) return false;
+    const released = seat.workstation.availability?.released || [];
+    // Zero-padded HH:mm compares correctly as text.
+    return released.some((r) => next.startTime >= r.start && next.endTime <= r.end);
+  };
+
   /**
    * Slot edits, from the booking dialog or from the floor plan's slot selector.
    *
    * Every change routes through here so the verdict moves with the state: a holiday must stop
    * being flagged the moment a working day is chosen, and the business-day count that decides
    * whether the booking needs Direction approval has to be recomputed on the same edit.
+   *
+   * The seat is part of the verdict, not just the slot: the lead-time rule is waived for hours a
+   * desk released early, so which desk is selected can be the difference between a valid booking
+   * and a refused one. It is passed explicitly because selecting a seat has to validate against
+   * that seat before React has re-rendered with it in state.
    */
-  const handleModalSlotChange = (next: {
-    startDate: string;
-    endDate: string;
-    startTime: string;
-    endTime: string;
-  }) => {
+  const applySlotValidation = (
+    next: { startDate: string; endDate: string; startTime: string; endTime: string },
+    seat: SeatSelection | null
+  ) => {
     setResDate(next.startDate);
     setEndDate(next.endDate);
     setStartTime(next.startTime);
@@ -198,7 +232,8 @@ export const EndUserDashboard: React.FC = () => {
       next.startTime,
       next.endTime,
       settings,
-      currentRole
+      currentRole,
+      { releasedWindow: releaseGrantFor(seat, next) }
     );
     setValidationError(result.errorMessage);
     setBusinessDaysCount(result.businessDays);
@@ -206,9 +241,24 @@ export const EndUserDashboard: React.FC = () => {
     setConflictAlternatives([]);
   };
 
+  const handleModalSlotChange = (next: {
+    startDate: string;
+    endDate: string;
+    startTime: string;
+    endTime: string;
+  }) => applySlotValidation(next, selectedSeat);
+
   const handleSeatClickFromTwin = (ws: Workstation, cl: Cluster) => {
-    setSelectedSeat({ workstation: ws, cluster: cl });
+    const seat: SeatSelection = { workstation: ws, cluster: cl, forDate: resDate };
+    setSelectedSeat(seat);
     setBookingSuccessMsg(null);
+    // Re-validate for THIS desk. A date inside the lead time is refused on an ordinary seat and
+    // allowed on one that released these hours, so the verdict standing from before the click can
+    // be the wrong one - and it is the verdict that decides whether the dialog can confirm.
+    applySlotValidation(
+      { startDate: resDate, endDate: endDate || resDate, startTime, endTime },
+      seat
+    );
   };
 
   /**
@@ -223,12 +273,15 @@ export const EndUserDashboard: React.FC = () => {
    * undo an extension request the user had already filled in.
    */
   const handleTwinSlotChange = (slot: { date: string; startTime: string; endTime: string }) => {
-    handleModalSlotChange({
-      startDate: slot.date,
-      endDate: endDate && endDate > slot.date ? endDate : slot.date,
-      startTime: slot.startTime,
-      endTime: slot.endTime,
-    });
+    applySlotValidation(
+      {
+        startDate: slot.date,
+        endDate: endDate && endDate > slot.date ? endDate : slot.date,
+        startTime: slot.startTime,
+        endTime: slot.endTime,
+      },
+      selectedSeat
+    );
   };
 
   /**
@@ -590,7 +643,15 @@ export const EndUserDashboard: React.FC = () => {
       {selectedSeat && (
         <SeatBookingModal
           isOpen
-          onClose={() => setSelectedSeat(null)}
+          onClose={() => {
+            setSelectedSeat(null);
+            // The lead-time waiver belonged to that desk. Put the plain verdict back rather than
+            // leaving a green light standing over a slot nothing can be booked in any more.
+            applySlotValidation(
+              { startDate: resDate, endDate: endDate || resDate, startTime, endTime },
+              null
+            );
+          }}
           workstation={selectedSeat.workstation}
           cluster={selectedSeat.cluster}
           user={currentUser}
@@ -598,6 +659,7 @@ export const EndUserDashboard: React.FC = () => {
           endDate={endDate}
           startTime={startTime}
           endTime={endTime}
+          availabilityDate={selectedSeat.forDate}
           purpose={purpose}
           notes={notes}
           businessDays={businessDaysCount}
