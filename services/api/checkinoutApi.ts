@@ -89,16 +89,19 @@ export async function apiDecideLateCheckIn(
  * Using them instead of the client-side CheckInOutService keeps the write behind the API's
  * ownership guard rather than relying on RLS alone, and makes failures explicit.
  */
-export async function apiCheckIn(reservationId: string, qrToken?: string): Promise<void> {
+export async function apiCheckIn(reservationId: string): Promise<{ checkInAt?: string }> {
   const response = await fetch('/api/checkinout/check-in', {
     method: 'POST',
     headers: await authHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify(qrToken ? { reservationId, qrToken } : { reservationId }),
+    body: JSON.stringify({ reservationId }),
   });
+  const result = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const result = await response.json().catch(() => ({}));
     throw new Error(result.message || 'Échec du check-in.');
   }
+  // The timestamp the server actually stored. Displayed as-is: the browser clock is not evidence
+  // of when the check-in was recorded, and on a wrongly-set device it would simply be a lie.
+  return { checkInAt: result.data?.checkInAt };
 }
 
 export async function apiCheckOut(reservationId: string): Promise<void> {
@@ -164,25 +167,56 @@ export async function apiDecodeSeatToken(seatToken: string): Promise<{ workstati
   return { workstationId: body.workstationId, workstationCode: body.workstationCode };
 }
 
-export interface ScanSeatResult {
-  action: 'check-in' | 'check-out';
-  workstation_code: string;
+/** What a scanned desk badge resolves to - always about the caller, never about anyone else. */
+export interface SeatScanResolution {
+  reservation: {
+    id: string;
+    workstationCode: string;
+    clusterName: string;
+    date: string;
+    startTime: string;
+    endTime: string;
+    status: string;
+  };
+  userName?: string;
+  availableAction: 'check-in' | 'check-out';
 }
 
 /**
- * Scan a desk's seat-badge QR. Checks the caller in/out of whichever active reservation
- * they hold on that seat right now. `targetUserId` is only honored server-side when the
- * caller has an intervention role (receptionist, admin, super_admin, building/GCI manager).
+ * Resolve a scanned desk badge into the caller's own reservation on that desk.
+ *
+ * READ-ONLY. It never checks anybody in or out - that is the explicit button's job, and the
+ * server re-validates everything when it is pressed. If the caller has no reservation on the
+ * scanned desk the server answers with a flat refusal that names nobody.
  */
-export async function apiScanSeat(seatToken: string, targetUserId?: string): Promise<ScanSeatResult> {
+export async function apiResolveSeatScan(seatToken: string): Promise<SeatScanResolution> {
   const response = await fetch('/api/checkinout/scan-seat', {
     method: 'POST',
     headers: await authHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ seatToken, targetUserId }),
+    body: JSON.stringify({ seatToken }),
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(body.message || 'Échec du scan du badge de poste.');
+    throw new Error(body.message || "Vous n'avez pas accès à ce poste.");
   }
-  return { action: body.action, workstation_code: body.workstation_code };
+  return body.data;
+}
+
+/**
+ * Reception-desk check-out for a collaborator's reservation - the counterpart of
+ * apiCheckInForReservation. Role-gated server-side; the audit trail names the staff member.
+ */
+export async function apiCheckOutForReservation(
+  reservationId: string
+): Promise<{ workstationCode?: string }> {
+  const response = await fetch('/api/checkinout/check-out-for', {
+    method: 'POST',
+    headers: await authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ reservationId }),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(result.message || 'Échec du check-out.');
+  }
+  return result.data || {};
 }

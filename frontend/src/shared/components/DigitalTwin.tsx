@@ -132,16 +132,28 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
   const [ownEnd, setOwnEnd] = useState<string>(BUSINESS_END);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
-  // Controlled when the host supplies the slot, uncontrolled otherwise.
+
+  // Controlled when the host supplies the slot, uncontrolled otherwise. A controlled host that
+  // also listens with onSlotChange keeps the selector usable: the edit is sent up and comes back
+  // as new props, instead of being swallowed the way the old no-op setters did.
   const isControlled = slotDateProp !== undefined;
   const slotDate = slotDateProp ?? ownDate;
   const slotStart = slotStartProp ?? ownStart;
   const slotEnd = slotEndProp ?? ownEnd;
-  const setSlotDate = isControlled ? () => {} : setOwnDate;
-  const setSlotStart = isControlled ? () => {} : setOwnStart;
-  const setSlotEnd = isControlled ? () => {} : setOwnEnd;
 
-  const showSlotSelector = !hideSlotSelector && !isControlled;
+  /** One merged write, so changing two fields at once cannot send a half-stale slot upward. */
+  const applySlot = (patch: Partial<{ date: string; startTime: string; endTime: string }>) => {
+    const next = { date: slotDate, startTime: slotStart, endTime: slotEnd, ...patch };
+    if (isControlled) {
+      onSlotChange?.(next);
+      return;
+    }
+    setOwnDate(next.date);
+    setOwnStart(next.startTime);
+    setOwnEnd(next.endTime);
+  };
+
+  const showSlotSelector = !hideSlotSelector && (!isControlled || !!onSlotChange);
   const slotInvalid = slotStart >= slotEnd;
 
   // 8-postes visibility is a straight permission, not a toggle - admins/super-admins always see
@@ -228,6 +240,31 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
     if (!slotInvalid) onSlotChange?.(slot);
   }, [slot, slotInvalid]);
 
+  /** The extension pool: the 5th desk of a cluster and everything added after it. */
+  const isExtensionSeat = (ws: Workstation) => ws.is_extension || ws.seat_number > 4;
+
+  /**
+   * Whether this viewer may see this desk at all.
+   *
+   * Managers and admins see the whole floor - hidden desks are theirs to manage, so hiding them
+   * from the people who administer them would be self-defeating.
+   *
+   * A collaborator sees the four standard desks of each cluster, and an extension desk ONLY while
+   * it is theirs: an extension desk is opened for a named person rather than offered to the
+   * floor, so listing it for everyone would advertise capacity nobody is entitled to take. The
+   * person it was opened for still needs to find it, read it and check in on it, which is why
+   * ownership - not the admin visibility flag - is what unlocks it for them.
+   *
+   * "Theirs" means holding a booking on it FOR THE DAY BEING VIEWED, since that is the day the
+   * whole grid answers for. An extension desk booked for next Tuesday appears on next Tuesday.
+   */
+  const isSeatVisibleToViewer = (ws: Workstation): boolean => {
+    if (show8Postes) return true;
+    if (isExtensionSeat(ws)) return !!ws.availability?.ownReservation;
+    // A standard desk an admin has explicitly hidden - maintenance staging, a broken chair.
+    return ws.visibleToUsers !== false;
+  };
+
   // Filter logic
   const filteredClusters = useMemo(() => {
     return clusters.map((cluster) => {
@@ -236,12 +273,7 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
       }
 
       const filteredSeats = cluster.workstations.filter((ws) => {
-        // Seat visibility: managers (8-postes view) always see every seat so they can manage
-        // hidden ones; regular collaborators only see seats not explicitly hidden via
-        // visibleToUsers (defaults to true - any post, not just extensions, can be hidden).
-        const isSeatVisibleByCapacity = show8Postes || ws.visibleToUsers !== false;
-
-        if (!isSeatVisibleByCapacity) return false;
+        if (!isSeatVisibleToViewer(ws)) return false;
 
         // Search query filter (matches seat code e.g. CL-A-01 or cluster name)
         if (searchQuery.trim()) {
@@ -320,6 +352,31 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
     }
   };
 
+  /**
+   * The colour a desk actually shows.
+   *
+   * A management-locked desk keeps status 'management_reserved' however busy it is (see the
+   * overlay in workspaceService), so its occupancy has to be read from `availability` and painted
+   * from there. Without this a VIP desk that had just been booked stayed grey, and the person who
+   * booked it had no way to see that anything had happened.
+   */
+  const getSeatColorClass = (ws: Workstation): string => {
+    if (ws.status === 'management_reserved' && ws.availability?.windowFree === false) {
+      return getStatusColorClass(ws.availability.checkedIn ? 'occupé' : 'réservé');
+    }
+    return getStatusColorClass(ws.status);
+  };
+
+  /** The same idea for the dialog's badge: the lock, plus what is happening on the desk. */
+  const getSeatLabel = (ws: Workstation): string => {
+    if (ws.status === 'management_reserved' && ws.availability?.windowFree === false) {
+      return ws.availability.checkedIn
+        ? 'Réservé Direction - occupé sur ce créneau'
+        : 'Réservé Direction - réservé sur ce créneau';
+    }
+    return getStatusLabel(ws.status) || '';
+  };
+
   const getStatusLabel = (status: SeatStatus) => {
     switch (status) {
       case 'disponible': return 'Disponible';
@@ -329,6 +386,8 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
       case 'occupé': return 'Occupé';
       case 'extension': return 'Extension (Admin)';
       case 'disabled': return 'Désactivé (période expirée)';
+      // Was missing, so the seat dialog rendered an empty badge for every VIP desk.
+      case 'management_reserved': return 'Réservé Direction';
     }
   };
 
@@ -337,7 +396,9 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
     let free = 0, partial = 0, reserved = 0, occupied = 0, maint = 0, ext = 0;
     clusters.forEach((cl) => {
       cl.workstations.forEach((ws) => {
-        if (ws.seat_number <= 4 || show8Postes || ws.visibleToUsers) {
+        // Counted only if the viewer can see it - a legend that totals hidden desks describes a
+        // floor plan nobody is looking at.
+        if (isSeatVisibleToViewer(ws)) {
           if (ws.status === 'disponible') free++;
           else if (ws.status === 'partiel') partial++;
           else if (ws.status === 'réservé') reserved++;
@@ -347,7 +408,15 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
         }
       });
     });
-    return { free, partial, reserved, occupied, maint, ext, total: free + partial + reserved + occupied + maint + ext };
+    return {
+      free,
+      partial,
+      reserved,
+      occupied,
+      maint,
+      ext,
+      total: free + partial + reserved + occupied + maint + ext,
+    };
   }, [clusters, show8Postes]);
 
   /**
@@ -360,7 +429,12 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
     if (ws.status === 'disponible') return true;
     if (ws.status === 'partiel') return ws.availability?.windowFree !== false;
     if (ws.status === 'management_reserved') {
-      return canAccessManagementClusters || !!cluster.vipMemberIds?.includes(currentUser.id);
+      // Authorised is not the same as free. BR-07 decides WHO may book this desk; the overlay
+      // decides whether the asked window is still open. Both must hold - the window test was
+      // missing, so an authorised user was handed the booking dialog for a desk that was already
+      // taken and only the server's conflict check stopped the double booking.
+      const authorised = canAccessManagementClusters || !!cluster.vipMemberIds?.includes(currentUser.id);
+      return authorised && ws.availability?.windowFree !== false;
     }
     return false;
   };
@@ -419,7 +493,7 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
           <div className="grid grid-cols-4 gap-2 py-1">
             {cluster.workstations.map((ws) => {
               const isSelected = selectedSeatCode === ws.code;
-              const statusColor = getStatusColorClass(ws.status);
+              const statusColor = getSeatColorClass(ws);
               // BR-07: management-reserved seats are directly selectable by
               // Director/EA/Admin/SuperAdmin - they're the roles those clusters are
               // reserved FOR, they don't need the GCI/Building Manager unlock step.
@@ -471,7 +545,11 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
                   >
                     <span className="text-[10px] tracking-tight opacity-90">{ws.code.split('-')[2]}</span>
                     <span className="text-[11px] truncate w-full font-extrabold">{ws.code}</span>
-                    {ws.status === 'partiel' && ws.availability?.gaps?.length ? (
+                    {ws.status === 'management_reserved' && ws.availability?.busy?.length ? (
+                      <span className="text-[9px] font-semibold opacity-95 leading-tight">
+                        pris {ws.availability.busy[0].start} - {ws.availability.busy[0].end}
+                      </span>
+                    ) : ws.status === 'partiel' && ws.availability?.gaps?.length ? (
                       <span className="text-[9px] font-semibold opacity-95 leading-tight">
                         libre {ws.availability.gaps[0].start} - {ws.availability.gaps[0].end}
                       </span>
@@ -482,7 +560,11 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
                   {isAdminOrSuperAdmin && ws.is_extension && (
                     <div className="absolute top-1 right-1 flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900 text-white p-1 rounded-lg shadow-md z-20">
                       <button
-                        title={ws.visibleToUsers ? 'Masquer aux collaborateurs' : 'Rendre visible aux collaborateurs'}
+                        title={
+                          ws.visibleToUsers
+                            ? "Masquer ce poste (un poste d'extension n'est de toute façon visible que par le collaborateur qui l'occupe)"
+                            : "Rendre ce poste visible (un poste d'extension reste visible uniquement par le collaborateur qui l'occupe)"
+                        }
                         onClick={(e) => {
                           e.stopPropagation();
                           handleAdminToggleVisibility(cluster.id, ws.id, ws.visibleToUsers || false);
@@ -536,7 +618,7 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
           {!canView8Postes && (
             <div className="flex items-center gap-1.5 text-xs text-slate-500 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
               <Info className="w-3.5 h-3.5 text-amber-500" />
-              <span>Vue Standard (4 postes/cluster)</span>
+              <span>Vue Standard (4 postes/cluster + vos postes d'extension)</span>
             </div>
           )}
 
@@ -620,28 +702,37 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
               <input
                 type="date"
                 value={slotDate}
-                onChange={(e) => setSlotDate(e.target.value)}
+                onChange={(e) => applySlot({ date: e.target.value })}
                 className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
               />
               <input
                 type="time"
                 value={slotStart}
-                onChange={(e) => setSlotStart(e.target.value)}
+                onChange={(e) => applySlot({ startTime: e.target.value })}
                 className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
               />
               <span className="text-xs text-slate-400 font-semibold">→</span>
               <input
                 type="time"
                 value={slotEnd}
-                onChange={(e) => setSlotEnd(e.target.value)}
+                onChange={(e) => applySlot({ endTime: e.target.value })}
                 className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
               />
               <button
-                onClick={() => {
-                  setSlotDate(new Date().toISOString().split('T')[0]);
-                  setSlotStart(BUSINESS_START);
-                  setSlotEnd(BUSINESS_END);
-                }}
+                onClick={() =>
+                  // A controlled host owns the date and enforces the booking window on it, so
+                  // only the hours are widened there - jumping to today would hand the booking
+                  // form a date it has to reject.
+                  applySlot(
+                    isControlled
+                      ? { startTime: BUSINESS_START, endTime: BUSINESS_END }
+                      : {
+                          date: new Date().toISOString().split('T')[0],
+                          startTime: BUSINESS_START,
+                          endTime: BUSINESS_END,
+                        }
+                  )
+                }
                 className="text-[11px] font-semibold text-slate-500 hover:text-slate-800 px-2 py-1 rounded-lg hover:bg-slate-100"
               >
                 Journée entière
@@ -738,7 +829,7 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-extrabold text-base text-white">{seatDetail.workstation.code}</span>
                 <span className="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-200 font-semibold border border-slate-700">
-                  {getStatusLabel(seatDetail.workstation.status)}
+                  {getSeatLabel(seatDetail.workstation)}
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-1 truncate">

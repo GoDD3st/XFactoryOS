@@ -12,6 +12,21 @@ export class ReservationConflictError extends Error {
   }
 }
 
+/**
+ * Bearer token for the calls added after the two original ones, which still inline it. Demo mode
+ * carries no session, and the server's demo middleware fabricates the caller instead.
+ */
+async function authHeaders(extra?: Record<string, string>): Promise<Record<string, string>> {
+  const headers: Record<string, string> = { ...extra };
+  if (!isDemoMode()) {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) throw new Error('Vous devez être connecté pour effectuer cette action.');
+    headers.Authorization = `Bearer ${token}`;
+  }
+  return headers;
+}
+
 /** Fields allowed by POST /api/reservations (CreateReservationSchema.strict). */
 function buildReservationRequestBody(payload: Partial<Reservation>) {
   return {
@@ -89,4 +104,50 @@ export async function apiFetchReservations(): Promise<Reservation[]> {
 
   const body = await response.json();
   return body.data || [];
+}
+
+
+/**
+ * An earlier start offered to the holder of a reservation, because the previous occupant of that
+ * same desk left before the end of their slot.
+ *
+ * These hours are never offered to anyone else and never appear as public availability - see
+ * services/reservations/earlyExtensionService.ts for the rule.
+ */
+export interface EarlyExtensionOffer {
+  reservationId: string;
+  workstationCode: string;
+  clusterName: string;
+  date: string;
+  currentStart: string;
+  currentEnd: string;
+  proposedStart: string;
+  gainedMinutes: number;
+}
+
+/** Extensions currently open to the signed-in user. The server scopes this to their own bookings. */
+export async function apiFetchExtensionOffers(): Promise<EarlyExtensionOffer[]> {
+  const response = await fetch('/api/reservations/extension-offers', { headers: await authHeaders() });
+  if (!response.ok) return [];
+  const body = await response.json().catch(() => ({}));
+  return body.data || [];
+}
+
+/**
+ * Accept an extension. The start time is sent, but the server does not take it on trust: it
+ * rebuilds the offer from the database and refuses anything outside it.
+ */
+export async function apiAcceptExtension(
+  reservationId: string,
+  newStartTime: string
+): Promise<void> {
+  const response = await fetch(`/api/reservations/${reservationId}/extend`, {
+    method: 'POST',
+    headers: await authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ newStartTime }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(body.message || "Échec de la prolongation.");
+  }
 }

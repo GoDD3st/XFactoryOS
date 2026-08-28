@@ -2,7 +2,11 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Html5QrcodeScanner } from 'html5-qrcode';
 import { X, ScanLine, UserCheck, LogOut, AlertCircle } from 'lucide-react';
 import { Reservation } from '@/frontend/src/types';
-import { apiDecodeSeatToken, apiScanSeat } from '@/services/api/checkinoutApi';
+import {
+  apiDecodeSeatToken,
+  apiCheckInForReservation,
+  apiCheckOutForReservation,
+} from '@/services/api/checkinoutApi';
 
 interface ReceptionSeatScanModalProps {
   todaysReservations: Reservation[];
@@ -76,7 +80,15 @@ export const ReceptionSeatScanModal: React.FC<ReceptionSeatScanModalProps> = ({
     setSubmitting(true);
     setError(null);
     try {
-      await apiScanSeat(seatToken, selectedReservation.user_id);
+      // Routed through the dedicated on-behalf endpoints rather than a scan that guesses the
+      // action from the current status. Both are role-gated server-side and record the staff
+      // member as the actor with the collaborator as the subject, so the audit trail never
+      // claims the collaborator did this themselves.
+      if (selectedReservation.status === 'check-in') {
+        await apiCheckOutForReservation(selectedReservation.id);
+      } else {
+        await apiCheckInForReservation(selectedReservation.id);
+      }
       onDone();
       onClose();
     } catch (err: any) {

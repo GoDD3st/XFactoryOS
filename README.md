@@ -1,4 +1,15 @@
-# XFactory OS — Module 1: Smart Open Space Management
+## XFactory OS ##
+
+# Summarize the XFACTORY OS app ( not only the openspace) and write all the modules that exist #
+
+
+
+
+
+
+
+
+Module 1: Smart Open Space Management
 
 Reservation and occupancy management for the OCP Digital Factory Open Space, Site Safi.
 
@@ -55,19 +66,19 @@ engine exists because of one of those three problems, not because of a technical
 
 ## 4. Main Features
 
-| Feature | Summary |
-|---|---|
-| Two booking paths | Pick a desk on the Digital Twin floor plan, or fill the form and let it pick |
-| Multi-day bookings | A date range; business days are counted and drive the approval requirement |
-| Approval workflow | Long or multi-day bookings route to the Executive Assistant or the Director |
-| QR check-in / check-out | Scan the badge on the desk, from the phone camera or in-app |
-| Late check-in requests | A user who missed the window can ask for the reservation back |
-| Waiting list | FIFO queue with preference matching; a freed desk is offered automatically |
-| No-show release | Unclaimed desks are released and passed to the queue |
-| Digital Twin | Live floor plan coloured by real availability for a chosen date and window |
-| Dashboards | Occupancy, trends, departments, no-shows, and a statistical forecast |
-| Administration | Users, roles and permissions, desks, clusters, settings, audit |
-| Exports | CSV, Excel and a print-to-PDF report of the executive dashboard |
+| Feature                 |    Summary                                                                    |
+|-------------------------|-------------------------------------------------------------------------------|
+| Two booking paths       | Pick a desk on the Digital Twin floor plan, or fill the form and let it pick  |
+| Multi-day bookings      | A date range; business days are counted and drive the approval requirement    |
+| Approval workflow       | Long or multi-day bookings route to the Executive Assistant or the Director   |
+| QR check-in / check-out | Scan the badge on the desk, from the phone camera or in-app                   |
+| Late check-in requests  | A user who missed the window can ask for the reservation back                 |
+| Waiting list            | FIFO queue with preference matching; a freed desk is offered automatically    |
+| No-show release         | Unclaimed desks are released and passed to the queue                          |
+| Digital Twin            | Live floor plan coloured by real availability for a chosen date and window    |
+| Dashboards              | Occupancy, trends, departments, no-shows, and a statistical forecast          |
+| Administration          | Users, roles and permissions, desks, clusters, settings, audit                |
+| Exports                 | CSV, Excel and a print-to-PDF report of the executive dashboard               |
 
 ---
 
@@ -323,17 +334,72 @@ row from the client would reintroduce the duplicate.
 
 ### Check-in, check-out, absence
 
-- **Check-in** requires status `confirmée` **and** `reservation.user_id === userId`. Any other
-  status is refused — this is what stops a cancelled or already-used booking being revived.
-- **Check-out** is available from `check-in`, and also happens automatically at slot end
-  (`autoCheckOutExpired`).
-- **No-show**: `detectNoShows` marks any `confirmée` reservation whose start is more than
-  `noShowDelayMinutes` in the past, sets the desk back to `disponible`, and hands the freed slot to
-  the waiting-list matcher. **The slot handed over is the whole booked slot**, because a no-show
-  forfeits all of it — the matcher needs the exact hours so it does not offer them to someone who
-  queued for a different part of the day.
-- **Late check-in** (`late_check_in_requests`) lets a user who missed the window ask for the
-  reservation back rather than rebooking.
+**Check-in** (`CONFIRMED → OCCUPIED`) is always an explicit act. Scanning a desk badge never
+performs it; it only shows the user what they hold. The button then calls `/api/checkinout/check-in`,
+which re-validates everything from the database at that instant — identity from the JWT, ownership
+of the reservation, status still `confirmée`, and the check-in window. Nothing the scan established
+earlier is carried forward as proof, because between a scan and a button press a reservation can be
+cancelled, checked in from another device, or expire into a no-show.
+
+The **check-in window** opens 15 minutes before the slot and closes at
+`start + noShowDelayMinutes` — the same instant the no-show sweep uses, so the two can never
+disagree. Arriving later is not a dead end: `late_check_in_requests` is the reviewed way back in.
+
+The recorded check-in time returned to the interface is the timestamp the **database** stored. The
+browser clock is never used to display it.
+
+**Check-out** (`OCCUPIED → COMPLETED`) is available from two places — the reservation list on the
+dashboard, and the QR flow, where it is a second explicit button. A scan alone never checks anybody
+out. The real departure time is recorded in `check_out_at`.
+
+**Automatic completion.** A reservation that is never checked out is completed by
+`autoCheckOutExpired` once its end time has passed, and the desk returns to the ordinary pool.
+There is deliberately no physical-presence enforcement and no "awaiting verification" state: a
+booking ending at 09:00 ends at 09:00 in the system, and if nobody has the desk until 10:00 the
+previous occupant may well still be sitting there. Reception and the building manager receive an
+informational notice; it never blocks the workstation.
+
+**No-show**: `detectNoShows` marks any `confirmée` reservation whose start is more than
+`noShowDelayMinutes` in the past, sets the desk back to `disponible`, and hands the freed slot to
+the waiting-list matcher. **The slot handed over is the whole booked slot**, because a no-show
+forfeits all of it — the matcher needs the exact hours so it does not offer them to someone who
+queued for a different part of the day.
+
+### Early check-out does NOT open the freed hours to the site
+
+This is the rule most likely to be re-broken by someone trying to be helpful, so it is stated
+plainly:
+
+> When a user checks out early, the unused remainder of their reservation does **not** become an
+> immediately bookable slot. It is not published as availability, it is not offered to the waiting
+> list, it gets no status or colour of its own, and it does **not** exempt anybody from the normal
+> reservation lead time (`settings.bookingWindowDays`, the "48h" rule).
+
+Ahmed books WS-A 08:00–12:00 and leaves at 10:30. The reservation becomes `COMPLETED` with
+`check_out_at = 10:30`. The 10:30–12:00 stretch is now ordinary unbooked time: anybody wanting it
+must satisfy the same rules as for any other free desk, which inside the lead time means they
+cannot have it.
+
+Exactly one person may take those hours, and only in one specific way:
+
+> **The holder of the next reservation on that same desk may be offered an earlier start for the
+> reservation they already hold.**
+
+If Sara holds WS-A 12:00–16:00, she is offered `10:30 → 16:00`. She is *not* being given a new
+reservation — her existing one moves — which is why the workflow modifies a row rather than passing
+through `createReservation`, and therefore never touches the lead-time rule at all.
+
+How the offer is decided (`services/reservations/earlyExtensionService.ts`):
+
+| Question | Rule |
+|---|---|
+| Who is eligible? | The holder of the reservation immediately after the freed period **on the same desk**. Nothing may sit between the two. |
+| When is there an offer? | Only when the previous booking is `COMPLETED` **and** `check_out_at` is earlier than its booked end. An ordinary completion, an automatic sweep, a cancellation and a no-show all release nothing here. |
+| How far back? | To the check-out time, clamped to now — hours that have already passed are never offered, or the holder's check-in deadline would move into the past. |
+| Automatic? | Never. The offer is shown on the dashboard and applied only when the holder presses **Prolonger la réservation**. |
+| What does the server check on accept? | Ownership from the JWT, that the offer still exists when recomputed from the database, that the requested start sits inside it, that the holder has no other reservation over those hours, and that the desk is still free. The GiST exclusion constraint on `(workstation_id, period)` is the final backstop against two requests racing for the same gap. |
+
+The offer never names the person who left. It carries hours only.
 
 ### Waiting list (BPMN D5)
 
@@ -341,8 +407,14 @@ FIFO by `fifo_rank`, but filtered first: `preferenceMatching.ts` checks the requ
 **zone** and **equipment** against the freed desk before making an offer. An offer expires after
 `waiting_list_offer_expiry_minutes` and cascades to the next entry.
 
-Three events free a desk into the queue: **no-show**, **check-out**, and **cancellation**. If you
-add a fourth way for a desk to become free, it must call the matcher too.
+Priority is **FIFO** — first in, first out — among the entries that match.
+
+Three events hand a desk to the queue: **no-show**, **cancellation**, and the **automatic
+completion** at a reservation's end time. An **early check-out is deliberately not one of them**:
+its remainder is not redistributed to anybody (see "Early check-out does NOT open the freed hours
+to the site" above), and the cascade that used to run on it has been removed. The automatic
+completion is different and legitimate — the hours it offers are *after* the booked end, so they
+were never part of anyone's reservation.
 
 **One live entry per user, per desk, per day** — enforced by
 `waiting_list_entries_one_active_per_user_seat_day`. The index deliberately includes the date: an
@@ -351,54 +423,90 @@ Friday.
 
 ## 11. QR Code System
 
-There are **two** token services, and confusing them is the main hazard.
-
-| | `qrTokenService.ts` | `seatQrTokenService.ts` |
-|---|---|---|
-| Identifies | one reservation | one desk |
-| Payload | `reservationId`, `userId`, `exp`, `nonce` | `workstationId` |
-| Expires | yes, 30-minute window | **no** |
-| Reproducible | no (nonce) | **yes** — same desk, same token |
-| Lives | in the app | printed and taped to the desk |
-
-### Decision: the desk badge token is deterministic and never expires
-
-**What.** `generateSeatToken` is an HMAC over the workstation id with no nonce and no expiry.
-
-**Why.** The badge is printed and stays on the desk for months. A token with an expiry would need
-reprinting; a token with a nonce could not be regenerated identically, so the system would have to
-store it to be able to reprint.
-
-**Consequence.** Nothing needs persisting, and reprinting is free. The trade is that the token is
-**not a secret** — anyone who photographs the desk has it. That is acceptable *only* because the
-token identifies the desk and nothing else; see the flow below.
-
-### What happens when a badge is scanned
-
 ```
-1. Phone camera reads the QR         → it encodes  <origin>/?scan=<seatToken>
-2. Browser opens the site
-3. AuthGate lifts ?scan= out of the URL, stores it, and strips it from the address bar
-4. Not signed in?  → LoginScreen.  The scan is resumed after sign-in.
-5. SeatScanScreen POSTs the token to /api/checkinout/scan-seat
-6. Server verifies the HMAC                          → 401 QR_INVALID if forged or tampered
-7. Server takes the USER FROM THE JWT - never the request body
-8. getActiveReservationForUserAndSeat(userId, workstationId)
-      no match → 404 NO_ACTIVE_RESERVATION
-      status confirmée → check-in
-      status check-in  → check-out
+QR          → identifies the physical WORKSTATION
+JWT         → identifies the authenticated USER
+Reservation → determines AUTHORIZATION
+Backend/DB  → the source of truth for all three
 ```
 
-**Why this is safe despite the token being public.** The token proves only *which desk*. Identity
-comes from the session, and the action only happens if a reservation matches **both** that user and
-that desk right now. Scanning someone else's desk does nothing; scanning your own desk when you
-have no booking does nothing.
+There is **one** QR system: `seatQrTokenService.ts`, an HMAC over a workstation id. A second,
+reservation-scoped token family (`reservationId`, `userId`, `exp`, `nonce`) used to exist in
+`qrTokenService.ts`; nothing generated or consumed it — no screen produced such a QR and no caller
+ever passed one — so it has been deleted rather than left as a plausible-looking alternative.
 
-**Two ways in, one endpoint.** The phone camera path above needs no app open. `SelfSeatScanModal`
-does the same thing in-app for users who already have it open, and on desktops with no camera app
-to leave to. `ReceptionSeatScanModal` is different: it decodes the desk *first* and then asks which
-collaborator is being checked in — a question that only makes sense for a receptionist acting on
-someone's behalf, which is why `/scan-seat/decode` is restricted to those roles.
+### The static badge is not a credential
+
+**What.** `generateSeatToken` is an HMAC over the workstation id, with no nonce and no expiry. The
+same desk always produces the same token.
+
+**Why.** The badge is printed and stays on the desk for months. An expiring token would need
+reprinting; a nonce would make it unreproducible, so the system would have to store it to reprint.
+
+**Consequence — read this before reusing the token anywhere.** The token is **not a secret** and
+**not proof of identity**. It is on a sticker; anyone walking past can photograph it. A valid token
+proves one thing: this string was signed by us and names workstation X. It says nothing about who
+scanned it. Authorization is therefore always:
+
+```
+authenticated JWT user
+  + verified workstation QR
+  + a reservation matching that user AND that workstation
+  + a valid time window
+  + a valid reservation status
+```
+
+A caller that acts on the workstation id alone has built an unauthenticated endpoint.
+
+`QR_HMAC_SECRET` must be configured. There is no hardcoded fallback: a missing secret raises a
+clear configuration error rather than silently signing badges with a key that is in the source
+tree. `DEMO_MODE=true` is the only exception and generates a random per-process key — and demo mode
+cannot run in production (`backend/middleware/authMiddleware.ts` refuses to boot). Rotating the
+secret invalidates every printed badge; they must all be reprinted.
+
+### Check-in flow
+
+```
+Scan  (phone camera on the sticker, or SelfSeatScanModal in-app)
+  ↓   the QR encodes <origin>/?scan=<seatToken>
+Authentication
+  ↓   AuthGate lifts ?scan= out of the URL, stores it, strips the address bar
+  ↓   not signed in → LoginScreen → the scan resumes after sign-in
+QR verification            POST /api/checkinout/scan-seat  (READ-ONLY)
+  ↓   HMAC checked → 401 QR_INVALID if forged or tampered
+Reservation lookup         user from the JWT, never the body
+  ↓   no reservation for THIS user on THIS desk → 404 "Vous n'avez pas accès à ce poste."
+  ↓   the refusal names nobody: the occupant's identity is never disclosed
+Identity confirmation      "You are signed in as X" → the user confirms
+  ↓
+Reservation details        cluster, desk, date, start, end
+  ↓
+Explicit CHECK IN button   green, and it must be pressed
+  ↓
+Fresh server validation    POST /api/checkinout/check-in re-reads and re-checks everything
+  ↓
+OCCUPIED                   welcome message + the check-in time the DATABASE recorded
+```
+
+The scan endpoint performs **no state transition**. It used to: it checked the caller in on scan,
+and checked them *out* if they were already occupying the desk, so a stray scan of your own desk
+ended your session. Both are gone.
+
+### Check-out flow
+
+```
+Manual early check-out:   OCCUPIED → COMPLETED, check_out_at recorded
+                          from the dashboard, or from the QR screen's explicit CHECK OUT button
+End time reached:         OCCUPIED → COMPLETED automatically (autoCheckOutExpired)
+```
+
+Scanning a badge never checks anybody out on its own.
+
+**Acting on someone's behalf.** `ReceptionSeatScanModal` decodes the desk first
+(`/scan-seat/decode`, restricted roles) and then asks *which* collaborator, before calling
+`/check-in-for` or `/check-out-for`. Those routes are role-gated, and the audit trail records the
+staff member as the actor with the collaborator as the subject — never as though the collaborator
+had done it themselves.
 
 ## 12. Authentication & Security
 
@@ -501,7 +609,11 @@ Endpoints worth knowing:
 | `GET /api/health` | Actually probes Postgres. Registered *before* the JWT middleware. |
 | `GET /api/branding` | Unauthenticated, returns only site name and logo, for the login screen. |
 | `POST /api/reservations` | The guard chain in §10. |
-| `POST /api/checkinout/scan-seat` | The QR flow in §11. |
+| `POST /api/checkinout/scan-seat` | Read-only: resolves the caller's own reservation on a scanned desk. Performs no check-in. §11. |
+| `POST /api/checkinout/check-in` | The only self check-in. Re-validates ownership, status and window; returns the stored timestamp. |
+| `GET /api/reservations/extension-offers` | Earlier starts open to the caller after someone left a desk early. §10. |
+| `POST /api/reservations/:id/extend` | Accepts one, re-deriving the offer server-side first. |
+| `GET /api/checkinout/auto-checkout`, `/reminders` | Site-wide sweeps: operational roles only, not any session holder. |
 | `GET /api/roles/me/permissions` | The caller's **own** grants only. Enumerating everyone's stays behind `manage_roles`. |
 | `GET /api/cron/sweep?job=…` | `CRON_SECRET`-authenticated. `job=all` runs every sweep. |
 | `POST /api/audit` | The only write path to the audit log. |
@@ -586,7 +698,7 @@ restart. Several bugs in this project's history were a stale server.
 | `DEMO_MODE` | server | `true` disables authentication. Never in production. |
 | `VITE_DEMO_MODE` | **build time** | Compile-time constant — setting it at runtime does nothing |
 | `CRON_SECRET` | server | You invent it. See §16 of `SETUP.md`. |
-| `QR_HMAC_SECRET` | server | Signs both token families. **Rotating it invalidates every printed badge.** |
+| `QR_HMAC_SECRET` | server | Signs the desk badges. **Required** — a missing value is a configuration error, not a fallback (§11). **Rotating it invalidates every printed badge.** |
 | `TZ` | server | Optional. Defaults to `Africa/Casablanca` (see below). Set it only to relocate the site. |
 
 ### The site timezone
@@ -669,7 +781,6 @@ admitting them.
   code only writes, never parses — but `npm audit` will keep reporting it. Revisit if the app ever
   gains a path that *reads* a spreadsheet.
 - Supabase Auth's leaked-password protection is **not enabled**.
-- `QR_HMAC_SECRET` has a hardcoded development default. Set it explicitly in production.
 
 **Correctness / edge cases**
 - The Digital Twin's availability overlay is computed for the **start date** only. A multi-day

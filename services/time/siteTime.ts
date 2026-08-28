@@ -68,26 +68,63 @@ pinProcessTimezone();
  * fixed +60 - so the Ramadan shift to UTC+0 is handled for the date in question rather than the
  * date this code was written.
  */
-function siteOffsetMinutesAt(instantMs: number): number {
-  const dtf = new Intl.DateTimeFormat('en-US', {
-    timeZone: SITE_TIMEZONE,
-    hour12: false,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
+const SITE_PARTS_FORMAT = new Intl.DateTimeFormat('en-US', {
+  timeZone: SITE_TIMEZONE,
+  hour12: false,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+});
 
-  const parts = dtf.formatToParts(new Date(instantMs));
+/** The site's wall clock at an instant, broken out. `hour` is normalised from a 24 midnight. */
+function sitePartsAt(instantMs: number) {
+  const parts = SITE_PARTS_FORMAT.formatToParts(new Date(instantMs));
   const get = (type: string) => Number(parts.find((p) => p.type === type)?.value);
+  return {
+    year: get('year'),
+    month: get('month'),
+    day: get('day'),
+    // `hour` can come back as 24 for midnight under hour12:false in some engines.
+    hour: get('hour') % 24,
+    minute: get('minute'),
+    second: get('second'),
+  };
+}
 
-  // `hour` can come back as 24 for midnight under hour12:false in some engines.
-  const hour = get('hour') % 24;
-
-  const asIfUtc = Date.UTC(get('year'), get('month') - 1, get('day'), hour, get('minute'), get('second'));
+function siteOffsetMinutesAt(instantMs: number): number {
+  const p = sitePartsAt(instantMs);
+  const asIfUtc = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
   return (asIfUtc - instantMs) / 60000;
+}
+
+/** The site's calendar day and minutes-past-midnight at an instant. */
+export interface SiteClock {
+  /** YYYY-MM-DD at the site. */
+  date: string;
+  /** Minutes from midnight at the site, so it compares directly against a reservation window. */
+  minutes: number;
+}
+
+/**
+ * Reads an instant as the site's wall clock.
+ *
+ * The counterpart of siteWallClockToEpoch, and needed for the same reason: `new Date().getHours()`
+ * answers in the DEVICE's zone, which is the site's only by luck. Anything asking "has this window
+ * passed yet" has to compare like for like, and a browser open in another country must not decide
+ * that a desk freed at 14:00 in Safi is still ahead.
+ */
+export function siteClockAt(instant: Date | number = Date.now()): SiteClock {
+  const ms = instant instanceof Date ? instant.getTime() : instant;
+  if (!Number.isFinite(ms)) return { date: '', minutes: Number.NaN };
+  const p = sitePartsAt(ms);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return {
+    date: `${p.year}-${pad(p.month)}-${pad(p.day)}`,
+    minutes: p.hour * 60 + p.minute,
+  };
 }
 
 /**

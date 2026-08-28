@@ -9,6 +9,8 @@ import { NotificationService } from '../notifications/notificationService';
 import { supabase } from '@/database/client';
 import { apiCreateReservation, apiFetchReservations } from '../api/reservationApi';
 import { isDateLockedDown, isPublicHoliday, isWeekend, getHolidayName, calculateBusinessDays } from '@/frontend/src/shared/utils/dateValidation';
+import { siteClockAt } from '@/services/time/siteTime';
+import { findOwnSlotClash, describeSlotClash } from './slotOverlap';
 
 const CACHE_KEY = 'xfactory_reservations_v2';
 
@@ -130,7 +132,7 @@ export class ReservationService {
    * BEFORE YOU MODIFY THIS
    *
    * This is the only sanctioned way to create a reservation. It is called from
-   * POST /api/reservations, from the Digital Twin and form booking paths, and from the
+   * POST /api/reservations, from the Digital Twin booking path, and from the
    * waiting-list acceptOffer flow. Writing to ReservationRepository.createReservation directly
    * skips EVERY rule below - quotas, conflicts, VIP locks, approval routing - and produces a row
    * the rest of the system believes was validated.
@@ -150,11 +152,14 @@ export class ReservationService {
    *  2. Weekend / public holiday. Configurable, skipped for bypass roles.
    *  3. Conflict over the whole span (see ReservationRepository.checkConflict). On conflict this
    *     throws ReservationConflictError CARRYING ALTERNATIVE DESKS, so the UI can offer a way
-   *     forward instead of only refusing. Keep that payload if you touch the error.
+   *     forward instead of only refusing.
+   *  3b. The CALLER'S own overlapping bookings (see slotOverlap.ts): one person cannot hold two
+   *     desks at the same hours. Enforced for every role - it is physical, not policy. Keep that payload if you touch the error.
    *  4. BR-07 VIP / management lock: a non-reservable desk needs a privileged role or membership
    *     in cluster_vip_members. This was once enforced only by disabling the button, which a
    *     direct POST ignored.
-   *  5. Booking window: settings.bookingWindowDays minimum lead time.
+   *  5. Booking window: settings.bookingWindowDays minimum lead time. NO exception - an early
+   *     check-out does not make the freed hours bookable here; see earlyExtensionService.ts.
    *  6. Quotas: per day and per week, counted from the user's existing reservations.
    *  7. Approval routing (below).
    *
@@ -300,6 +305,28 @@ export class ReservationService {
       }
     }
 
+    // One person, one desk at a time. The check above asks whether the DESK is taken; this one
+    // asks whether the PERSON is, which the desk check cannot see - their other booking is on a
+    // different desk, so nothing about WS-B reveals that they are already sitting at WS-A.
+    //
+    // Not waived for bypass roles, deliberately: see the reasoning in slotOverlap.ts. Not a
+    // ReservationConflictError either - offering alternative desks would answer the wrong
+    // question, since every desk in the building is equally unavailable to someone who is already
+    // seated. The only ways forward are a later slot or cancelling, which the message names.
+    if (payload.user_id && payload.reservation_date && payload.start_time && payload.end_time) {
+      const ownReservations = await ReservationRepository.getUserReservations(payload.user_id, dbClient);
+      const clash = findOwnSlotClash(ownReservations, {
+        startDate: payload.reservation_date,
+        endDate: effectiveEndDate,
+        startTime: payload.start_time,
+        endTime: payload.end_time,
+      });
+
+      if (clash) {
+        throw new Error(describeSlotClash(clash));
+      }
+    }
+
     // BR-07: block booking a VIP/management-locked seat unless the requester holds one of the
     // roles that cluster is reserved for, or has been individually assigned to it. Previously
     // this was only enforced client-side (the seat button was disabled) - a direct POST here
@@ -334,8 +361,8 @@ export class ReservationService {
     }
 
     if (!isBypassRole && payload.reservation_date) {
-      const todayStr = new Date().toISOString().split('T')[0];
-      const today = new Date(todayStr + 'T00:00:00');
+      const now = siteClockAt();
+      const today = new Date(now.date + 'T00:00:00');
       const minAllowedStart = new Date(today);
       minAllowedStart.setDate(minAllowedStart.getDate() + settings.bookingWindowDays);
       const requestedDate = new Date(payload.reservation_date + 'T00:00:00');

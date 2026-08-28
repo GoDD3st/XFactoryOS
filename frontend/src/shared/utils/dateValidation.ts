@@ -175,7 +175,12 @@ export function validateReservationConstraints(
 ): ReservationValidationResult {
   const isBypassRole = !!userRole && settings.bypassRoles.includes(userRole);
 
-  // 0. Anticipation delay check - reservation must start at least bookingWindowDays from today
+  // 0. Anticipation delay check - reservation must start at least bookingWindowDays from today.
+  //
+  // NO EXCEPTION EXISTS HERE, and none must be added. An early check-out does not open the freed
+  // hours to other users: the holder of the NEXT reservation on that desk may extend backwards
+  // into them (services/reservations/earlyExtensionService.ts), and that path modifies an
+  // existing reservation rather than creating one, so it never reaches this rule.
   if (!isBypassRole) {
     const todayStr = new Date().toISOString().split('T')[0];
     const today = new Date(todayStr + 'T00:00:00');

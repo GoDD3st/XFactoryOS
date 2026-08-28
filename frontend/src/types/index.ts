@@ -24,6 +24,10 @@ export interface UserProfile {
 // 'partiel' is a derived overlay status, never stored: a seat with bookings that leave a bookable
 // gap in the business day. 'réservé' now means taken for the WHOLE day, which is the only case
 // where queuing for a no-show is the sole way in. See services/workspaces/seatAvailability.ts.
+//
+// There is deliberately NO status for "freed by an early check-out". Those hours are never offered
+// to the floor - only to the holder of the next reservation on that desk, as an explicit
+// extension offer. See services/reservations/earlyExtensionService.ts.
 export type SeatStatus = 'disponible' | 'partiel' | 'réservé' | 'maintenance' | 'occupé' | 'extension' | 'management_reserved' | 'disabled';
 
 /** Per-seat availability detail for the selected date/window, attached by the overlay. */
@@ -34,6 +38,13 @@ export interface SeatAvailabilityInfo {
   gaps: { start: string; end: string }[];
   /** Whether the currently selected window is bookable as-is. */
   windowFree: boolean;
+  /**
+   * Somebody is physically checked in over the selected window.
+   *
+   * Carried because a management-locked desk keeps its own status, so the floor plan cannot read
+   * 'occupé' off `status` for one and has to be told here instead.
+   */
+  checkedIn: boolean;
   /**
    * The CALLER'S OWN booking on this seat for the selected date, when there is one.
    *
@@ -84,7 +95,14 @@ export interface Workstation {
   status: SeatStatus;
   reservable: boolean;
   is_extension: boolean; // Seats 5-8
-  visibleToUsers?: boolean; // Toggled by admin
+  /**
+   * Admin toggle, and it governs STANDARD desks only.
+   *
+   * An extension desk (is_extension / seat 5 and up) is never listed for collaborators on the
+   * strength of this flag: it shows for the one collaborator holding it that day and for nobody
+   * else. See isSeatVisibleToViewer() in DigitalTwin.
+   */
+  visibleToUsers?: boolean;
   metadata: WorkstationMetadata;
   /** Populated by fetchClustersWithOverlays for the requested date/window. */
   availability?: SeatAvailabilityInfo;

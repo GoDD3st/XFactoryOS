@@ -110,7 +110,14 @@ export class WorkspaceService {
     });
 
     const applyReservationOverlay = (ws: Workstation): Workstation => {
-      if (ws.status === 'maintenance' || ws.status === 'management_reserved') return ws;
+      // A desk out of service reports that and nothing else: what it might otherwise have been
+      // booked for is irrelevant while it cannot be sat at.
+      //
+      // Management-locked desks are NOT skipped, though they were until this became visible: a
+      // reservation on one changed nothing on the floor plan, so a director booking a VIP desk
+      // saw it stay grey and had no way to tell it had worked. The lock and the occupancy are two
+      // different facts about the same desk, and both have to be readable.
+      if (ws.status === 'maintenance') return ws;
 
       // Prefer the id index; fall back to code for rows whose workstation_id didn't resolve.
       const seatReservations = byWorkstationId.get(ws.id) || byWorkstationCode.get(ws.code) || [];
@@ -140,9 +147,19 @@ export class WorkspaceService {
           )
         : undefined;
 
+      // The lock survives the overlay. `management_reserved` describes WHO may book this desk,
+      // not whether it currently is booked, and a good half of the application reads that exact
+      // string to answer other questions - whether a cluster is still locked
+      // (ClusterAuthorizationsView, ClustersAdminView, GCIView, ClusterAuthorizationService), how
+      // many desks are under management control (aiAssistantService), which desks may be offered
+      // as alternatives (ReservationService). Overwriting it with 'réservé' would silently tell
+      // every one of them that the cluster had been unlocked. The occupancy travels in
+      // `availability` instead, and the floor plan paints from there.
+      const isManagementLocked = ws.status === 'management_reserved';
+
       return {
         ...ws,
-        status: availability.status as SeatStatus,
+        status: isManagementLocked ? ws.status : (availability.status as SeatStatus),
         // A partially-booked seat stays reservable: the free gaps are genuinely bookable, and the
         // conflict check on submit is what actually guards the slot.
         reservable: ws.reservable && availability.windowFree,
@@ -150,6 +167,7 @@ export class WorkspaceService {
           busy: availability.intervals.map((i) => ({ start: toHHMM(i.start), end: toHHMM(i.end) })),
           gaps: availability.gaps.map((i) => ({ start: toHHMM(i.start), end: toHHMM(i.end) })),
           windowFree: availability.windowFree,
+          checkedIn: availability.checkedIn,
           ownReservation: own
             ? {
                 id: own.id,

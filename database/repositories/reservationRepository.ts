@@ -4,6 +4,7 @@ import { Reservation, ReservationStatus } from '@/frontend/src/types';
 import { AuditRepository } from './auditRepository';
 import { WorkstationRepository } from './workstationRepository';
 import { isValidUuid } from '../utils/uuid';
+import { siteWallClockToEpoch } from '@/services/time/siteTime';
 
 /**
  * `reservations` stores only foreign keys - there is no flat `workstation_code`, `user_name` or
@@ -200,6 +201,54 @@ export class ReservationRepository {
   }
 
   /**
+   * Every reservation touching one desk on one day - INCLUDING the cancelled, rejected and
+   * completed rows the other readers filter out.
+   *
+   * Those rows are the point. Deciding whether the holder of a reservation may start earlier
+   * means reading the desk's whole timeline: the booking immediately before theirs, whether it
+   * ended early (a COMPLETED row plus check_out_at), and whether anything live sits in the gap.
+   * A reader that filtered out completed bookings could not tell an early departure from a desk
+   * that was never booked, and the two must not be confused - only the first creates an offer.
+   *
+   * Matched on the instant range rather than on a date column, so a multi-day booking that merely
+   * passes through `date` is returned too.
+   *
+   * No client is passed on purpose: resolveClient() prefers the service-role client on the server,
+   * which is what lets this see the previous occupant's row at all. Under a user-scoped client RLS
+   * shows a collaborator only their own bookings, and the offer would simply never materialise -
+   * the failure mode is "no extension offered", never "an extension wrongly granted".
+   *
+   * See services/reservations/earlyExtensionService.ts for the rule this feeds.
+   */
+  static async getSeatReservationsOnDate(
+    workstationId: string,
+    date: string,
+    client?: SupabaseClient
+  ): Promise<Reservation[]> {
+    if (!isValidUuid(workstationId)) return [];
+    const db = client || (await resolveClient());
+
+    const dayStartMs = siteWallClockToEpoch(date, '00:00');
+    if (!Number.isFinite(dayStartMs)) return [];
+    const dayStart = new Date(dayStartMs).toISOString();
+    const dayEnd = new Date(dayStartMs + 24 * 60 * 60 * 1000).toISOString();
+
+    try {
+      const { data, error } = await db
+        .from('reservations')
+        .select(RESERVATION_SELECT)
+        .eq('workstation_id', workstationId)
+        .lt('start_at', dayEnd)
+        .gt('end_at', dayStart);
+      if (error || !data) return [];
+      return data.map((r: any) => this.mapRowToReservation(r));
+    } catch {
+      // Fail closed: no evidence of a release means no exception, not a free pass.
+      return [];
+    }
+  }
+
+  /**
    * Fetch all reservations from Supabase (throws on query error - never silently wipe cache)
    */
 
@@ -313,6 +362,57 @@ export class ReservationRepository {
     );
 
     return createdReservation;
+  }
+
+  /**
+   * Moves an existing reservation's window, keeping every derived column consistent with it.
+   *
+   * The one sanctioned way to change WHEN a reservation happens. It exists for the early-extension
+   * workflow (services/reservations/earlyExtensionService.ts) and deliberately does nothing else:
+   * no status change, no desk change, no ownership change. Callers must have already established
+   * that the new window is allowed - this method enforces no business rule of its own.
+   *
+   * check_in_deadline is recomputed rather than left alone. It is derived from the start, so a
+   * reservation moved earlier while keeping a deadline computed from its old start would be
+   * checkable-in long after the no-show window should have closed.
+   *
+   * A `23P01` from Postgres is the exclusion constraint on (workstation_id, period) refusing an
+   * overlap with another live reservation. That is the race the application cannot close by
+   * checking first: two requests can both read a free gap and only one may have it. It is
+   * translated into a user-facing refusal rather than a 500 - losing that race is a normal
+   * outcome, not a fault.
+   */
+  static async updateReservationWindow(
+    id: string,
+    window: { date: string; startTime: string; endTime: string; endDate?: string },
+    client?: SupabaseClient
+  ): Promise<Reservation | null> {
+    const db = client || (await resolveClient());
+
+    const startAt = new Date(`${window.date}T${window.startTime}`).toISOString();
+    const endAt = new Date(`${window.endDate || window.date}T${window.endTime}`).toISOString();
+
+    const { data, error } = await db
+      .from('reservations')
+      .update({
+        start_at: startAt,
+        end_at: endAt,
+        check_in_deadline: new Date(new Date(startAt).getTime() + 30 * 60000).toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .select(RESERVATION_SELECT)
+      .single();
+
+    if (error) {
+      if ((error as any).code === '23P01') {
+        throw new Error("Ce créneau vient d'être pris sur ce poste. Rafraîchissez la page.");
+      }
+      console.error('updateReservationWindow error:', error);
+      return null;
+    }
+
+    return data ? this.mapRowToReservation(data) : null;
   }
 
   /**

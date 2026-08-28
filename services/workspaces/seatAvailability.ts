@@ -146,6 +146,12 @@ export interface SeatAvailability {
  * 'réservé' is deliberately reserved (no pun intended) for seats taken the entire business day - 
  * those are the ones where queuing for a no-show is the only way in. A seat booked 08:00-09:00 is
  * 'partiel': still clickable, because the rest of the day is genuinely bookable.
+ *
+ * DELIBERATELY has no notion of "recently released". Hours given back by an early check-out are
+ * NOT a public slot: they never become bookable ahead of the normal reservation rules, and the
+ * only person who may claim them is the holder of the next reservation on this same desk, via the
+ * explicit offer in services/reservations/earlyExtensionService.ts. A status here that advertised
+ * freed time to the whole floor would re-open exactly the loophole that workflow exists to close.
  */
 export function deriveSeatAvailability(
   reservations: Reservation[],
