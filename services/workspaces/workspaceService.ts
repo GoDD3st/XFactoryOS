@@ -8,8 +8,7 @@ import {
   deriveSeatAvailability,
   toHHMM,
   DEFAULT_BUSINESS_START,
-  DEFAULT_BUSINESS_END, HOLDING_STATUSES, ReleaseContext } from './seatAvailability';
-import { siteClockAt } from '@/services/time/siteTime';
+  DEFAULT_BUSINESS_END, HOLDING_STATUSES } from './seatAvailability';
 
 export const INITIAL_CLUSTERS: Cluster[] = [
   { id: 'cl-a', code: 'CL-A', name: 'Cluster A', description: 'Cluster A', desk_count: 4, is_management_only: false, enabled: true, location_zone: 'Openspace', workstations: [] },
@@ -64,16 +63,6 @@ export class WorkspaceService {
      * Omit it and no ownership is computed at all - nobody else's booking is ever attributed.
      */
     currentUserId?: string;
-    /**
-     * The site's lead time, settings.bookingWindowDays, so the overlay can mark desks freed
-     * inside it as 'libéré' - bookable now, despite the notice a normal booking needs.
-     *
-     * Passed in rather than read here because this runs on every slot change: reading settings
-     * per call would put a request on /api/settings behind every keystroke in the date picker.
-     * Callers that leave it out get no release flags at all, which is the right default for the
-     * read-only floor views that never book anything.
-     */
-    bookingWindowDays?: number;
   }): Promise<Cluster[]> {
     const wsMap = await WorkstationRepository.getWorkstations();
     const clusters = await WorkstationRepository.getClusters();
@@ -83,19 +72,6 @@ export class WorkspaceService {
     const businessEnd = options?.businessEnd || DEFAULT_BUSINESS_END;
     const windowStart = options?.startTime || businessStart;
     const windowEnd = options?.endTime || businessEnd;
-
-    // The first date an ordinary booking may start. Everything before it is unreachable without a
-    // release, which is exactly what the 'libéré' overlay marks.
-    let release: ReleaseContext | undefined;
-    if (typeof options?.bookingWindowDays === 'number') {
-      const now = siteClockAt();
-      const earliest = new Date(`${now.date}T00:00:00`);
-      earliest.setDate(earliest.getDate() + options.bookingWindowDays);
-      release = {
-        now,
-        earliestNormalDate: `${earliest.getFullYear()}-${String(earliest.getMonth() + 1).padStart(2, '0')}-${String(earliest.getDate()).padStart(2, '0')}`,
-      };
-    }
 
     let reservations: Reservation[] = [];
     if (typeof window !== 'undefined') {
@@ -146,15 +122,10 @@ export class WorkspaceService {
         windowStart,
         windowEnd,
         businessStart,
-        businessEnd,
-        release
+        businessEnd
       );
 
-      // Nothing holds the seat AND nothing was handed back on it: the plain workstation row is
-      // already the whole truth. The released check has to be part of this test - a cancelled
-      // booking leaves no occupied interval behind, so returning early on intervals alone threw
-      // away every release before it could be seen.
-      if (availability.intervals.length === 0 && availability.released.length === 0) return ws;
+      if (availability.intervals.length === 0) return ws;
 
       // The caller's own booking on this seat, if any. Same date and status rules the occupancy
       // calculation uses, so a row that colours the seat is exactly a row that can appear here -
@@ -179,8 +150,6 @@ export class WorkspaceService {
           busy: availability.intervals.map((i) => ({ start: toHHMM(i.start), end: toHHMM(i.end) })),
           gaps: availability.gaps.map((i) => ({ start: toHHMM(i.start), end: toHHMM(i.end) })),
           windowFree: availability.windowFree,
-          released: availability.released.map((i) => ({ start: toHHMM(i.start), end: toHHMM(i.end) })),
-          windowReleased: availability.windowReleased,
           ownReservation: own
             ? {
                 id: own.id,

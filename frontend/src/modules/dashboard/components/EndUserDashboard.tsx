@@ -21,7 +21,13 @@ import { ExtensionRequestModal } from '../../../shared/components/ExtensionReque
 import { SeatBookingModal } from '../../../shared/components/SeatBookingModal';
 import { Workstation, Cluster, Reservation, ApprovalRequest, SystemSettings } from '../../../types';
 import { createReservation, syncReservationsFromDb } from '@/services/reservations/reservationService';
+import {
+  apiFetchExtensionOffers,
+  apiAcceptExtension,
+  EarlyExtensionOffer,
+} from '@/services/api/reservationApi';
 import { validateReservationConstraints } from '@/frontend/src/shared/utils/dateValidation';
+import { findOwnSlotClash, describeSlotClash } from '@/services/reservations/slotOverlap';
 import { apiCheckIn, apiCheckOut } from '@/services/api/checkinoutApi';
 import { apiJoinWaitingList } from '@/services/api/waitingListApi';
 import { apiCompleteApprovalRequest, apiFetchMyApprovalRequests } from '@/services/api/approvalApi';
@@ -91,6 +97,18 @@ export const EndUserDashboard: React.FC = () => {
   // Active / Upcoming reservation for Hero Banner
   const [myReservations, setMyReservations] = useState<Reservation[]>([]);
 
+  /**
+   * Earlier starts offered on reservations this user already holds, because the previous occupant
+   * of that same desk left before the end of their slot.
+   *
+   * This is the ONLY route those freed hours can take. They are never published as availability,
+   * never shorten anyone's lead time, and are never applied without the press below - the holder's
+   * day is planned around the start time, so moving it is their decision, not the system's.
+   */
+  const [extensionOffers, setExtensionOffers] = useState<EarlyExtensionOffer[]>([]);
+  const [extensionBusy, setExtensionBusy] = useState<string | null>(null);
+  const [extensionMsg, setExtensionMsg] = useState<string | null>(null);
+
   const loadMyData = async () => {
     const all = await syncReservationsFromDb();
     const mine = all.filter(
@@ -106,6 +124,11 @@ export const EndUserDashboard: React.FC = () => {
     // requests in every state.
     const myRequests = await apiFetchMyApprovalRequests();
     setReLoopRequest(myRequests.find((a) => a.status === 'needs_info') || null);
+
+    // Recomputed server-side from the desk's timeline on every load rather than stored anywhere,
+    // so an offer that has lapsed - the hours passed, the desk was re-taken - simply stops
+    // appearing instead of lingering as a promise the server would refuse.
+    setExtensionOffers(await apiFetchExtensionOffers().catch(() => []));
   };
 
   useEffect(() => {
@@ -125,6 +148,26 @@ export const EndUserDashboard: React.FC = () => {
 
   const activeHeroRes = myReservations.find(
     (r) => r.status === 'check-in' || r.status === 'confirmée'
+  );
+
+  /**
+   * The viewer's own booking that collides with the window currently selected, if any.
+   *
+   * Derived rather than folded into validationError so it can never go stale: cancelling the
+   * offending booking, or a refresh that brings in a new one, re-answers this on the spot, where
+   * a value written into state at slot-change time would keep refusing a slot that has since
+   * been freed. The server enforces the same rule from its own read - this is what stops the
+   * refusal arriving only after the user has filled in the dialog and pressed confirm.
+   */
+  const ownSlotClash = React.useMemo(
+    () =>
+      findOwnSlotClash(myReservations, {
+        startDate: resDate,
+        endDate: endDate || resDate,
+        startTime,
+        endTime,
+      }),
+    [myReservations, resDate, endDate, startTime, endTime]
   );
 
   // --- Ma présence (check-in / check-out) ---
@@ -168,8 +211,9 @@ export const EndUserDashboard: React.FC = () => {
         setPresenceMsg('Check-in effectué - bonne journée !');
       }
       await loadMyData();
-      // Both ends of the day change what the floor shows, and a check-out changes it for everyone:
-      // leaving early hands the rest of the slot back, which is what paints the desk as libéré.
+      // Both ends of the day change what the floor shows: the desk becomes occupied on check-in
+      // and returns to the ordinary pool on check-out. The freed remainder is NOT advertised as a
+      // special opening - see services/reservations/earlyExtensionService.ts.
       window.dispatchEvent(new CustomEvent('xfactory_reservations_changed'));
     } catch (err: any) {
       setPresenceMsg(err?.message || 'Action impossible.');
@@ -183,44 +227,18 @@ export const EndUserDashboard: React.FC = () => {
   type SeatSelection = { workstation: Workstation; cluster: Cluster; forDate: string };
 
   /**
-   * Whether a window sits inside hours this desk gave back early.
-   *
-   * The seat overlay publishes the freed stretches; containment is re-tested here rather than
-   * reusing availability.windowReleased because that flag answers for the window the FLOOR PLAN
-   * was showing, and this dialog lets the hours be changed afterwards.
-   *
-   * Three guards, all fail-closed: no seat, a date the overlay was not computed for, or a
-   * multi-day span - which necessarily reaches into days nobody released. The server re-derives
-   * the same answer from the database before accepting anything, so being wrong here costs a
-   * refusal, never an unearned booking.
-   */
-  const releaseGrantFor = (
-    seat: SeatSelection | null,
-    next: { startDate: string; endDate: string; startTime: string; endTime: string }
-  ): boolean => {
-    if (!seat || seat.forDate !== next.startDate) return false;
-    if ((next.endDate || next.startDate) !== next.startDate) return false;
-    const released = seat.workstation.availability?.released || [];
-    // Zero-padded HH:mm compares correctly as text.
-    return released.some((r) => next.startTime >= r.start && next.endTime <= r.end);
-  };
-
-  /**
    * Slot edits, from the booking dialog or from the floor plan's slot selector.
    *
    * Every change routes through here so the verdict moves with the state: a holiday must stop
    * being flagged the moment a working day is chosen, and the business-day count that decides
    * whether the booking needs Direction approval has to be recomputed on the same edit.
-   *
-   * The seat is part of the verdict, not just the slot: the lead-time rule is waived for hours a
-   * desk released early, so which desk is selected can be the difference between a valid booking
-   * and a refused one. It is passed explicitly because selecting a seat has to validate against
-   * that seat before React has re-rendered with it in state.
    */
-  const applySlotValidation = (
-    next: { startDate: string; endDate: string; startTime: string; endTime: string },
-    seat: SeatSelection | null
-  ) => {
+  const applySlotValidation = (next: {
+    startDate: string;
+    endDate: string;
+    startTime: string;
+    endTime: string;
+  }) => {
     setResDate(next.startDate);
     setEndDate(next.endDate);
     setStartTime(next.startTime);
@@ -232,8 +250,7 @@ export const EndUserDashboard: React.FC = () => {
       next.startTime,
       next.endTime,
       settings,
-      currentRole,
-      { releasedWindow: releaseGrantFor(seat, next) }
+      currentRole
     );
     setValidationError(result.errorMessage);
     setBusinessDaysCount(result.businessDays);
@@ -246,19 +263,11 @@ export const EndUserDashboard: React.FC = () => {
     endDate: string;
     startTime: string;
     endTime: string;
-  }) => applySlotValidation(next, selectedSeat);
+  }) => applySlotValidation(next);
 
   const handleSeatClickFromTwin = (ws: Workstation, cl: Cluster) => {
-    const seat: SeatSelection = { workstation: ws, cluster: cl, forDate: resDate };
-    setSelectedSeat(seat);
+    setSelectedSeat({ workstation: ws, cluster: cl, forDate: resDate });
     setBookingSuccessMsg(null);
-    // Re-validate for THIS desk. A date inside the lead time is refused on an ordinary seat and
-    // allowed on one that released these hours, so the verdict standing from before the click can
-    // be the wrong one - and it is the verdict that decides whether the dialog can confirm.
-    applySlotValidation(
-      { startDate: resDate, endDate: endDate || resDate, startTime, endTime },
-      seat
-    );
   };
 
   /**
@@ -273,15 +282,12 @@ export const EndUserDashboard: React.FC = () => {
    * undo an extension request the user had already filled in.
    */
   const handleTwinSlotChange = (slot: { date: string; startTime: string; endTime: string }) => {
-    applySlotValidation(
-      {
-        startDate: slot.date,
-        endDate: endDate && endDate > slot.date ? endDate : slot.date,
-        startTime: slot.startTime,
-        endTime: slot.endTime,
-      },
-      selectedSeat
-    );
+    applySlotValidation({
+      startDate: slot.date,
+      endDate: endDate && endDate > slot.date ? endDate : slot.date,
+      startTime: slot.startTime,
+      endTime: slot.endTime,
+    });
   };
 
   /**
@@ -338,10 +344,35 @@ export const EndUserDashboard: React.FC = () => {
     }
   };
 
+  /**
+   * Accepts an earlier start. The server rebuilds the offer from the database and re-validates
+   * ownership, the timeline and every conflict before writing anything, so this call is a request
+   * rather than an instruction - a stale offer is refused with an explanation, not applied.
+   */
+  const handleAcceptExtension = async (offer: EarlyExtensionOffer) => {
+    setExtensionBusy(offer.reservationId);
+    setExtensionMsg(null);
+    try {
+      await apiAcceptExtension(offer.reservationId, offer.proposedStart);
+      setExtensionMsg(
+        `Réservation prolongée : le poste ${offer.workstationCode} est à vous dès ${offer.proposedStart}.`
+      );
+      await loadMyData();
+      window.dispatchEvent(new CustomEvent('xfactory_reservations_changed'));
+    } catch (err: any) {
+      setExtensionMsg(err?.message || 'Échec de la prolongation.');
+    } finally {
+      setExtensionBusy(null);
+    }
+  };
+
   const handleConfirmBookingClick = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedSeat) return;
     if (validationError) return;
+    // Refused server-side too; stopping here keeps the user out of the approval flow below for a
+    // booking that cannot be created.
+    if (ownSlotClash) return;
 
     if (requiresExtension) {
       // Open Extension Request Modal to collect objective
@@ -467,12 +498,14 @@ export const EndUserDashboard: React.FC = () => {
               Réservez votre poste de travail Smart Open Space. (08:00 - 18:00).
             </p>
 
-            {/* Scanning the badge on the desk is the check-in, and it already worked from the
-                phone's own camera app - the QR encodes this site with ?scan=<token>. This button
-                is for when the app is already open, where being told to leave it, open the camera
-                app and come back is absurd, and for desktops, which have no camera app to leave
-                to. Same endpoint either way: the server reads the user from the session and the
-                desk from the signed token, and acts only if a reservation matches both. */}
+            {/* Scanning the badge on the desk OPENS the check-in screen - it does not perform
+                the check-in, which waits for an explicit button (see SeatScanScreen). It already
+                worked from the phone's own camera app, since the QR encodes this site with
+                ?scan=<token>; this button is for when the app is already open, where being told
+                to leave it, open the camera app and come back is absurd, and for desktops, which
+                have no camera app to leave to. Same endpoint either way: the server reads the
+                user from the session and the desk from the signed token, and answers only about
+                a reservation matching both. */}
             <button
               type="button"
               onClick={() => setShowSeatScan(true)}
@@ -595,6 +628,71 @@ export const EndUserDashboard: React.FC = () => {
         </div>
       )}
 
+      {/* An earlier period became free on a desk this user already holds.
+          Shown as an offer with an explicit button - never applied on their behalf. */}
+      {extensionOffers.map((offer) => (
+        <div
+          key={offer.reservationId}
+          className="bg-teal-50 border-2 border-teal-300 p-4 rounded-2xl shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+        >
+          <div className="flex items-start space-x-3 min-w-0">
+            <div className="p-2 bg-teal-600 text-white rounded-xl shrink-0">
+              <Clock className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <h4 className="text-xs font-black text-teal-900 uppercase tracking-tight">
+                Une période antérieure s'est libérée avant votre réservation
+              </h4>
+              <p className="text-xs text-teal-900 font-semibold mt-1">
+                Poste {offer.workstationCode} ({offer.clusterName}) le {offer.date} — votre créneau :{' '}
+                <span className="font-black">
+                  {offer.currentStart} → {offer.currentEnd}
+                </span>
+              </p>
+              <p className="text-xs text-teal-800 font-semibold">
+                Vous pouvez le faire commencer plus tôt :{' '}
+                <span className="font-black">
+                  {offer.proposedStart} → {offer.currentEnd}
+                </span>{' '}
+                ({offer.gainedMinutes} min de plus)
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => handleAcceptExtension(offer)}
+            disabled={extensionBusy === offer.reservationId}
+            className="px-4 py-2 bg-teal-700 hover:bg-teal-800 disabled:opacity-60 text-white text-xs font-extrabold rounded-xl shadow transition-all shrink-0"
+          >
+            {extensionBusy === offer.reservationId ? 'Prolongation...' : 'Prolonger la réservation'}
+          </button>
+        </div>
+      ))}
+
+      {extensionMsg && (
+        <div className="bg-slate-50 border border-slate-200 text-slate-800 p-3 rounded-2xl flex items-center justify-between gap-3">
+          <p className="text-xs font-bold">{extensionMsg}</p>
+          <button
+            onClick={() => setExtensionMsg(null)}
+            className="text-xs font-bold text-slate-500 hover:underline shrink-0"
+          >
+            Fermer
+          </button>
+        </div>
+      )}
+
+      {/* Already seated elsewhere on these hours.
+          Its own banner rather than a line in the dialog, because it is true before any desk is
+          picked: the whole floor is unavailable for this window, and saying so once at the top
+          beats letting someone choose a desk and meet the refusal at the last step. */}
+      {ownSlotClash && (
+        <div className="bg-amber-50 border border-amber-300 text-amber-900 p-4 rounded-2xl flex items-start justify-between gap-3 shadow-sm">
+          <div className="flex items-start space-x-2">
+            <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <p className="text-xs font-bold">{describeSlotClash(ownSlotClash)}</p>
+          </div>
+        </div>
+      )}
+
       {/* The dialog reports its own failures. Everything that happens outside it - an invalid
           window picked on the plan, a release or a queue join that was refused - had nowhere
           left to be seen once the form path was removed, so it is reported here instead of
@@ -643,15 +741,7 @@ export const EndUserDashboard: React.FC = () => {
       {selectedSeat && (
         <SeatBookingModal
           isOpen
-          onClose={() => {
-            setSelectedSeat(null);
-            // The lead-time waiver belonged to that desk. Put the plain verdict back rather than
-            // leaving a green light standing over a slot nothing can be booked in any more.
-            applySlotValidation(
-              { startDate: resDate, endDate: endDate || resDate, startTime, endTime },
-              null
-            );
-          }}
+          onClose={() => setSelectedSeat(null)}
           workstation={selectedSeat.workstation}
           cluster={selectedSeat.cluster}
           user={currentUser}
@@ -659,13 +749,14 @@ export const EndUserDashboard: React.FC = () => {
           endDate={endDate}
           startTime={startTime}
           endTime={endTime}
-          availabilityDate={selectedSeat.forDate}
           purpose={purpose}
           notes={notes}
           businessDays={businessDaysCount}
           requiresExtension={requiresExtension}
           isSubmitting={isSubmitting}
-          validationError={validationError}
+          validationError={
+            validationError || (ownSlotClash ? describeSlotClash(ownSlotClash) : undefined)
+          }
           conflictAlternatives={conflictAlternatives}
           onSlotChange={handleModalSlotChange}
           onPurposeChange={setPurpose}
@@ -707,7 +798,8 @@ export const EndUserDashboard: React.FC = () => {
         <SelfSeatScanModal
           onClose={() => setShowSeatScan(false)}
           onDone={() => {
-            // A scan changes a reservation's status, so the floor and the user's own list have to
+            // The scan screen's check-in/check-out changes a reservation's status, so the floor
+            // and the user's own list have to
             // repaint - the same event the booking path dispatches.
             window.dispatchEvent(new CustomEvent('xfactory_reservations_changed'));
           }}

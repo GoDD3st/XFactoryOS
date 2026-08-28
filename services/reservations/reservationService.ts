@@ -9,12 +9,8 @@ import { NotificationService } from '../notifications/notificationService';
 import { supabase } from '@/database/client';
 import { apiCreateReservation, apiFetchReservations } from '../api/reservationApi';
 import { isDateLockedDown, isPublicHoliday, isWeekend, getHolidayName, calculateBusinessDays } from '@/frontend/src/shared/utils/dateValidation';
-import {
-  deriveSeatAvailability,
-  DEFAULT_BUSINESS_START,
-  DEFAULT_BUSINESS_END,
-} from '@/services/workspaces/seatAvailability';
-import { siteClockAt, SiteClock } from '@/services/time/siteTime';
+import { siteClockAt } from '@/services/time/siteTime';
+import { findOwnSlotClash, describeSlotClash } from './slotOverlap';
 
 const CACHE_KEY = 'xfactory_reservations_v2';
 
@@ -130,65 +126,6 @@ export class ReservationService {
   }
 
   /**
-   * Does this exact request fall inside hours a desk gave back early?
-   *
-   * The one exception to the lead time (settings.bookingWindowDays). Hours freed by a cancellation
-   * or an early check-out become bookable straight away, because the alternative is a desk sitting
-   * empty for the rest of the day while the rule that protects planning refuses everyone who could
-   * use it.
-   *
-   * Re-derived HERE from the database, with the same deriveSeatAvailability() the floor plan uses,
-   * for two separate reasons. Trust: `availability.windowReleased` reaching this method from the
-   * browser would be a client-supplied permission to skip a business rule, and a direct POST could
-   * simply assert it. Consistency: sharing the derivation is what stops the grid promising a
-   * turquoise desk that the server then refuses.
-   *
-   * Deliberately strict, in three ways:
-   *   - the window must sit ENTIRELY inside a freed stretch, so a fifteen-minute release cannot
-   *     unlock a whole day;
-   *   - hours already past at the site are not freed hours (deriveSeatAvailability clips them),
-   *     so this can never approve a booking whose check-in deadline has gone;
-   *   - single-day requests only. A multi-day span reaches into days nobody released.
-   *
-   * Any failure to read the evidence answers false: the caller then applies the ordinary rule.
-   */
-  private static async isWindowReleasedEarly(
-    payload: Partial<Reservation>,
-    minAllowedStart: Date,
-    now: SiteClock
-  ): Promise<boolean> {
-    const { workstation_id, reservation_date, start_time, end_time } = payload;
-    if (!workstation_id || !reservation_date || !start_time || !end_time) return false;
-    if ((payload.end_date || reservation_date) !== reservation_date) return false;
-
-    try {
-      const seatReservations = await ReservationRepository.getSeatReservationsOnDate(
-        workstation_id,
-        reservation_date
-      );
-      if (seatReservations.length === 0) return false;
-
-      const pad = (n: number) => String(n).padStart(2, '0');
-      const earliestNormalDate = `${minAllowedStart.getFullYear()}-${pad(minAllowedStart.getMonth() + 1)}-${pad(minAllowedStart.getDate())}`;
-
-      const availability = deriveSeatAvailability(
-        seatReservations,
-        reservation_date,
-        start_time,
-        end_time,
-        DEFAULT_BUSINESS_START,
-        DEFAULT_BUSINESS_END,
-        { now, earliestNormalDate }
-      );
-
-      return availability.windowReleased;
-    } catch (err) {
-      console.warn('[Reservations] Release check unavailable, applying the standard lead time:', err);
-      return false;
-    }
-  }
-
-  /**
    * Creates a reservation, applying every rule that decides whether one is allowed to exist.
    *
    * ───────────────────────────────────────────────────────────────────────────────────────────
@@ -215,12 +152,14 @@ export class ReservationService {
    *  2. Weekend / public holiday. Configurable, skipped for bypass roles.
    *  3. Conflict over the whole span (see ReservationRepository.checkConflict). On conflict this
    *     throws ReservationConflictError CARRYING ALTERNATIVE DESKS, so the UI can offer a way
-   *     forward instead of only refusing. Keep that payload if you touch the error.
+   *     forward instead of only refusing.
+   *  3b. The CALLER'S own overlapping bookings (see slotOverlap.ts): one person cannot hold two
+   *     desks at the same hours. Enforced for every role - it is physical, not policy. Keep that payload if you touch the error.
    *  4. BR-07 VIP / management lock: a non-reservable desk needs a privileged role or membership
    *     in cluster_vip_members. This was once enforced only by disabling the button, which a
    *     direct POST ignored.
-   *  5. Booking window: settings.bookingWindowDays minimum lead time, waived only for hours a
-   *     desk released early - see isWindowReleasedEarly() just above.
+   *  5. Booking window: settings.bookingWindowDays minimum lead time. NO exception - an early
+   *     check-out does not make the freed hours bookable here; see earlyExtensionService.ts.
    *  6. Quotas: per day and per week, counted from the user's existing reservations.
    *  7. Approval routing (below).
    *
@@ -366,6 +305,28 @@ export class ReservationService {
       }
     }
 
+    // One person, one desk at a time. The check above asks whether the DESK is taken; this one
+    // asks whether the PERSON is, which the desk check cannot see - their other booking is on a
+    // different desk, so nothing about WS-B reveals that they are already sitting at WS-A.
+    //
+    // Not waived for bypass roles, deliberately: see the reasoning in slotOverlap.ts. Not a
+    // ReservationConflictError either - offering alternative desks would answer the wrong
+    // question, since every desk in the building is equally unavailable to someone who is already
+    // seated. The only ways forward are a later slot or cancelling, which the message names.
+    if (payload.user_id && payload.reservation_date && payload.start_time && payload.end_time) {
+      const ownReservations = await ReservationRepository.getUserReservations(payload.user_id, dbClient);
+      const clash = findOwnSlotClash(ownReservations, {
+        startDate: payload.reservation_date,
+        endDate: effectiveEndDate,
+        startTime: payload.start_time,
+        endTime: payload.end_time,
+      });
+
+      if (clash) {
+        throw new Error(describeSlotClash(clash));
+      }
+    }
+
     // BR-07: block booking a VIP/management-locked seat unless the requester holds one of the
     // roles that cluster is reserved for, or has been individually assigned to it. Previously
     // this was only enforced client-side (the seat button was disabled) - a direct POST here
@@ -407,13 +368,10 @@ export class ReservationService {
       const requestedDate = new Date(payload.reservation_date + 'T00:00:00');
 
       if (requestedDate < minAllowedStart) {
-        const releasedEarly = await this.isWindowReleasedEarly(payload, minAllowedStart, now);
-        if (!releasedEarly) {
-          const minFormatted = minAllowedStart.toLocaleDateString('fr-FR');
-          throw new Error(
-            `Les réservations doivent être effectuées au moins ${settings.bookingWindowDays} jour(s) à l'avance. Date minimale : ${minFormatted}. Seuls les postes libérés (turquoise) sont réservables immédiatement, sur les heures rendues.`
-          );
-        }
+        const minFormatted = minAllowedStart.toLocaleDateString('fr-FR');
+        throw new Error(
+          `Les réservations doivent être effectuées au moins ${settings.bookingWindowDays} jour(s) à l'avance. Date minimale : ${minFormatted}.`
+        );
       }
     }
 

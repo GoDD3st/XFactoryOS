@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import { CheckInOutService } from '../../services';
-import { QRTokenService } from '../../services/qr/qrTokenService';
 import { SeatQRTokenService } from '@/services/qr/seatQrTokenService';
 import { ReservationRepository } from '@/database/repositories/reservationRepository';
 import { WorkstationRepository } from '@/database/repositories/workstationRepository';
@@ -21,26 +20,32 @@ export const checkInOutRouter = Router();
 
 const SEAT_QR_MANAGER_ROLES: UserRole[] = ['admin', 'super_admin', 'building_manager', 'gci_manager'];
 const SEAT_SCAN_OVERRIDE_ROLES: UserRole[] = ['receptionist', 'admin', 'super_admin', 'building_manager', 'gci_manager'];
+/** Roles allowed to run a site-wide sweep by hand. Operational staff, not every session holder. */
+const MAINTENANCE_ROLES: UserRole[] = ['admin', 'super_admin', 'building_manager', 'gci_manager'];
 
-// POST /api/checkinout/check-in - Check in (userId forced from req.user, optionally supports QR token verification)
+// POST /api/checkinout/check-in - the collaborator's own check-in, CONFIRMED -> OCCUPIED.
+//
+// This is the ONLY place a self check-in is committed, and it is where the fresh validation
+// happens: the user id comes from the JWT, never the body, and CheckInOutService.checkIn re-reads
+// the reservation and re-checks ownership, status and the time window at this instant. Nothing
+// established earlier in the flow - a QR scan, a screen the user has been looking at for ten
+// minutes - is carried forward as proof.
+//
+// It takes no QR token. The desk badge identifies a WORKSTATION and is not a credential (see
+// services/qr/seatQrTokenService.ts); authorisation comes from the JWT plus the reservation.
 checkInOutRouter.post('/check-in', validateBody(CheckInOutSchema), async (req, res) => {
-  const { reservationId, qrToken } = req.body;
+  const { reservationId } = req.body;
   const userId = req.user!.id;
 
-  if (qrToken) {
-    const qrResult = QRTokenService.verifyQRToken(qrToken, userId);
-    if (!qrResult.valid) {
-      res.status(401).json({ status: 'error', code: 'QR_INVALID', message: qrResult.error });
-      return;
-    }
-  }
-
-  const success = await CheckInOutService.performCheckIn(reservationId, userId);
-  if (!success) {
-    res.status(400).json({ status: 'error', message: 'Échec du check-in. Réservation introuvable ou déjà validée.' });
+  const result = await CheckInOutService.checkIn(reservationId, userId);
+  if (!result.ok) {
+    res.status(400).json({ status: 'error', message: result.message || 'Échec du check-in.' });
     return;
   }
-  res.json({ success: true, message: 'Check-in effectué avec succès' });
+
+  // checkInAt is the timestamp that was actually written to the database. The interface displays
+  // this value rather than reading the browser clock, which can be wrong or deliberately altered.
+  res.json({ success: true, message: 'Check-in effectué avec succès', data: { checkInAt: result.checkInAt } });
 });
 
 // POST /api/checkinout/check-in-for - reception-desk check-in on a collaborator's behalf.
@@ -146,14 +151,6 @@ checkInOutRouter.post('/check-out', validateBody(CheckInOutSchema), async (req, 
   res.json({ success: true, message: 'Check-out effectué avec succès' });
 });
 
-// GET /api/checkinout/qr/:reservationId - Generate secure HMAC-signed QR token for user's reservation
-checkInOutRouter.get('/qr/:reservationId', (req, res) => {
-  const { reservationId } = req.params;
-  const userId = req.user!.id;
-  const token = QRTokenService.generateQRToken(reservationId, userId);
-  res.json({ status: 'success', qrToken: token });
-});
-
 // GET /api/checkinout/seat-qr/:workstationId - Issue the static, printable badge token for a seat
 checkInOutRouter.get('/seat-qr/:workstationId', requireRole(...SEAT_QR_MANAGER_ROLES), (req, res) => {
   const { workstationId } = req.params;
@@ -186,11 +183,19 @@ checkInOutRouter.post(
   }
 );
 
-// POST /api/checkinout/scan-seat - Employee (or receptionist on their behalf) scans a desk's
-// QR badge; toggles check-in/check-out on whichever active reservation that user holds on
-// this seat right now.
+// POST /api/checkinout/scan-seat - resolve a scanned desk badge. READ-ONLY, BY DESIGN.
+//
+// Scanning a QR must never move a reservation's state. It used to: this endpoint toggled the
+// caller straight into check-in, or - worse - straight into check-out if they were already
+// occupying the desk, so a stray scan of your own desk ended your session. The scan now only
+// answers "what is mine on this desk, and what can I do about it"; the acting is done by an
+// explicit button that calls /check-in or /check-out, each of which re-validates from scratch.
+//
+// The response carries the CALLER'S OWN reservation and nothing else. When somebody else holds
+// the desk the answer is a flat "no access" - never a name, an email or any hint of who is
+// sitting there, which the badge being public would otherwise turn into an identity oracle.
 checkInOutRouter.post('/scan-seat', validateBody(ScanSeatSchema), async (req, res) => {
-  const { seatToken, targetUserId } = req.body;
+  const { seatToken } = req.body;
   const caller = req.user!;
 
   const qrResult = SeatQRTokenService.verifySeatToken(seatToken);
@@ -199,50 +204,67 @@ checkInOutRouter.post('/scan-seat', validateBody(ScanSeatSchema), async (req, re
     return;
   }
 
-  const canActForOthers = SEAT_SCAN_OVERRIDE_ROLES.includes(caller.role);
-  const userId = targetUserId && canActForOthers ? targetUserId : caller.id;
+  const resolved = await CheckInOutService.resolveSeatScan(qrResult.workstationId, {
+    id: caller.id,
+    name: caller.full_name,
+  });
 
-  const reservation = await ReservationRepository.getActiveReservationForUserAndSeat(userId, qrResult.workstationId);
-  if (!reservation) {
+  if (!resolved.reservation) {
     res.status(404).json({
       status: 'error',
-      code: 'NO_ACTIVE_RESERVATION',
-      message: 'Aucune réservation active pour cet utilisateur sur ce poste actuellement.',
+      code: 'NO_ACCESS',
+      message: resolved.message || "Vous n'avez pas accès à ce poste.",
     });
     return;
   }
 
-  if (reservation.status === 'confirmée') {
-    const success = await CheckInOutService.performCheckIn(reservation.id, userId);
-    if (!success) {
-      res.status(400).json({ status: 'error', message: 'Échec du check-in.' });
+  res.json({ status: 'success', data: resolved });
+});
+
+// POST /api/checkinout/check-out-for - reception-desk check-out on a collaborator's behalf.
+// The counterpart of /check-in-for, and role-gated the same way. The holder is resolved from the
+// reservation itself, and the audit trail names the staff member who performed it.
+checkInOutRouter.post(
+  '/check-out-for',
+  requireRole(...SEAT_SCAN_OVERRIDE_ROLES),
+  validateBody(CheckInOnBehalfSchema),
+  async (req, res) => {
+    const reservation = await ReservationRepository.getReservationById(req.body.reservationId);
+    if (!reservation) {
+      res.status(404).json({ status: 'error', message: 'Réservation introuvable.' });
       return;
     }
-    res.json({ status: 'success', action: 'check-in', workstation_code: reservation.workstation_code });
-    return;
-  }
 
-  if (reservation.status === 'check-in') {
-    const success = await CheckInOutService.performCheckOut(reservation.id, userId);
+    const success = await CheckInOutService.performCheckOut(reservation.id, reservation.user_id, {
+      id: req.user!.id,
+      name: req.user!.full_name,
+      role: req.user!.role,
+    });
+
     if (!success) {
       res.status(400).json({ status: 'error', message: 'Échec du check-out.' });
       return;
     }
-    res.json({ status: 'success', action: 'check-out', workstation_code: reservation.workstation_code });
-    return;
+
+    res.json({ status: 'success', data: { workstationCode: reservation.workstation_code } });
   }
+);
 
-  res.status(400).json({ status: 'error', message: 'Cette réservation ne peut pas être traitée depuis ce statut.' });
-});
+// ── Site-wide maintenance operations ─────────────────────────────────────────────────────────
+// These act on EVERY reservation on the site, not on the caller's own. Holding a valid session is
+// therefore not sufficient to trigger them: any collaborator could otherwise force a site-wide
+// sweep, or enumerate whose reservations are about to start. Scheduled execution goes through
+// /api/cron/sweep, which authenticates with CRON_SECRET; these routes exist for operational staff
+// running a sweep by hand.
 
-// GET /api/checkinout/auto-checkout - Internal system auto-checkout
-checkInOutRouter.get('/auto-checkout', async (req, res) => {
+// GET /api/checkinout/auto-checkout - close every reservation whose end time has passed.
+checkInOutRouter.get('/auto-checkout', requireRole(...MAINTENANCE_ROLES), async (req, res) => {
   const count = await CheckInOutService.autoCheckOutExpired();
   res.json({ checkedOut: count });
 });
 
-// GET /api/checkinout/reminders - Check-in reminders
-checkInOutRouter.get('/reminders', async (req, res) => {
+// GET /api/checkinout/reminders - reservations starting shortly and still awaiting check-in.
+checkInOutRouter.get('/reminders', requireRole(...MAINTENANCE_ROLES), async (req, res) => {
   const reminders = await CheckInOutService.getCheckInReminders();
   res.json(reminders);
 });

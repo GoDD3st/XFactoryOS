@@ -1,10 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Html5QrcodeScanner } from 'html5-qrcode';
-import { X, ScanLine, CheckCircle2, LogOut, AlertCircle, RefreshCw } from 'lucide-react';
-import { apiScanSeat } from '@/services/api/checkinoutApi';
+import { X, ScanLine } from 'lucide-react';
+import { SeatScanScreen } from '@/frontend/src/modules/dashboard/components/SeatScanScreen';
 
 /**
  * In-app camera scan of a desk badge, for the person sitting at the desk.
+ *
+ * Captures the token and nothing more: once a badge is read it hands over to SeatScanScreen,
+ * the same confirm-identity → details → explicit CHECK IN flow a phone camera reaches through
+ * the URL. Scanning has not performed a check-in since that behaviour was removed, and this
+ * component must not reintroduce it - one scan, one screen, one deliberate button press.
  *
  * The desk QR already worked from a phone's own camera app: it encodes
  * `<origin>/?scan=<token>`, AuthGate picks the token out of the URL, signs the visitor in if
@@ -43,11 +48,7 @@ function extractSeatToken(rawText: string): string {
 
 const SCANNER_ELEMENT_ID = 'self-seat-qr-reader';
 
-type Phase =
-  | { name: 'scanning' }
-  | { name: 'submitting' }
-  | { name: 'done'; action: 'check-in' | 'check-out'; workstationCode: string }
-  | { name: 'error'; message: string };
+type Phase = { name: 'scanning' } | { name: 'resolved'; token: string };
 
 export const SelfSeatScanModal: React.FC<SelfSeatScanModalProps> = ({ onClose, onDone }) => {
   const [phase, setPhase] = useState<Phase>({ name: 'scanning' });
@@ -61,18 +62,11 @@ export const SelfSeatScanModal: React.FC<SelfSeatScanModalProps> = ({ onClose, o
 
     scanner.render(
       (decodedText) => {
-        // Stop the camera before the request, not after: leaving it running through a network
-        // round trip keeps the torch on and the frame callback firing, and a second decode of
-        // the same badge would submit twice.
+        // Stop the camera before moving on, not after: leaving it running keeps the torch on and
+        // the frame callback firing, and a second decode of the same badge would open the flow
+        // twice over the first.
         scanner.clear().catch(() => {});
-        setPhase({ name: 'submitting' });
-
-        apiScanSeat(extractSeatToken(decodedText))
-          .then((result) => {
-            setPhase({ name: 'done', action: result.action, workstationCode: result.workstation_code });
-            onDone();
-          })
-          .catch((err: Error) => setPhase({ name: 'error', message: err.message }));
+        setPhase({ name: 'resolved', token: extractSeatToken(decodedText) });
       },
       () => {
         // Per-frame "no QR in view" callbacks - not errors, and not worth surfacing.
@@ -98,6 +92,21 @@ export const SelfSeatScanModal: React.FC<SelfSeatScanModalProps> = ({ onClose, o
     };
   }, [onClose]);
 
+  // Once a badge is read, the explicit flow takes over full-screen: identity, reservation
+  // details, and a button the user has to press. Rendered here rather than duplicated so the
+  // in-app scan and the phone-camera scan cannot drift apart.
+  if (phase.name === 'resolved') {
+    return (
+      <SeatScanScreen
+        seatToken={phase.token}
+        onDone={() => {
+          onDone();
+          onClose();
+        }}
+      />
+    );
+  }
+
   return (
     <div
       className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center bg-slate-900/70 backdrop-blur-sm p-0 sm:p-4"
@@ -121,61 +130,15 @@ export const SelfSeatScanModal: React.FC<SelfSeatScanModalProps> = ({ onClose, o
         </div>
 
         <div className="p-5 space-y-3">
-          {phase.name === 'scanning' && (
-            <>
-              <p className="text-xs text-slate-500">
-                Placez le QR code collé sur le poste devant la caméra. Le check-in - ou le check-out
-                si vous êtes déjà arrivé - se fait automatiquement.
-              </p>
-              <div id={SCANNER_ELEMENT_ID} className="rounded-xl overflow-hidden" />
-              <p className="text-[11px] text-slate-400">
-                Si la caméra ne démarre pas, autorisez son accès dans le navigateur - ou scannez le
-                QR avec l'appareil photo du téléphone, ce qui ouvre directement la même page.
-              </p>
-            </>
-          )}
-
-          {phase.name === 'submitting' && (
-            <div className="flex items-center gap-2 text-xs text-slate-500 py-6 justify-center">
-              <RefreshCw className="w-4 h-4 animate-spin" />
-              Vérification de votre réservation...
-            </div>
-          )}
-
-          {phase.name === 'done' && (
-            <div className="text-center py-4 space-y-2">
-              {phase.action === 'check-in' ? (
-                <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto" />
-              ) : (
-                <LogOut className="w-10 h-10 text-slate-500 mx-auto" />
-              )}
-              <p className="text-sm font-bold text-slate-900">
-                {phase.action === 'check-in' ? 'Check-in confirmé' : 'Check-out enregistré'}
-              </p>
-              <p className="text-xs text-slate-500">Poste {phase.workstationCode}</p>
-              <button
-                onClick={onClose}
-                className="mt-2 w-full px-4 py-2.5 rounded-xl bg-[#008751] hover:bg-emerald-600 text-white text-xs font-bold"
-              >
-                Fermer
-              </button>
-            </div>
-          )}
-
-          {phase.name === 'error' && (
-            <div className="space-y-3">
-              <p className="text-xs font-bold text-red-700 bg-red-50 border border-red-200 rounded-xl p-3 flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0 mt-px" />
-                {phase.message}
-              </p>
-              <button
-                onClick={() => setPhase({ name: 'scanning' })}
-                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-bold"
-              >
-                Réessayer
-              </button>
-            </div>
-          )}
+          <p className="text-xs text-slate-500">
+            Placez le QR code collé sur le poste devant la caméra. Votre réservation s'affichera
+            ensuite, et le check-in ne sera enregistré que lorsque vous appuierez sur le bouton.
+          </p>
+          <div id={SCANNER_ELEMENT_ID} className="rounded-xl overflow-hidden" />
+          <p className="text-[11px] text-slate-400">
+            Si la caméra ne démarre pas, autorisez son accès dans le navigateur - ou scannez le QR
+            avec l'appareil photo du téléphone, ce qui ouvre directement la même page.
+          </p>
         </div>
       </div>
     </div>

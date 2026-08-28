@@ -153,27 +153,9 @@ export interface ReservationValidationResult {
   errorMessage?: string;
 }
 
-/** Grants that lift a rule for one specific booking, established outside this pure function. */
-export interface ReservationValidationContext {
-  /**
-   * The desk being booked gave these exact hours back early - the seat overlay's
-   * availability.windowReleased for the selected window.
-   *
-   * Waives the lead time, and nothing else. Those hours exist only because someone walked away
-   * from them; requiring days of notice for time that becomes free minutes from now would leave
-   * the desk empty for the rest of the day, which is the opposite of what the rule is for.
-   *
-   * Never trust it as an authorisation: it is derived here from data the browser holds, so the
-   * server re-derives it from the database before the booking is accepted
-   * (ReservationService.createReservation).
-   */
-  releasedWindow?: boolean;
-}
-
 /**
  * Validate reservation constraints against a live SystemSettings config:
- * - Booking window (settings.bookingWindowDays): date must fall within [today, today + N],
- *   unless the desk released these hours early (context.releasedWindow)
+ * - Booking window (settings.bookingWindowDays): date must fall within [today, today + N]
  * - Working hours (settings.workingHoursStart / workingHoursEnd)
  * - Minimum duration (settings.minReservationMinutes)
  * - Weekends / holidays, unless settings.allowWeekendBooking / allowHolidayBooking is true
@@ -189,15 +171,17 @@ export function validateReservationConstraints(
   startTimeStr: string,
   endTimeStr: string,
   settings: SystemSettings,
-  userRole?: UserRole,
-  context?: ReservationValidationContext
+  userRole?: UserRole
 ): ReservationValidationResult {
   const isBypassRole = !!userRole && settings.bypassRoles.includes(userRole);
 
   // 0. Anticipation delay check - reservation must start at least bookingWindowDays from today.
-  // A desk that released exactly these hours early is the documented exception: see
-  // ReservationValidationContext.releasedWindow.
-  if (!isBypassRole && !context?.releasedWindow) {
+  //
+  // NO EXCEPTION EXISTS HERE, and none must be added. An early check-out does not open the freed
+  // hours to other users: the holder of the NEXT reservation on that desk may extend backwards
+  // into them (services/reservations/earlyExtensionService.ts), and that path modifies an
+  // existing reservation rather than creating one, so it never reaches this rule.
+  if (!isBypassRole) {
     const todayStr = new Date().toISOString().split('T')[0];
     const today = new Date(todayStr + 'T00:00:00');
     const minAllowedStart = new Date(today);
@@ -211,7 +195,7 @@ export function validateReservationConstraints(
         requiresExtensionApproval: false,
         businessDays: 0,
         durationMinutes: 0,
-        errorMessage: `Les réservations doivent être effectuées au moins ${settings.bookingWindowDays} jour(s) à l'avance. Date minimale autorisée : ${minFormatted}. Seuls les postes libérés (turquoise) sont réservables immédiatement, sur les heures rendues.`
+        errorMessage: `Les réservations doivent être effectuées au moins ${settings.bookingWindowDays} jour(s) à l'avance. Date minimale autorisée : ${minFormatted}.`
       };
     }
   }

@@ -198,7 +198,7 @@ export const MyReservationsView: React.FC = () => {
         <div className="flex items-center justify-end gap-1.5 flex-wrap">
           {r.status === 'confirmée' && (
             <button
-              onClick={() => runAction(r.id, () => apiCheckIn(r.id), 'Check-in effectué avec succès !')}
+              onClick={() => runAction(r.id, async () => { await apiCheckIn(r.id); }, 'Check-in effectué avec succès !')}
               disabled={busyId === r.id}
               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-[10px] font-bold"
             >

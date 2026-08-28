@@ -44,14 +44,6 @@ interface SeatBookingModalProps {
   endDate: string;
   startTime: string;
   endTime: string;
-  /**
-   * The day `workstation.availability` describes.
-   *
-   * The seat is handed over with one day's occupancy attached, and this dialog can move to
-   * another day - after which that attachment says nothing about what is being booked. Comparing
-   * against it is what stops yesterday's released hours being offered for tomorrow.
-   */
-  availabilityDate: string;
   purpose: string;
   notes: string;
   businessDays: number;
@@ -75,7 +67,6 @@ export const SeatBookingModal: React.FC<SeatBookingModalProps> = ({
   endDate,
   startTime,
   endTime,
-  availabilityDate,
   purpose,
   notes,
   businessDays,
@@ -135,10 +126,6 @@ export const SeatBookingModal: React.FC<SeatBookingModalProps> = ({
 
   const slotActive = (s: { start: string; end: string }) => startTime === s.start && endTime === s.end;
   const isMultiDay = endDate && endDate !== startDate;
-  // Only meaningful for the day the overlay was computed for - the seat carries one date's worth
-  // of release information, and the dialog can move to another day.
-  const releasedWindows =
-    startDate === availabilityDate ? workstation.availability?.released || [] : [];
 
   return (
     <div
@@ -227,45 +214,6 @@ export const SeatBookingModal: React.FC<SeatBookingModalProps> = ({
               </div>
             </div>
           </div>
-
-          {/* Hours handed back early.
-              Shown with the exact stretch and a button that takes it, because the grant is only
-              as wide as what was released: a booking that spills a minute past the end falls back
-              under the ordinary lead time and is refused. Asking someone to type 11:40 by hand
-              from a sentence would make that failure look arbitrary. */}
-          {releasedWindows.length > 0 && (
-            <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-3 space-y-2">
-              <div className="flex items-start gap-2">
-                <Sparkles className="w-4 h-4 text-cyan-600 shrink-0 mt-0.5" />
-                <p className="text-[11px] font-bold text-cyan-900">
-                  Poste libéré avant la fin du créneau : ces heures sont réservables immédiatement,
-                  sans le délai d'anticipation habituel.
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {releasedWindows.map((r) => {
-                  const active = startTime === r.start && endTime === r.end && !isMultiDay;
-                  return (
-                    <button
-                      key={`${r.start}-${r.end}`}
-                      type="button"
-                      onClick={() => {
-                        setShowCustom(false);
-                        onSlotChange({ startDate, endDate: startDate, startTime: r.start, endTime: r.end });
-                      }}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
-                        active
-                          ? 'bg-[#06b6d4] border-[#0891b2] text-white'
-                          : 'bg-white border-cyan-200 text-cyan-800 hover:border-cyan-400'
-                      }`}
-                    >
-                      Prendre {r.start} - {r.end}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
 
           <div>
             <label className="flex items-center gap-1.5 text-[11px] font-bold text-slate-600 uppercase tracking-wide mb-2">

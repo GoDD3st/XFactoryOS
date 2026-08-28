@@ -66,6 +66,44 @@ export async function sendNotification(
   return newNotif;
 }
 
+/**
+ * Sends the same informational message to every holder of one or more roles.
+ *
+ * For site-wide facts that concern a desk rather than a person - "this reservation has ended,
+ * the workstation should be free again". Server-only: it needs the service-role client to read
+ * user_roles, and returns 0 rather than throwing when that client is absent, because an
+ * undelivered courtesy notice must never fail the operation that produced it.
+ *
+ * `roleCodes` are the DATABASE role codes (upper snake case), not the application's role ids.
+ */
+export async function notifyRoles(
+  roleCodes: string[],
+  title: string,
+  message: string,
+  type: 'info' | 'warning' | 'success' | 'alert' = 'info',
+  reservationId?: string
+): Promise<number> {
+  if (typeof window !== 'undefined' || roleCodes.length === 0) return 0;
+
+  try {
+    const { getAdminClient } = await import('@/database/serverClient');
+    const admin = getAdminClient();
+    if (!admin) return 0;
+
+    const { data } = await admin
+      .from('user_roles')
+      .select('user_id, roles!inner(code)')
+      .in('roles.code', roleCodes);
+
+    const ids = Array.from(new Set((data || []).map((r: any) => r.user_id).filter(Boolean)));
+    await Promise.all(ids.map((id) => sendNotification(id as string, title, message, type, reservationId)));
+    return ids.length;
+  } catch (err) {
+    console.warn('[Notifications] Role broadcast failed:', err);
+    return 0;
+  }
+}
+
 export async function markAsRead(id: string): Promise<void> {
   await NotificationRepository.markAsRead(id);
 

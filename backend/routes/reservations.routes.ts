@@ -3,7 +3,7 @@ import { ReservationService, ReservationConflictError } from '@/services/reserva
 import { validateBody } from '../middleware/validateBody';
 import { requireOwnerOrAdmin, requirePermission } from '../middleware/rbacMiddleware';
 import { reservationLimiter } from '../middleware/rateLimiter';
-import { CreateReservationSchema, UpdateReservationStatusSchema } from '../validators';
+import { CreateReservationSchema, UpdateReservationStatusSchema, ExtendReservationSchema } from '../validators';
 import { ReservationRepository } from '@/database/repositories/reservationRepository';
 import { getServerWriteClient, extractBearerToken, hasAdminClient, requireAdminClient } from '@/database/serverClient';
 
@@ -70,6 +70,56 @@ reservationsRouter.post(
     res.status(400).json({ status: 'error', message: error.message });
   }
 });
+
+// ── Early-extension offers ───────────────────────────────────────────────────────────────────
+//
+// When someone checks out before the end of their slot, the hours they give back are NOT opened
+// to the site. The only person who may take them is whoever already holds the next reservation on
+// that same desk, and only by moving their own booking's start earlier. Both routes below are
+// scoped to the caller's own reservations for that reason.
+//
+// See services/reservations/earlyExtensionService.ts for the rule and its validation.
+
+// GET /api/reservations/extension-offers - what the caller may currently extend into.
+reservationsRouter.get('/extension-offers', async (req, res) => {
+  try {
+    const { EarlyExtensionService } = await import('@/services/reservations/earlyExtensionService');
+    const offers = await EarlyExtensionService.listOffersForUser(req.user!.id);
+    res.json({ status: 'success', data: offers });
+  } catch (error: any) {
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
+// POST /api/reservations/:id/extend - accept an extension, explicitly.
+//
+// The requested start is re-checked against an offer rebuilt from the database, so a client that
+// asks for more than it was shown gains nothing. Ownership is taken from the session, never the
+// body: the id in the URL is not authority to modify that reservation.
+reservationsRouter.post(
+  '/:id/extend',
+  reservationLimiter,
+  validateBody(ExtendReservationSchema),
+  async (req, res) => {
+    try {
+      const { EarlyExtensionService } = await import('@/services/reservations/earlyExtensionService');
+      const result = await EarlyExtensionService.acceptOffer(
+        req.params.id,
+        req.user!.id,
+        req.body.newStartTime
+      );
+
+      if (!result.ok) {
+        res.status(409).json({ status: 'error', message: result.message });
+        return;
+      }
+
+      res.json({ status: 'success', data: result.reservation });
+    } catch (error: any) {
+      res.status(400).json({ status: 'error', message: error.message });
+    }
+  }
+);
 
 // PATCH /api/reservations/:id/status - Ownership check (Only owner or admin can update)
 reservationsRouter.patch(

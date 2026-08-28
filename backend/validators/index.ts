@@ -132,15 +132,17 @@ export const CreateApprovalRequestSchema = z
 export const CheckInOutSchema = z
   .object({
     reservationId: z.string().min(1, 'ID de réservation requis'),
-    qrToken: z.string().optional(),
   })
   .strict();
 
 // 5b. Seat Badge Scan Schema
+// Scanning resolves what the CALLER holds on the scanned desk. There is deliberately no
+// targetUserId: the endpoint is read-only and answers only about the authenticated user, so a
+// parameter naming somebody else would have nothing to mean. Acting for another person goes
+// through /check-in-for and /check-out-for, which are role-gated.
 export const ScanSeatSchema = z
   .object({
     seatToken: z.string().min(1, 'Jeton QR de poste requis'),
-    targetUserId: z.string().optional(),
   })
   .strict();
 
@@ -391,6 +393,15 @@ export const ExtensionSeatSchema = z
   });
 
 // 18z. Reception-desk check-in on a collaborator's behalf (SRS §8.5 / UML "Effectuer Check-in").
+/**
+ * Accepting an early-extension offer. Only the new start is accepted from the client - the desk,
+ * the day and the end time all come from the reservation being modified, and the start itself is
+ * re-validated against a server-rebuilt offer before anything is written.
+ */
+export const ExtendReservationSchema = z
+  .object({ newStartTime: z.string().regex(/^\d{2}:\d{2}$/, 'Heure de début invalide (HH:mm)') })
+  .strict();
+
 export const CheckInOnBehalfSchema = z
   .object({ reservationId: z.string().uuid({ message: 'Identifiant de réservation invalide' }) })
   .strict();
