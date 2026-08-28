@@ -209,7 +209,13 @@ checkInOutRouter.post('/scan-seat', validateBody(ScanSeatSchema), async (req, re
     name: caller.full_name,
   });
 
-  if (!resolved.reservation) {
+  // A scan has THREE valid outcomes, and only the third is a refusal:
+  //   - the caller holds a reservation here      -> `reservation`, with the action available;
+  //   - they hold nothing but the desk is free   -> `walkIn`, the window they may take;
+  //   - neither                                  -> refused, describing the DESK and nobody on it.
+  // Testing `reservation` alone was wrong: a free desk carries no reservation, so every walk-in
+  // was answered with "vous n'avez pas accès à ce poste" and the offer never reached the screen.
+  if (!resolved.reservation && !resolved.walkIn) {
     res.status(404).json({
       status: 'error',
       code: 'NO_ACCESS',
