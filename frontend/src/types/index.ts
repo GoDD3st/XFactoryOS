@@ -39,6 +39,13 @@ export interface SeatAvailabilityInfo {
   /** Whether the currently selected window is bookable as-is. */
   windowFree: boolean;
   /**
+   * Somebody is physically checked in over the selected window.
+   *
+   * Carried because a management-locked desk keeps its own status, so the floor plan cannot read
+   * 'occupé' off `status` for one and has to be told here instead.
+   */
+  checkedIn: boolean;
+  /**
    * The CALLER'S OWN booking on this seat for the selected date, when there is one.
    *
    * Deliberately only the caller's. The overlay could just as easily carry every occupant's name

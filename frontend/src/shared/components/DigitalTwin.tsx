@@ -352,6 +352,31 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
     }
   };
 
+  /**
+   * The colour a desk actually shows.
+   *
+   * A management-locked desk keeps status 'management_reserved' however busy it is (see the
+   * overlay in workspaceService), so its occupancy has to be read from `availability` and painted
+   * from there. Without this a VIP desk that had just been booked stayed grey, and the person who
+   * booked it had no way to see that anything had happened.
+   */
+  const getSeatColorClass = (ws: Workstation): string => {
+    if (ws.status === 'management_reserved' && ws.availability?.windowFree === false) {
+      return getStatusColorClass(ws.availability.checkedIn ? 'occupé' : 'réservé');
+    }
+    return getStatusColorClass(ws.status);
+  };
+
+  /** The same idea for the dialog's badge: the lock, plus what is happening on the desk. */
+  const getSeatLabel = (ws: Workstation): string => {
+    if (ws.status === 'management_reserved' && ws.availability?.windowFree === false) {
+      return ws.availability.checkedIn
+        ? 'Réservé Direction - occupé sur ce créneau'
+        : 'Réservé Direction - réservé sur ce créneau';
+    }
+    return getStatusLabel(ws.status) || '';
+  };
+
   const getStatusLabel = (status: SeatStatus) => {
     switch (status) {
       case 'disponible': return 'Disponible';
@@ -361,6 +386,8 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
       case 'occupé': return 'Occupé';
       case 'extension': return 'Extension (Admin)';
       case 'disabled': return 'Désactivé (période expirée)';
+      // Was missing, so the seat dialog rendered an empty badge for every VIP desk.
+      case 'management_reserved': return 'Réservé Direction';
     }
   };
 
@@ -402,7 +429,12 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
     if (ws.status === 'disponible') return true;
     if (ws.status === 'partiel') return ws.availability?.windowFree !== false;
     if (ws.status === 'management_reserved') {
-      return canAccessManagementClusters || !!cluster.vipMemberIds?.includes(currentUser.id);
+      // Authorised is not the same as free. BR-07 decides WHO may book this desk; the overlay
+      // decides whether the asked window is still open. Both must hold - the window test was
+      // missing, so an authorised user was handed the booking dialog for a desk that was already
+      // taken and only the server's conflict check stopped the double booking.
+      const authorised = canAccessManagementClusters || !!cluster.vipMemberIds?.includes(currentUser.id);
+      return authorised && ws.availability?.windowFree !== false;
     }
     return false;
   };
@@ -461,7 +493,7 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
           <div className="grid grid-cols-4 gap-2 py-1">
             {cluster.workstations.map((ws) => {
               const isSelected = selectedSeatCode === ws.code;
-              const statusColor = getStatusColorClass(ws.status);
+              const statusColor = getSeatColorClass(ws);
               // BR-07: management-reserved seats are directly selectable by
               // Director/EA/Admin/SuperAdmin - they're the roles those clusters are
               // reserved FOR, they don't need the GCI/Building Manager unlock step.
@@ -513,7 +545,11 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
                   >
                     <span className="text-[10px] tracking-tight opacity-90">{ws.code.split('-')[2]}</span>
                     <span className="text-[11px] truncate w-full font-extrabold">{ws.code}</span>
-                    {ws.status === 'partiel' && ws.availability?.gaps?.length ? (
+                    {ws.status === 'management_reserved' && ws.availability?.busy?.length ? (
+                      <span className="text-[9px] font-semibold opacity-95 leading-tight">
+                        pris {ws.availability.busy[0].start} - {ws.availability.busy[0].end}
+                      </span>
+                    ) : ws.status === 'partiel' && ws.availability?.gaps?.length ? (
                       <span className="text-[9px] font-semibold opacity-95 leading-tight">
                         libre {ws.availability.gaps[0].start} - {ws.availability.gaps[0].end}
                       </span>
@@ -793,7 +829,7 @@ export const DigitalTwin: React.FC<DigitalTwinProps> = ({
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-extrabold text-base text-white">{seatDetail.workstation.code}</span>
                 <span className="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-200 font-semibold border border-slate-700">
-                  {getStatusLabel(seatDetail.workstation.status)}
+                  {getSeatLabel(seatDetail.workstation)}
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-1 truncate">
