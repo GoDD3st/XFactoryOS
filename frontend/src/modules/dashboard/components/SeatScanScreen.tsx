@@ -4,6 +4,7 @@ import {
   apiResolveSeatScan,
   apiCheckIn,
   apiCheckOut,
+  apiBookWalkIn,
   SeatScanResolution,
 } from '@/services/api/checkinoutApi';
 
@@ -30,9 +31,11 @@ interface SeatScanScreenProps {
  * one. It states plainly whose session is about to be used before anything is recorded against
  * that person's name.
  *
- * When the desk is not the user's, the server answers with a flat refusal and this screen repeats
- * it verbatim. It never says who does hold the desk - the badge is public, and an endpoint that
- * named the occupant would turn every sticker in the building into a directory of who sits where.
+ * When the desk is not the user's, the server answers about the DESK only. Either it is free - in
+ * which case the person standing at it is offered it, from now until the next reservation or close
+ * of business - or it is not, and the refusal names nobody. The badge is public, and an endpoint
+ * that named the occupant would turn every sticker in the building into a directory of who sits
+ * where.
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  */
 type Phase =
@@ -42,6 +45,8 @@ type Phase =
   | { name: 'submitting'; resolution: SeatScanResolution }
   | { name: 'checked-in'; resolution: SeatScanResolution; at?: string }
   | { name: 'checked-out'; resolution: SeatScanResolution }
+  /** The desk is free: choose how long to take it for, then book. */
+  | { name: 'walk-in'; resolution: SeatScanResolution; until: string; booking?: boolean }
   | { name: 'error'; message: string };
 
 /** A stored ISO instant shown as a wall clock. Never the browser's own idea of "now". */
@@ -51,6 +56,27 @@ function asClock(iso?: string): string {
   return Number.isNaN(d.getTime())
     ? '--:--'
     : `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+/**
+ * End times offered for a walk-in: half-hour marks inside the free window, plus the window's own
+ * end. Bounded by the site's minimum reservation length, so the screen never offers a choice the
+ * server would then refuse.
+ */
+function endChoices(window: { start: string; end: string; minMinutes: number }): string[] {
+  const toMin = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
+  const asClockTime = (m: number) =>
+    String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+
+  const start = toMin(window.start);
+  const end = toMin(window.end);
+  const earliest = start + window.minMinutes;
+
+  const choices: number[] = [];
+  for (let m = Math.ceil(earliest / 30) * 30; m < end; m += 30) choices.push(m);
+  choices.push(end);
+
+  return Array.from(new Set(choices)).map(asClockTime);
 }
 
 const Row: React.FC<{ icon: React.ReactNode; label: string; value: string }> = ({ icon, label, value }) => (
@@ -99,6 +125,24 @@ export const SeatScanScreen: React.FC<SeatScanScreenProps> = ({ seatToken, onDon
     }
   };
 
+  /**
+   * Books the desk, then re-resolves the scan so the screen lands on the check-in button for the
+   * reservation that now exists. Deliberately two acts: taking a desk and sitting down at it are
+   * different things, and check-in is never automatic.
+   */
+  const bookWalkIn = async (resolution: SeatScanResolution, until: string) => {
+    setPhase({ name: 'walk-in', resolution, until, booking: true });
+    try {
+      // The full window is sent as "no preference": the server recomputes it anyway, and a value
+      // that has drifted by a minute in the meantime would be refused for no good reason.
+      await apiBookWalkIn(seatToken, until === resolution.walkIn?.end ? undefined : until);
+      window.dispatchEvent(new CustomEvent('xfactory_reservations_changed'));
+      setPhase({ name: 'ready', resolution: await apiResolveSeatScan(seatToken) });
+    } catch (err: any) {
+      setPhase({ name: 'error', message: err.message });
+    }
+  };
+
   const details = (r: SeatScanResolution) => (
     <div className="text-left bg-slate-50 border border-slate-200 rounded-xl px-3 py-1">
       <Row icon={<MapPin className="w-3.5 h-3.5" />} label="Cluster" value={r.reservation.clusterName} />
@@ -132,7 +176,13 @@ export const SeatScanScreen: React.FC<SeatScanScreenProps> = ({ seatToken, onDon
               Le check-in sera enregistré à ce nom.
             </p>
             <button
-              onClick={() => setPhase({ name: 'ready', resolution: phase.resolution })}
+              onClick={() =>
+                setPhase(
+                  phase.resolution.walkIn
+                    ? { name: 'walk-in', resolution: phase.resolution, until: phase.resolution.walkIn.end }
+                    : { name: 'ready', resolution: phase.resolution }
+                )
+              }
               className="w-full px-4 py-2.5 bg-teal-700 hover:bg-teal-800 text-white text-sm font-bold rounded-xl transition-all"
             >
               C'est bien moi
@@ -169,6 +219,76 @@ export const SeatScanScreen: React.FC<SeatScanScreenProps> = ({ seatToken, onDon
                 {phase.name === 'submitting' ? 'Enregistrement...' : 'CHECK OUT'}
               </button>
             )}
+
+            <button onClick={onDone} className="w-full text-xs font-bold text-slate-500 hover:text-slate-800 py-1">
+              Annuler
+            </button>
+          </>
+        )}
+
+        {phase.name === 'walk-in' && phase.resolution.walkIn && (
+          <>
+            <h2 className="text-base font-black text-slate-900">Poste libre</h2>
+            <div className="text-left bg-slate-50 border border-slate-200 rounded-xl px-3 py-1">
+              <Row
+                icon={<MapPin className="w-3.5 h-3.5" />}
+                label="Cluster"
+                value={phase.resolution.walkIn.clusterName}
+              />
+              <Row
+                icon={<MapPin className="w-3.5 h-3.5" />}
+                label="Poste"
+                value={phase.resolution.walkIn.workstationCode}
+              />
+              <Row
+                icon={<CalendarDays className="w-3.5 h-3.5" />}
+                label="Date"
+                value={phase.resolution.walkIn.date}
+              />
+              <Row
+                icon={<Clock className="w-3.5 h-3.5" />}
+                label="Libre de"
+                value={`${phase.resolution.walkIn.start} à ${phase.resolution.walkIn.end}`}
+              />
+            </div>
+
+            {/* Saying WHY the window ends where it does: "until 14:00" means something different
+                if somebody else arrives then than if the building simply closes. */}
+            <p className="text-[11px] text-slate-500">
+              {phase.resolution.walkIn.endReason === 'next_reservation'
+                ? 'Ce poste est réservé par un autre collaborateur à partir de cette heure.'
+                : "Fin de la journée d'ouverture de l'Open Space."}
+            </p>
+
+            <div className="space-y-1.5 text-left">
+              <label
+                htmlFor="walk-in-until"
+                className="text-[11px] font-bold uppercase tracking-wide text-slate-500"
+              >
+                Jusqu'à
+              </label>
+              <select
+                id="walk-in-until"
+                value={phase.until}
+                onChange={(e) => setPhase({ ...phase, until: e.target.value })}
+                className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+              >
+                {endChoices(phase.resolution.walkIn).map((choice) => (
+                  <option key={choice} value={choice}>
+                    {choice}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <button
+              onClick={() => bookWalkIn(phase.resolution, phase.until)}
+              disabled={phase.booking}
+              className="w-full px-4 py-3.5 bg-[#00b050] hover:bg-[#009040] disabled:opacity-60 text-white text-base font-black rounded-xl shadow-md transition-all flex items-center justify-center gap-2"
+            >
+              <CalendarDays className="w-5 h-5" />
+              {phase.booking ? 'Réservation...' : 'RÉSERVER CE POSTE'}
+            </button>
 
             <button onClick={onDone} className="w-full text-xs font-bold text-slate-500 hover:text-slate-800 py-1">
               Annuler

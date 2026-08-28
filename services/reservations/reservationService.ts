@@ -19,6 +19,15 @@ const CACHE_KEY = 'xfactory_reservations_v2';
  * up-to-3 other available desks in the same cluster/slot so the caller can offer them instead
  * of a flat rejection.
  */
+/** Server-only switches. Never populated from a request body - see createReservation's rule 5. */
+export interface CreateReservationOptions {
+  /**
+   * This booking was made by scanning the desk's badge while standing at it, for the hours it is
+   * free right now. Waives the anticipation delay and nothing else.
+   */
+  walkIn?: boolean;
+}
+
 export class ReservationConflictError extends Error {
   alternatives: { code: string; cluster_name: string }[];
   constructor(message: string, alternatives: { code: string; cluster_name: string }[]) {
@@ -158,8 +167,10 @@ export class ReservationService {
    *  4. BR-07 VIP / management lock: a non-reservable desk needs a privileged role or membership
    *     in cluster_vip_members. This was once enforced only by disabling the button, which a
    *     direct POST ignored.
-   *  5. Booking window: settings.bookingWindowDays minimum lead time. NO exception - an early
-   *     check-out does not make the freed hours bookable here; see earlyExtensionService.ts.
+   *  5. Booking window: settings.bookingWindowDays minimum lead time. Exactly ONE exception, and
+   *     it cannot be requested from outside: `options.walkIn`, set only by WalkInService after a
+   *     desk badge has been scanned and verified (services/reservations/walkInService.ts). An
+   *     early check-out is NOT an exception here; see earlyExtensionService.ts.
    *  6. Quotas: per day and per week, counted from the user's existing reservations.
    *  7. Approval routing (below).
    *
@@ -187,7 +198,8 @@ export class ReservationService {
   static async createReservation(
     payload: Partial<Reservation>,
     userRole?: UserRole,
-    dbClient?: SupabaseClient
+    dbClient?: SupabaseClient,
+    options?: CreateReservationOptions
   ): Promise<Reservation> {
     // Browser: route through authenticated API (fixes RLS / permission denied)
     if (typeof window !== 'undefined') {
@@ -360,7 +372,11 @@ export class ReservationService {
       }
     }
 
-    if (!isBypassRole && payload.reservation_date) {
+    // A walk-in has no lead time to satisfy: it is somebody sitting down at an empty desk right
+    // now, which plans nothing in advance. The flag reaches here only from WalkInService, after a
+    // scanned badge has been verified server-side - it is not a field of the request body, and
+    // POST /api/reservations has no way to set it. Every other rule below still runs.
+    if (!isBypassRole && !options?.walkIn && payload.reservation_date) {
       const now = siteClockAt();
       const today = new Date(now.date + 'T00:00:00');
       const minAllowedStart = new Date(today);

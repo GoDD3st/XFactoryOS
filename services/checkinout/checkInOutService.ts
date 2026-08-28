@@ -234,6 +234,8 @@ export class CheckInOutService {
     };
     userName?: string;
     availableAction?: 'check-in' | 'check-out';
+    /** Present when the caller holds nothing here but the desk is free to take right now. */
+    walkIn?: import('@/services/reservations/walkInService').WalkInWindow;
     message?: string;
   }> {
     const today = siteClockAt().date;
@@ -244,7 +246,15 @@ export class CheckInOutService {
       .sort((a, b) => toMinutes(a.start_time) - toMinutes(b.start_time));
 
     if (mine.length === 0) {
-      return { message: "Vous n'avez pas accès à ce poste." };
+      // Not "no access" any more: an empty desk is something the person standing at it may take.
+      // WalkInService decides whether it really is free and for how long, and answers about the
+      // DESK only - never about whoever else may hold it later.
+      const { WalkInService } = await import('@/services/reservations/walkInService');
+      const walkIn = await WalkInService.availability(workstationId, user.id);
+
+      return walkIn.available && walkIn.window
+        ? { walkIn: walkIn.window, userName: user.name }
+        : { message: walkIn.message || "Vous n'avez pas accès à ce poste." };
     }
 
     const nowMinutes = siteClockAt().minutes;

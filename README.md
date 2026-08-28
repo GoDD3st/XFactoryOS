@@ -303,7 +303,10 @@ and absolute checks come before the ones that hit the database.
    offer a way forward rather than only a refusal.
 4. **BR-07 VIP/management lock** — a non-reservable desk requires a privileged role *or*
    membership in `cluster_vip_members`.
-5. **Booking window** — `bookingWindowDays` minimum lead time.
+5. **Booking window** — `bookingWindowDays` minimum lead time. One exception, and it cannot be
+   requested from outside: a **walk-in** (see below) booked by scanning the desk's badge while
+   standing at it. The flag is set by `WalkInService` on the server; `POST /api/reservations`
+   has no field for it.
 6. **Quotas** — per day and per week, counted from the user's existing reservations.
 7. **Approval routing** — see below.
 
@@ -378,7 +381,9 @@ plainly:
 Ahmed books WS-A 08:00–12:00 and leaves at 10:30. The reservation becomes `COMPLETED` with
 `check_out_at = 10:30`. The 10:30–12:00 stretch is now ordinary unbooked time: anybody wanting it
 must satisfy the same rules as for any other free desk, which inside the lead time means they
-cannot have it.
+cannot have it — **including by walk-in**: while the next holder's extension offer stands, those
+hours are refused to everyone else, badge in hand or not. The desk stays empty until that holder
+accepts or their own reservation begins.
 
 Exactly one person may take those hours, and only in one specific way:
 
@@ -400,6 +405,53 @@ How the offer is decided (`services/reservations/earlyExtensionService.ts`):
 | What does the server check on accept? | Ownership from the JWT, that the offer still exists when recomputed from the database, that the requested start sits inside it, that the holder has no other reservation over those hours, and that the desk is still free. The GiST exclusion constraint on `(workstation_id, period)` is the final backstop against two requests racing for the same gap. |
 
 The offer never names the person who left. It carries hours only.
+
+### Réservation sur place (walk-in)
+
+Somebody standing at an **empty** desk may take it there and then by scanning its badge. The site
+answers with how long the desk is free:
+
+```
+start = now
+end   = the next reservation's start on that desk, or close of business, whichever is first
+```
+
+and the user confirms, optionally finishing earlier than the window allows. This is the **only**
+exception to the reservation lead time, and it is narrow by construction rather than by promise:
+
+- it needs a valid desk badge, which is only obtainable by being at the desk. The exemption is
+  granted by the server on that path alone (`WalkInService.book` → `createReservation({walkIn})`),
+  and `POST /api/reservations` has no way to ask for it;
+- it can only produce a booking that starts **now**, **today**, on the **scanned desk**. Not
+  tomorrow, not elsewhere, not a future window;
+- it ends where the next booking begins, so it never eats into a reservation somebody holds.
+
+Everything else still applies: conflicts, quotas, business hours, one-desk-at-a-time, and BR-07 —
+management-locked desks are excluded outright, since a scan proves presence, not entitlement.
+
+The rationale: the lead time governs **planning**. Taking a chair that is empty right now plans
+nothing, so applying a two-day notice to it would leave desks empty for no gain.
+
+### Déplacer une réservation vers un autre poste
+
+Operational correction — a desk breaks, a cluster is re-purposed, two people need to sit together.
+`POST /api/reservations/:id/transfer` moves a booking to another desk **without cancelling and
+rebooking**, which would lose its history, its check-in, its approval and its place in the day.
+
+- **Who**: Building Manager, Administrator, Super Administrator, Director, Executive Assistant.
+  Reception is deliberately absent — it checks people in and out; who sits where is an allocation
+  decision.
+- **What changes**: the desk, and nothing else. The window, the holder and the status are read from
+  the stored row, so a transfer can never become a re-booking.
+- **What the server re-verifies**: the reservation is still live; the destination exists, differs,
+  and is not out of service; it is free for exactly that window; and — for a management-locked
+  destination — that the **holder** is entitled to sit there. Moving somebody onto a VIP desk they
+  could not have booked themselves would launder BR-07 through an operator's permissions.
+- **Side effects**: an occupied desk carries its occupancy across (the old desk is released, the new
+  one marked occupied), the holder is notified that their desk changed, and the audit trail records
+  the staff member as the author of the move.
+- **Races**: the GiST exclusion constraint on `(workstation_id, period)` is the backstop — a `23P01`
+  surfaces as "ce poste vient d'être réservé", not a 500.
 
 ### Waiting list (BPMN D5)
 
@@ -475,8 +527,10 @@ Authentication
 QR verification            POST /api/checkinout/scan-seat  (READ-ONLY)
   ↓   HMAC checked → 401 QR_INVALID if forged or tampered
 Reservation lookup         user from the JWT, never the body
-  ↓   no reservation for THIS user on THIS desk → 404 "Vous n'avez pas accès à ce poste."
-  ↓   the refusal names nobody: the occupant's identity is never disclosed
+  ↓   holds a reservation here      → identity confirmation, then CHECK IN / CHECK OUT
+  ↓   holds nothing, desk is FREE   → walk-in offer: "libre de 11:37 à 18:00", then book
+  ↓   holds nothing, desk is taken  → "Ce poste est occupé jusqu'à 12:00."
+  ↓   every refusal describes the DESK: the occupant's identity is never disclosed
 Identity confirmation      "You are signed in as X" → the user confirms
   ↓
 Reservation details        cluster, desk, date, start, end
@@ -613,6 +667,9 @@ Endpoints worth knowing:
 | `POST /api/checkinout/check-in` | The only self check-in. Re-validates ownership, status and window; returns the stored timestamp. |
 | `GET /api/reservations/extension-offers` | Earlier starts open to the caller after someone left a desk early. §10. |
 | `POST /api/reservations/:id/extend` | Accepts one, re-deriving the offer server-side first. |
+| `POST /api/reservations/:id/transfer` | Moves a booking to another desk. Allocation roles only. §10. |
+| `POST /api/reservations/walk-in/availability` | How long the scanned desk is free for. |
+| `POST /api/reservations/walk-in` | Takes it, for that window. The only lead-time exception. §10. |
 | `GET /api/checkinout/auto-checkout`, `/reminders` | Site-wide sweeps: operational roles only, not any session holder. |
 | `GET /api/roles/me/permissions` | The caller's **own** grants only. Enumerating everyone's stays behind `manage_roles`. |
 | `GET /api/cron/sweep?job=…` | `CRON_SECRET`-authenticated. `job=all` runs every sweep. |

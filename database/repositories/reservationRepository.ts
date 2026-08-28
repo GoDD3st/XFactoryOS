@@ -416,6 +416,44 @@ export class ReservationRepository {
   }
 
   /**
+   * Moves a reservation onto another desk, changing nothing else about it.
+   *
+   * Deliberately narrow: the window, the holder, the status and the history stay exactly as they
+   * are, because the operational need this serves is "same booking, different chair". Callers must
+   * have established that the move is allowed - the rules live in
+   * services/reservations/reservationTransferService.ts, not here.
+   *
+   * A `23P01` is the exclusion constraint on (workstation_id, period) refusing an overlap with a
+   * live reservation on the destination desk. That is the race no amount of checking first can
+   * close, and it surfaces as a refusal rather than a 500 because losing it is a normal outcome.
+   */
+  static async updateReservationWorkstation(
+    id: string,
+    workstationId: string,
+    client?: SupabaseClient
+  ): Promise<Reservation | null> {
+    if (!isValidUuid(workstationId)) return null;
+    const db = client || (await resolveClient());
+
+    const { data, error } = await db
+      .from('reservations')
+      .update({ workstation_id: workstationId, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select(RESERVATION_SELECT)
+      .single();
+
+    if (error) {
+      if ((error as any).code === '23P01') {
+        throw new Error("Ce poste vient d'être réservé sur ce créneau. Rafraîchissez la page.");
+      }
+      console.error('updateReservationWorkstation error:', error);
+      return null;
+    }
+
+    return data ? this.mapRowToReservation(data) : null;
+  }
+
+  /**
    * Update reservation status in Supabase & log audit event
    */
   static async updateReservationStatus(id: string, status: ReservationStatus, extra?: any): Promise<boolean> {

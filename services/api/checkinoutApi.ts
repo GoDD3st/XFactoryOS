@@ -167,9 +167,22 @@ export async function apiDecodeSeatToken(seatToken: string): Promise<{ workstati
   return { workstationId: body.workstationId, workstationCode: body.workstationCode };
 }
 
+/** A free desk the scanner may take right now, with how long it is free for. */
+export interface WalkInWindow {
+  workstationId: string;
+  workstationCode: string;
+  clusterName: string;
+  date: string;
+  start: string;
+  end: string;
+  endReason: 'next_reservation' | 'business_close';
+  availableMinutes: number;
+  minMinutes: number;
+}
+
 /** What a scanned desk badge resolves to - always about the caller, never about anyone else. */
 export interface SeatScanResolution {
-  reservation: {
+  reservation?: {
     id: string;
     workstationCode: string;
     clusterName: string;
@@ -179,7 +192,9 @@ export interface SeatScanResolution {
     status: string;
   };
   userName?: string;
-  availableAction: 'check-in' | 'check-out';
+  availableAction?: 'check-in' | 'check-out';
+  /** Set instead of `reservation` when the caller holds nothing here but the desk is free now. */
+  walkIn?: WalkInWindow;
 }
 
 /**
@@ -219,4 +234,22 @@ export async function apiCheckOutForReservation(
     throw new Error(result.message || 'Échec du check-out.');
   }
   return result.data || {};
+}
+
+/**
+ * Take a free desk on the spot, for the window the server computed from the scanned badge.
+ *
+ * `endTime` may only shorten that window; the server recomputes it and refuses anything longer,
+ * so this is a request rather than an instruction.
+ */
+export async function apiBookWalkIn(seatToken: string, endTime?: string): Promise<void> {
+  const response = await fetch('/api/reservations/walk-in', {
+    method: 'POST',
+    headers: await authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(endTime ? { seatToken, endTime } : { seatToken }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(body.message || 'Échec de la réservation sur place.');
+  }
 }

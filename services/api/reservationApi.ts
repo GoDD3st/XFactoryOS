@@ -151,3 +151,24 @@ export async function apiAcceptExtension(
     throw new Error(body.message || "Échec de la prolongation.");
   }
 }
+
+/**
+ * Move a reservation to another desk. Restricted server-side to Building Manager, Administrator,
+ * Super Administrator, Director and Executive Assistant - the roles that make allocation
+ * decisions. The window and the holder are untouched.
+ */
+export async function apiTransferReservation(
+  reservationId: string,
+  target: { workstationId?: string; workstationCode?: string }
+): Promise<{ from?: string; to?: string }> {
+  const response = await fetch(`/api/reservations/${reservationId}/transfer`, {
+    method: 'POST',
+    headers: await authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(target),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(body.message || 'Échec du déplacement de la réservation.');
+  }
+  return body.data || {};
+}

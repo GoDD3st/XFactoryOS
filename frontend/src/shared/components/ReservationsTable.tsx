@@ -12,7 +12,8 @@ import {
   User,
   Check,
   RefreshCw,
-  AlertCircle
+  AlertCircle,
+  ArrowRightLeft,
 } from 'lucide-react';
 import { Reservation, ReservationStatus, Workstation, Cluster, SystemSettings } from '../../types';
 import {
@@ -25,6 +26,8 @@ import { fetchClustersWithOverlays } from '@/services/workspaces/workspaceServic
 import { SettingsService } from '@/services/settings/settingsService';
 import { useAuth } from '../../modules/auth/context/AuthContext';
 import { DateTimePicker24h } from './DateTimePicker24h';
+import { apiTransferReservation } from '@/services/api/reservationApi';
+import { RESERVATION_TRANSFER_ROLES } from '@/services/reservations/reservationTransferService';
 
 /**
  * The reservation table, shared by every role that manages bookings.
@@ -104,6 +107,42 @@ export const ReservationsTable: React.FC<ReservationsTableProps> = ({
   const [formNotes, setFormNotes] = useState<string>('Réservation poste de travail');
   const [formPurpose, setFormPurpose] = useState<string>('Projet XFactory OS');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+
+  /**
+   * Moving a reservation onto another desk.
+   *
+   * Restricted to the roles that make allocation decisions - Building Manager, Administrator,
+   * Super Administrator, Director, Executive Assistant. The check here only hides the control;
+   * the route enforces the same list, because a hidden button is not authorization.
+   */
+  const canTransfer = RESERVATION_TRANSFER_ROLES.includes(currentRole);
+  const [transferTarget, setTransferTarget] = useState<Reservation | null>(null);
+  const [transferSeatCode, setTransferSeatCode] = useState<string>('');
+  const [transferError, setTransferError] = useState<string | undefined>();
+  const [transferBusy, setTransferBusy] = useState<boolean>(false);
+
+  const openTransfer = (reservation: Reservation) => {
+    setTransferTarget(reservation);
+    setTransferSeatCode('');
+    setTransferError(undefined);
+  };
+
+  const submitTransfer = async () => {
+    if (!transferTarget || !transferSeatCode) return;
+    setTransferBusy(true);
+    setTransferError(undefined);
+    try {
+      await apiTransferReservation(transferTarget.id, { workstationCode: transferSeatCode });
+      setTransferTarget(null);
+      await loadReservations();
+      // The floor plan is showing the old desk as taken and the new one as free until it hears.
+      window.dispatchEvent(new CustomEvent('xfactory_reservations_changed'));
+    } catch (err: any) {
+      setTransferError(err?.message || 'Échec du déplacement.');
+    } finally {
+      setTransferBusy(false);
+    }
+  };
 
   const loadReservations = async () => {
     setLoading(true);
@@ -405,6 +444,17 @@ export const ReservationsTable: React.FC<ReservationsTableProps> = ({
                         </button>
                       )}
 
+                      {canTransfer && ['confirmée', 'check-in', 'en attente'].includes(res.status) && (
+                        <button
+                          onClick={() => openTransfer(res)}
+                          title="Déplacer vers un autre poste"
+                          className="bg-slate-100 hover:bg-teal-50 text-teal-700 border border-slate-200 px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all flex items-center space-x-1"
+                        >
+                          <ArrowRightLeft className="w-3 h-3" />
+                          <span>Déplacer</span>
+                        </button>
+                      )}
+
                       {res.status !== 'annulée' && (
                         <button
                           onClick={() => handleCancel(res.id)}
@@ -429,6 +479,87 @@ export const ReservationsTable: React.FC<ReservationsTableProps> = ({
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Déplacer une réservation vers un autre poste.
+          The window, the holder and the status stay as they are - only the desk changes. The
+          server re-checks availability and BR-07 for the HOLDER before accepting. */}
+      {transferTarget && (
+        <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <ArrowRightLeft className="w-5 h-5 text-teal-600" />
+                <span>Déplacer la réservation</span>
+              </h3>
+              <button
+                onClick={() => setTransferTarget(null)}
+                className="text-slate-400 hover:text-slate-600 font-bold p-1 rounded-lg"
+              >
+                <XCircle className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-1">
+              <p>
+                <span className="font-bold text-slate-800">{transferTarget.user_name}</span> —{' '}
+                {transferTarget.reservation_date} ({transferTarget.start_time} - {transferTarget.end_time})
+              </p>
+              <p>
+                Poste actuel :{' '}
+                <span className="font-bold text-slate-800">{transferTarget.workstation_code}</span>
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Nouveau poste</label>
+              <select
+                value={transferSeatCode}
+                onChange={(e) => setTransferSeatCode(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-medium text-slate-800"
+              >
+                <option value="">Sélectionner un poste...</option>
+                {clusters.flatMap((cl) =>
+                  cl.workstations
+                    .filter((w) => w.code !== transferTarget.workstation_code && w.status !== 'maintenance')
+                    .map((w) => (
+                      <option key={w.id} value={w.code}>
+                        {w.code} — {cl.name}
+                        {w.reservable === false ? ' (Direction/VIP)' : ''}
+                      </option>
+                    ))
+                )}
+              </select>
+              <p className="text-[11px] text-slate-500 mt-1">
+                Le créneau et le collaborateur ne changent pas. La disponibilité du poste de
+                destination est vérifiée par le serveur.
+              </p>
+            </div>
+
+            {transferError && (
+              <div className="p-3 rounded-xl bg-red-50 text-red-800 border border-red-200 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                <span>{transferError}</span>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setTransferTarget(null)}
+                className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-50"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={submitTransfer}
+                disabled={!transferSeatCode || transferBusy}
+                className="px-4 py-2 rounded-xl bg-teal-700 hover:bg-teal-800 disabled:opacity-50 text-white text-xs font-extrabold"
+              >
+                {transferBusy ? 'Déplacement...' : 'Déplacer'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

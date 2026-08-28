@@ -77,6 +77,7 @@ function buildSections(s: SystemSettings): RuleSection[] {
         )}.`,
         `Réservation à effectuer au moins ${s.bookingWindowDays} jour(s) à l’avance (délai d’anticipation).`,
         'Un check-out anticipé ne rend pas les heures restantes réservables immédiatement par d’autres collaborateurs : le délai d’anticipation reste applicable à toute nouvelle réservation.',
+        'Exception unique : un poste libre peut être réservé immédiatement en scannant son QR code sur place, de maintenant jusqu’à la prochaine réservation du poste (ou 18h).',
         'Seul le titulaire de la réservation suivante sur le même poste peut se voir proposer d’avancer le début de sa propre réservation sur la période libérée. La proposition doit être acceptée explicitement depuis le tableau de bord.',
         `Horaires d’ouverture : ${s.workingHoursStart} - ${s.workingHoursEnd}${
           workingDays ? ` (${workingDays})` : ''

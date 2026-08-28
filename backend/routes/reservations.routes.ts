@@ -3,7 +3,16 @@ import { ReservationService, ReservationConflictError } from '@/services/reserva
 import { validateBody } from '../middleware/validateBody';
 import { requireOwnerOrAdmin, requirePermission } from '../middleware/rbacMiddleware';
 import { reservationLimiter } from '../middleware/rateLimiter';
-import { CreateReservationSchema, UpdateReservationStatusSchema, ExtendReservationSchema } from '../validators';
+import {
+  CreateReservationSchema,
+  UpdateReservationStatusSchema,
+  ExtendReservationSchema,
+  TransferReservationSchema,
+  WalkInReservationSchema,
+} from '../validators';
+import { requireRole } from '../middleware/rbacMiddleware';
+import { SeatQRTokenService } from '@/services/qr/seatQrTokenService';
+import { RESERVATION_TRANSFER_ROLES } from '@/services/reservations/reservationTransferService';
 import { ReservationRepository } from '@/database/repositories/reservationRepository';
 import { getServerWriteClient, extractBearerToken, hasAdminClient, requireAdminClient } from '@/database/serverClient';
 
@@ -70,6 +79,97 @@ reservationsRouter.post(
     res.status(400).json({ status: 'error', message: error.message });
   }
 });
+
+// POST /api/reservations/:id/transfer - move a reservation to another desk.
+//
+// An allocation decision, so it is restricted to the roles that make them: Building Manager,
+// Administrator, Super Administrator, Director and Executive Assistant. Reception is deliberately
+// absent - it checks people in and out, it does not decide who sits where.
+//
+// The body names only the destination. Everything else about the reservation is read from the
+// stored row, so this cannot be turned into a way of rewriting a booking's hours or its owner.
+reservationsRouter.post(
+  '/:id/transfer',
+  requireRole(...RESERVATION_TRANSFER_ROLES),
+  validateBody(TransferReservationSchema),
+  async (req, res) => {
+    try {
+      const { ReservationTransferService } = await import(
+        '@/services/reservations/reservationTransferService'
+      );
+      const result = await ReservationTransferService.transfer(
+        req.params.id,
+        { workstationId: req.body.workstationId, workstationCode: req.body.workstationCode },
+        { id: req.user!.id, name: req.user!.full_name, role: req.user!.role }
+      );
+
+      if (!result.ok) {
+        res.status(409).json({ status: 'error', message: result.message });
+        return;
+      }
+
+      res.json({ status: 'success', data: result });
+    } catch (error: any) {
+      res.status(400).json({ status: 'error', message: error.message });
+    }
+  }
+);
+
+// ── Walk-in: booking a free desk by scanning its badge ───────────────────────────────────────
+//
+// The desk is identified by the SIGNED BADGE and nothing else, which is what makes this a
+// physical-presence channel rather than a way around the reservation lead time. Both routes
+// verify the token server-side and take the user from the JWT.
+
+// POST /api/reservations/walk-in/availability - how long is the scanned desk free for?
+reservationsRouter.post(
+  '/walk-in/availability',
+  validateBody(WalkInReservationSchema),
+  async (req, res) => {
+    const qr = SeatQRTokenService.verifySeatToken(req.body.seatToken);
+    if (!qr.valid || !qr.workstationId) {
+      res.status(401).json({ status: 'error', code: 'QR_INVALID', message: qr.error });
+      return;
+    }
+
+    const { WalkInService } = await import('@/services/reservations/walkInService');
+    const availability = await WalkInService.availability(qr.workstationId, req.user!.id);
+    res.json({ status: 'success', data: availability });
+  }
+);
+
+// POST /api/reservations/walk-in - take the desk now, for the window the server recomputes.
+reservationsRouter.post(
+  '/walk-in',
+  reservationLimiter,
+  validateBody(WalkInReservationSchema),
+  async (req, res) => {
+    const qr = SeatQRTokenService.verifySeatToken(req.body.seatToken);
+    if (!qr.valid || !qr.workstationId) {
+      res.status(401).json({ status: 'error', code: 'QR_INVALID', message: qr.error });
+      return;
+    }
+
+    const { WalkInService } = await import('@/services/reservations/walkInService');
+    const result = await WalkInService.book(
+      qr.workstationId,
+      {
+        id: req.user!.id,
+        name: req.user!.full_name,
+        department: req.user!.department,
+        role: req.user!.role,
+      },
+      req.body.endTime
+    );
+
+    if (!result.ok) {
+      res.status(409).json({ status: 'error', message: result.message });
+      return;
+    }
+
+    res.status(201).json({ status: 'success', data: result.reservation });
+  }
+);
 
 // ── Early-extension offers ───────────────────────────────────────────────────────────────────
 //

@@ -402,6 +402,33 @@ export const ExtendReservationSchema = z
   .object({ newStartTime: z.string().regex(/^\d{2}:\d{2}$/, 'Heure de début invalide (HH:mm)') })
   .strict();
 
+/**
+ * Moving a reservation to another desk. Only the destination is accepted: the window, the holder
+ * and the status of the reservation being moved all come from the stored row, so a transfer can
+ * never quietly become a re-booking.
+ */
+export const TransferReservationSchema = z
+  .object({
+    workstationId: z.string().uuid({ message: 'Poste de destination invalide' }).optional(),
+    workstationCode: z.string().min(1).optional(),
+  })
+  .strict()
+  .refine((v) => !!(v.workstationId || v.workstationCode), {
+    message: 'Poste de destination requis',
+  });
+
+/**
+ * Booking a free desk on the spot. The desk comes from the SIGNED BADGE, never from an id in the
+ * body - that is what ties the booking to somebody physically present. `endTime` is optional and
+ * only ever shortens the window the server computed.
+ */
+export const WalkInReservationSchema = z
+  .object({
+    seatToken: z.string().min(1, 'Jeton QR de poste requis'),
+    endTime: z.string().regex(/^\d{2}:\d{2}$/, 'Heure de fin invalide (HH:mm)').optional(),
+  })
+  .strict();
+
 export const CheckInOnBehalfSchema = z
   .object({ reservationId: z.string().uuid({ message: 'Identifiant de réservation invalide' }) })
   .strict();
