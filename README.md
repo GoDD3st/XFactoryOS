@@ -1,15 +1,106 @@
-## XFactory OS ##
+# XFactory OS
 
-# Summarize the XFACTORY OS app ( not only the openspace) and write all the modules that exist #
+**XFactory OS is the digital operating system for the XFactory building** - OCP SA's innovation
+and collaboration centre on Site Safi. The long-term target is a *Smart Building OS*: one platform
+that runs spaces, flows, reservations, services, visitors, equipment, access control, incidents,
+usage performance and the user experience around all of it, for a population sized at 10 000+ users.
 
+This repository is the **first brick** of that platform: Module 1, Smart Open Space Management.
+This section describes the platform it belongs to, so that
+a reader knows what exists, what is merely prepared, and what is deliberately absent.
 
+## The six functional domains
 
+XFactory OS is organised into six business domains. Module 1 activates parts of four of
+them and leaves the other two as extension points in the schema.
 
+| Domain                    | Covers                                                       | State in this codebase                                                  |
+|---------------------------|--------------------------------------------------------------|-------------------------------------------------------------------------|
+| **Dashboard**             | Executive view of the building                               | **Active** — Open Space executive dashboard only                        |
+| **Spaces & Reservations** | Every bookable space: desks, meeting rooms, executive spaces | **Active for desks.** Meeting rooms and the Bijou are future modules    |
+| **Visitors**              | Visitors, visits, access requests, badges                    | **Not active.** Data model prepared (`visitor` extensibility on users)  |
+| **Services & Support**    | Equipment, facility management, building services            | **Minimal.** Equipment referenced, no service workflow                  |
+| **Analytics**             | Usage analytics across the whole building                    | **Active for Open Space occupancy**                                     |
+| **Administration**        | Users, roles, permissions, settings, audit                   | **Active and complete**                                                 |
 
+```
+XFactory OS
+├── Dashboard ----------- Executive Dashboard              [v1]
+├── Spaces & Reservations
+│   └── Smart Open Space Management                        [v1 — this repository]
+│       ├── Digital Twin SVG · Reservations · Calendar
+│       └── Check-in/out · No-show · Waiting list
+│   └── Meeting rooms · Executive spaces                   [future]
+├── Visitors ------------ Visitors, visits, access         [prepared, inactive]
+├── Services & Support -- Equipment, FM, maintenance       [prepared, minimal]
+├── Analytics ----------- Occupancy KPIs                   [v1] · building-wide [future]
+└── Administration ------ RBAC · Users · Settings · Audit  [v1]
+```
 
+## Modules that exist today
 
+Module 1 is not one feature; it is nineteen specified functional modules plus the AI Assistant.
+Each maps to a service in `services/`.
 
-Module 1: Smart Open Space Management
+| # | Module                           | What it does |
+|---|----------------------------------|---|
+| 1 | **Authentication**               | Email/password sign-in via Supabase Auth, session expiry, sign-in logging; SSO prepared, not built |
+| 2 | **Role Management**              | Ten roles, permissions granted per module as a matrix (`role_permissions`), CRUD and approval rights, every change audited |
+| 3 | **User Management**              | Accounts, departments, active/inactive status, bulk CSV import, Super-Admin password recovery by replacement |
+| 4 | **Workstation Management**       | The desk referential, 28 desks today, schema to 40: codes, SVG position, statuses (available, reserved, occupied, disabled, maintenance), per-desk history |
+| 5 | **Cluster Management**           | 7 clusters of 4, extensible. Two management/VIP clusters locked by default, opened only by temporary GCI or Building Manager authorisation |
+| 6 | **Reservation Management**       | Half-day, full-day and multi-day bookings; FIFO on contention; conflict prevention; approval above the configured duration; cancellation before start |
+| 7 | **Reservation Calendar**         | Day, week and month views, cluster filters, visually distinguishing reserved / occupied / no-show |
+| 8 | **Interactive SVG Digital Twin** | The floor plan as the primary interface — zoom, pan, hover, click to book, coloured by live availability for the chosen date and window |
+| 9 | **Real-time Occupancy** | The measured state of the room, not the booked state: who actually checked in, right now |
+| 10 | **Search & advanced filters** | Find a desk or a reservation by cluster, date, window, department, status |
+| 11 | **Check-in** | Mandatory presence confirmation by scanning the QR badge on the desk, within a time window |
+| 12 | **Check-out** | Release at the end, or early — including the walk-in and desk-move paths |
+| 13 | **No-show** | Automatic detection and release of desks never claimed, cascading to the waiting list |
+| 14 | **Waiting List** | FIFO queue with preference matching; a freed desk is offered automatically to the head of the queue |
+| 15 | **Reservation History** | Per-user and per-desk usage history |
+| 16 | **Notifications & emails** | Reminders, approval requests and decisions, waiting-list offers, no-show notices |
+| 17 | **Dashboards & reports** | Occupancy, trends, departments, no-show rates, forecasting; CSV, Excel and print-to-PDF exports |
+| 18 | **Administration & settings** | Booking rules, quotas, holidays, closures, business hours, branding — password-confirmed |
+| 19 | **Audit Logs** | Append-only trail of sensitive actions, readable by Admin and Super Admin only, unforgeable by the people it records |
+| — | **XFactory AI Assistant** | Not a generic chatbot: occupancy prediction, anomaly detection, usage analysis, natural-language questions, report generation, cluster-optimisation advice. Answers only from data the asking role is permitted to see. Built; no provider has been exercised against a live vendor |
+
+## Modules that do not exist yet
+
+Deliberately out of Module 1, but the architecture is expected to accommodate them without a
+rewrite. They are listed here because several schema choices only make sense in their light.
+
+| Future module | What the current schema owes it |
+|---|---|
+| Meeting-room reservation | A generic `space` model rather than a desk-only one |
+| The Bijou (executive space) | Same generic space model, with its own approval policy |
+| Visitor management | `visitor`, `visit`, `access_request` models; users already carry a visitor path |
+| Building equipment | An extensible `equipment` model |
+| Facility Management | `service_request`, `maintenance_ticket` |
+| Access control — CDVI Centaur | API contracts and an event stream |
+| Hager / building automation | Building-service connectors |
+| Reservation screens, IoT | The API-first rule: every feature callable over HTTP |
+| Native mobile app | PWA-ready and a mobile-ready API; no native client planned |
+| Building-wide analytics | Telemetry aggregated above the Open Space |
+
+Explicitly **never** in scope: financial or cost management, and payroll / HR / full corporate
+directory. User import is the only intended overlap with HR systems.
+
+## Guiding principles
+
+These explain most of the design decisions recorded later in this document.
+
+- **Digital Twin first** — the plan is the interface, not a table of desk names.
+- **API first** — every feature exposable over HTTP, so mobile, screens and IoT can arrive later.
+- **RBAC strict** — a role sees exactly what it is granted, enforced by the server (§9).
+- **Audit by design** — every sensitive action is recorded and cannot be edited by its author.
+- **Modularity** — Module 1 must not make the other five domains harder to add.
+- **Data driven** — occupancy is measured, never asserted (§15).
+- **AI assisted** — the assistant recommends and detects; it does not decide.
+
+---
+
+# Module 1: Smart Open Space Management
 
 Reservation and occupancy management for the OCP Digital Factory Open Space, Site Safi.
 
@@ -303,7 +394,10 @@ and absolute checks come before the ones that hit the database.
    offer a way forward rather than only a refusal.
 4. **BR-07 VIP/management lock** — a non-reservable desk requires a privileged role *or*
    membership in `cluster_vip_members`.
-5. **Booking window** — `bookingWindowDays` minimum lead time.
+5. **Booking window** — `bookingWindowDays` minimum lead time. One exception, and it cannot be
+   requested from outside: a **walk-in** (see below) booked by scanning the desk's badge while
+   standing at it. The flag is set by `WalkInService` on the server; `POST /api/reservations`
+   has no field for it.
 6. **Quotas** — per day and per week, counted from the user's existing reservations.
 7. **Approval routing** — see below.
 
@@ -378,7 +472,9 @@ plainly:
 Ahmed books WS-A 08:00–12:00 and leaves at 10:30. The reservation becomes `COMPLETED` with
 `check_out_at = 10:30`. The 10:30–12:00 stretch is now ordinary unbooked time: anybody wanting it
 must satisfy the same rules as for any other free desk, which inside the lead time means they
-cannot have it.
+cannot have it — **including by walk-in**: while the next holder's extension offer stands, those
+hours are refused to everyone else, badge in hand or not. The desk stays empty until that holder
+accepts or their own reservation begins.
 
 Exactly one person may take those hours, and only in one specific way:
 
@@ -400,6 +496,53 @@ How the offer is decided (`services/reservations/earlyExtensionService.ts`):
 | What does the server check on accept? | Ownership from the JWT, that the offer still exists when recomputed from the database, that the requested start sits inside it, that the holder has no other reservation over those hours, and that the desk is still free. The GiST exclusion constraint on `(workstation_id, period)` is the final backstop against two requests racing for the same gap. |
 
 The offer never names the person who left. It carries hours only.
+
+### Réservation sur place (walk-in)
+
+Somebody standing at an **empty** desk may take it there and then by scanning its badge. The site
+answers with how long the desk is free:
+
+```
+start = now
+end   = the next reservation's start on that desk, or close of business, whichever is first
+```
+
+and the user confirms, optionally finishing earlier than the window allows. This is the **only**
+exception to the reservation lead time, and it is narrow by construction rather than by promise:
+
+- it needs a valid desk badge, which is only obtainable by being at the desk. The exemption is
+  granted by the server on that path alone (`WalkInService.book` → `createReservation({walkIn})`),
+  and `POST /api/reservations` has no way to ask for it;
+- it can only produce a booking that starts **now**, **today**, on the **scanned desk**. Not
+  tomorrow, not elsewhere, not a future window;
+- it ends where the next booking begins, so it never eats into a reservation somebody holds.
+
+Everything else still applies: conflicts, quotas, business hours, one-desk-at-a-time, and BR-07 —
+management-locked desks are excluded outright, since a scan proves presence, not entitlement.
+
+The rationale: the lead time governs **planning**. Taking a chair that is empty right now plans
+nothing, so applying a two-day notice to it would leave desks empty for no gain.
+
+### Déplacer une réservation vers un autre poste
+
+Operational correction — a desk breaks, a cluster is re-purposed, two people need to sit together.
+`POST /api/reservations/:id/transfer` moves a booking to another desk **without cancelling and
+rebooking**, which would lose its history, its check-in, its approval and its place in the day.
+
+- **Who**: Building Manager, Administrator, Super Administrator, Director, Executive Assistant.
+  Reception is deliberately absent — it checks people in and out; who sits where is an allocation
+  decision.
+- **What changes**: the desk, and nothing else. The window, the holder and the status are read from
+  the stored row, so a transfer can never become a re-booking.
+- **What the server re-verifies**: the reservation is still live; the destination exists, differs,
+  and is not out of service; it is free for exactly that window; and — for a management-locked
+  destination — that the **holder** is entitled to sit there. Moving somebody onto a VIP desk they
+  could not have booked themselves would launder BR-07 through an operator's permissions.
+- **Side effects**: an occupied desk carries its occupancy across (the old desk is released, the new
+  one marked occupied), the holder is notified that their desk changed, and the audit trail records
+  the staff member as the author of the move.
+- **Races**: the GiST exclusion constraint on `(workstation_id, period)` is the backstop — a `23P01`
+  surfaces as "ce poste vient d'être réservé", not a 500.
 
 ### Waiting list (BPMN D5)
 
@@ -475,8 +618,10 @@ Authentication
 QR verification            POST /api/checkinout/scan-seat  (READ-ONLY)
   ↓   HMAC checked → 401 QR_INVALID if forged or tampered
 Reservation lookup         user from the JWT, never the body
-  ↓   no reservation for THIS user on THIS desk → 404 "Vous n'avez pas accès à ce poste."
-  ↓   the refusal names nobody: the occupant's identity is never disclosed
+  ↓   holds a reservation here      → identity confirmation, then CHECK IN / CHECK OUT
+  ↓   holds nothing, desk is FREE   → walk-in offer: "libre de 11:37 à 18:00", then book
+  ↓   holds nothing, desk is taken  → "Ce poste est occupé jusqu'à 12:00."
+  ↓   every refusal describes the DESK: the occupant's identity is never disclosed
 Identity confirmation      "You are signed in as X" → the user confirms
   ↓
 Reservation details        cluster, desk, date, start, end
@@ -613,6 +758,9 @@ Endpoints worth knowing:
 | `POST /api/checkinout/check-in` | The only self check-in. Re-validates ownership, status and window; returns the stored timestamp. |
 | `GET /api/reservations/extension-offers` | Earlier starts open to the caller after someone left a desk early. §10. |
 | `POST /api/reservations/:id/extend` | Accepts one, re-deriving the offer server-side first. |
+| `POST /api/reservations/:id/transfer` | Moves a booking to another desk. Allocation roles only. §10. |
+| `POST /api/reservations/walk-in/availability` | How long the scanned desk is free for. |
+| `POST /api/reservations/walk-in` | Takes it, for that window. The only lead-time exception. §10. |
 | `GET /api/checkinout/auto-checkout`, `/reminders` | Site-wide sweeps: operational roles only, not any session holder. |
 | `GET /api/roles/me/permissions` | The caller's **own** grants only. Enumerating everyone's stays behind `manage_roles`. |
 | `GET /api/cron/sweep?job=…` | `CRON_SECRET`-authenticated. `job=all` runs every sweep. |
